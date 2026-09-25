@@ -156,7 +156,10 @@ class MigrationTest {
     @Test
     fun migrate1To2() = runTest {
         createVersion1(DB)
-        val db = Room.databaseBuilder(context, PwdeDatabase::class.java, DB).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, PwdeDatabase::class.java, DB)
+            .addMigrations(PwdeDatabase.MIGRATION_3_4)
+            .allowMainThreadQueries()
+            .build()
         try {
             val controls = ControlsRepository(db.controlSettingsDao()).config.first()
             assertEquals(false, controls.voiceEnabled)

@@ -1,5 +1,6 @@
 package com.pwde.app.sensors.voice
 
+import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.data.model.VoiceShortcut
@@ -35,6 +36,12 @@ object StandardCommands {
     val CLOSE = VoiceCommand("close", "close", scope = CommandScope.GLOBAL)
 
     val all = listOf(BACK, HOME, NEXT, SKIP, SETTINGS, MENU, CLOSE)
+
+    /** "play <game>" from anywhere in PWDe launches that game with its last-played profile. */
+    val playGames = Game.entries.map { VoiceCommand("play:${it.id}", listOf("play ${it.displayName}"), CommandScope.GLOBAL) }
+
+    fun gameToPlay(command: VoiceCommand): Game? =
+        command.id.takeIf { it.startsWith("play:") }?.let { Game.byId(it.removePrefix("play:")) }
 
     fun shortcutId(shortcut: VoiceShortcut) = "shortcut:${shortcut.name}"
 
@@ -89,8 +96,9 @@ object CommandMatcher {
             .replace(Regex("\\s+"), " ")
 
     /**
-     * Screen commands are tried before global ones; within a group the longest matching phrase
-     * wins, so "next page" beats "next". Each speech hypothesis is tried in order.
+     * Screen commands are tried before global ones, unless a global phrase is strictly longer
+     * ("play mobile legends" beats a screen's "mobile legends"); within a group the longest
+     * matching phrase wins, so "next page" beats "next". Each speech hypothesis is tried in order.
      */
     fun match(hypotheses: List<String>, commands: List<VoiceCommand>, mode: VoiceMatchMode): VoiceCommand? {
         val screen = commands.filter { it.scope == CommandScope.SCREEN }
@@ -98,7 +106,14 @@ object CommandMatcher {
         for (hypothesis in hypotheses) {
             val heard = normalize(hypothesis)
             if (heard.isEmpty()) continue
-            (bestMatch(heard, screen, mode) ?: bestMatch(heard, global, mode))?.let { return it }
+            val onScreen = bestMatch(heard, screen, mode)
+            val everywhere = bestMatch(heard, global, mode)
+            val best = when {
+                onScreen == null -> everywhere
+                everywhere != null && everywhere.second > onScreen.second -> everywhere
+                else -> onScreen
+            }
+            best?.let { return it.first }
         }
         return null
     }
@@ -106,7 +121,8 @@ object CommandMatcher {
     fun match(text: String, commands: List<VoiceCommand>, mode: VoiceMatchMode): VoiceCommand? =
         match(listOf(text), commands, mode)
 
-    private fun bestMatch(heard: String, commands: List<VoiceCommand>, mode: VoiceMatchMode): VoiceCommand? {
+    /** The best command and the length of the phrase that matched. */
+    private fun bestMatch(heard: String, commands: List<VoiceCommand>, mode: VoiceMatchMode): Pair<VoiceCommand, Int>? {
         var best: VoiceCommand? = null
         var bestLength = -1
         for (command in commands) {
@@ -123,7 +139,7 @@ object CommandMatcher {
                 }
             }
         }
-        return best
+        return best?.let { it to bestLength }
     }
 }
 

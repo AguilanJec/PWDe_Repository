@@ -61,6 +61,8 @@ data class GameProfile(
     val updatedAt: Long,
     val remoteId: String? = null,
     val lastSyncedAt: Long? = null,
+    /** When this profile was last used to play the real game; picks the profile for "play <game>". */
+    val lastPlayedAt: Long? = null,
 )
 
 /**

@@ -41,6 +41,14 @@ class CommandMatcherTest {
     }
 
     @Test
+    fun aLongerGlobalPhraseBeatsAShorterScreenOne() {
+        val openGame = VoiceCommand("game:mobile_legends", "mobile legends", scope = CommandScope.SCREEN)
+        val play = StandardCommands.playGames.first { it.id == "play:mobile_legends" }
+        assertEquals(play, CommandMatcher.match("play mobile legends", listOf(openGame) + StandardCommands.playGames, VoiceMatchMode.WORD_ANYWHERE))
+        assertEquals(openGame, CommandMatcher.match("mobile legends", listOf(openGame) + StandardCommands.playGames, VoiceMatchMode.WORD_ANYWHERE))
+    }
+
+    @Test
     fun longestPhraseWins() {
         val back = VoiceCommand("go_back_screen", "go back", scope = CommandScope.SCREEN)
         val go = VoiceCommand("go", "go", scope = CommandScope.SCREEN)

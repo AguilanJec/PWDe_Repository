@@ -184,7 +184,8 @@ class AndroidVoiceCommandManager(
 
     private fun isDictation(text: String) = dictationOwners.value.isNotEmpty() && Dictation.isAssignment(text)
 
-    private fun globalCommands(config: ControlConfig) = StandardCommands.all + StandardCommands.shortcuts(config.voiceShortcuts)
+    private fun globalCommands(config: ControlConfig) =
+        StandardCommands.all + StandardCommands.playGames + StandardCommands.shortcuts(config.voiceShortcuts)
 
     private fun allCommands() = screenCommands.value.values.flatten() + globalCommands(config)
 

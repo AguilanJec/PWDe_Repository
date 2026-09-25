@@ -17,6 +17,7 @@ import com.pwde.app.data.remote.AuthRepository
 import com.pwde.app.data.remote.NoOpSyncRepository
 import com.pwde.app.data.remote.SyncRepository
 import com.pwde.app.data.speech.SpeechOutput
+import com.pwde.app.play.LivePlay
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.MediaPipeFaceTrackingManager
 import com.pwde.app.sensors.voice.AndroidVoiceCommandManager
@@ -66,6 +67,9 @@ class AppContainer(private val context: Context) {
     val hudDetector: HudDetector by lazy {
         BuildConfig.DETECTION_URL.takeIf { it.isNotBlank() }?.let(::CloudHudDetector) ?: HudDetector.None
     }
+
+    /** The live session over the real game, shared by PlayService, the accessibility service and the UI. */
+    val livePlay by lazy { LivePlay() }
 
     fun newTutorialPlayer() = TutorialPlayer(context)
 

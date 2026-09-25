@@ -6,7 +6,7 @@ import com.pwde.app.sensors.voice.BaseInGameVoiceEngine
 import com.pwde.app.sensors.voice.InGameVoiceResult
 import com.pwde.app.sensors.voice.MicArbiter
 import com.pwde.app.sensors.voice.VoiceCommandBinding
-import com.pwde.app.ui.gameplay.GameplayViewModel
+import com.pwde.app.play.GameInput
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -34,7 +34,7 @@ private class TestEngine : BaseInGameVoiceEngine() {
 }
 
 class InGameVoiceEngineTest {
-    private val gameCommands = GameplayViewModel.STANDARD_BINDINGS + VoiceCommandBinding("button:1", listOf("attack"))
+    private val gameCommands = GameInput.STANDARD_BINDINGS + VoiceCommandBinding("button:1", listOf("attack"))
 
     private fun collect(engine: TestEngine, block: () -> Unit): List<InGameVoiceResult> = mutableListOf<InGameVoiceResult>().also { out ->
         runTest(UnconfinedTestDispatcher()) {
@@ -58,19 +58,19 @@ class InGameVoiceEngineTest {
 
     @Test
     fun backPauseAndMenuAreAlwaysThere() {
-        val engine = TestEngine().apply { loadCommands(GameplayViewModel.STANDARD_BINDINGS) }
+        val engine = TestEngine().apply { loadCommands(GameInput.STANDARD_BINDINGS) }
         val results = collect(engine) {
             engine.hear("go back")
             engine.hear("pause")
             engine.hear("menu")
         }
-        assertEquals(listOf(GameplayViewModel.BACK, GameplayViewModel.PAUSE, GameplayViewModel.MENU), results.map { it.commandId })
+        assertEquals(listOf(GameInput.BACK, GameInput.PAUSE, GameInput.MENU), results.map { it.commandId })
     }
 
     @Test
     fun reloadingReplacesTheCommandSet() {
         val engine = TestEngine().apply { loadCommands(gameCommands) }
-        engine.loadCommands(GameplayViewModel.STANDARD_BINDINGS)
+        engine.loadCommands(GameInput.STANDARD_BINDINGS)
         val results = collect(engine) { engine.hear("attack") }
         assertEquals(null, results.single().commandId)
     }

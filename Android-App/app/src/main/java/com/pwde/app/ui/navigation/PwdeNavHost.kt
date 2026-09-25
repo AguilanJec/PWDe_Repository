@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -15,6 +16,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.play.PlayService
 import com.pwde.app.ui.common.pwdeViewModel
 import com.pwde.app.ui.components.MainTab
 import com.pwde.app.ui.controls.ChooseGestureScreen
@@ -50,6 +52,7 @@ import com.pwde.app.ui.onboarding.SplashScreen
 import com.pwde.app.ui.onboarding.SplashViewModel
 import com.pwde.app.ui.onboarding.WelcomeScreen
 import com.pwde.app.ui.profile.ProfileScreen
+import com.pwde.app.ui.play.rememberPlayGame
 import com.pwde.app.ui.profile.ProfileViewModel
 import com.pwde.app.ui.setup.SetupScreen
 import com.pwde.app.ui.setup.SetupViewModel
@@ -78,6 +81,12 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
     LaunchedEffect(currentRoute) { screenReader.onScreenShown(Routes.spokenTitle(currentRoute)) }
 
     fun inMainApp() = runCatching { navController.getBackStackEntry(Routes.DASHBOARD) }.isSuccess
+
+    val playGame = rememberPlayGame()
+    // "play <game>" from any main-app screen: the real game, with its last-played profile.
+    LaunchedEffect(voice) {
+        voice.playRequests.collect { game -> if (inMainApp()) playGame(game, null) }
+    }
 
     // Standard voice commands. Voice "back" never closes the app from the root screen.
     LaunchedEffect(voice) {
@@ -220,7 +229,8 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                     game = game,
                     viewModel = pwdeViewModel(key = "game-${game.id}") { GameDetailViewModel(it.profileRepository, game) },
                     onBack = ::back,
-                    onPlay = { profileId -> navController.navigate(Routes.playing(game.id, profileId)) },
+                    onPlay = { profileId -> playGame(game, profileId) },
+                    onTestProfile = { profileId -> navController.navigate(Routes.playing(game.id, profileId)) },
                     onEditProfile = { navController.navigate(Routes.gabai(editProfileId = it)) },
                     onSetUpWithGabAi = { navController.navigate(Routes.gabai(newGameProfile = true, gameId = game.id)) },
                 )
@@ -235,11 +245,14 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         ) { entry ->
             val game = Game.byId(entry.arguments?.getString("gameId"))
             val profileId = entry.arguments?.getLong("profile")?.takeIf { it >= 0 }
+            // The preview needs the camera and in-game voice, so a live session over the real game ends.
+            val context = LocalContext.current
+            LaunchedEffect(Unit) { PlayService.stop(context) }
             PlayingScreen(
                 viewModel = pwdeViewModel {
                     GameplayViewModel(
                         it.faceTrackingManager, it.inGameVoiceEngine, it.controlsRepository, it.profileRepository,
-                        it.settingsRepository, it.gabAiRepository, game, profileId,
+                        it.settingsRepository, it.gabAiRepository, game, profileId, it.livePlay,
                     )
                 },
                 onExit = ::back,
@@ -348,7 +361,8 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 },
                 onSignIn = { navController.navigate(Routes.SIGN_IN) },
                 onEditGameProfile = { navController.navigate(Routes.gabai(editProfileId = it)) },
-                onPlayGameProfile = { gameId, profileId -> navController.navigate(Routes.playing(gameId, profileId)) },
+                onPlayGameProfile = { gameId, profileId -> Game.byId(gameId)?.let { playGame(it, profileId) } },
+                onTestGameProfile = { gameId, profileId -> navController.navigate(Routes.playing(gameId, profileId)) },
                 onNewWithGabAi = { navController.navigate(Routes.gabai()) },
                 onEditAppearance = { navController.navigate(Routes.setup(appearanceOnly = true)) },
                 onControls = { navController.navigate(Routes.CONTROLS) },

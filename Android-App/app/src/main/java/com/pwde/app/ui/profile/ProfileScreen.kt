@@ -181,6 +181,7 @@ fun ProfileScreen(
     onSignIn: () -> Unit,
     onEditGameProfile: (Long) -> Unit,
     onPlayGameProfile: (gameId: String, profileId: Long) -> Unit,
+    onTestGameProfile: (gameId: String, profileId: Long) -> Unit,
     onNewWithGabAi: () -> Unit,
     onEditAppearance: () -> Unit,
     onControls: () -> Unit,
@@ -277,10 +278,14 @@ fun ProfileScreen(
                                 modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
                             )
                             PwdeButton(
-                                "Edit buttons", { onEditGameProfile(it.id) }, icon = Icons.Outlined.AutoAwesome,
+                                "Test", { onTestGameProfile(it.gameId, it.id) }, style = ButtonStyle.SECONDARY,
                                 modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
                             )
                         }
+                        PwdeButton(
+                            "Edit buttons", { onEditGameProfile(it.id) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome,
+                            modifier = Modifier.fillMaxWidth(), contentPadding = pairedButtonPadding(),
+                        )
                     }
                 }
             }
