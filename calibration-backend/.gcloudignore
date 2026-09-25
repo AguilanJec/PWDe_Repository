@@ -1,0 +1,12 @@
+# Used by `gcloud run deploy --source`. Deliberately does NOT include
+# .gitignore: *.onnx is git-ignored, but weights/model.onnx must be
+# uploaded or the Cloud Build step will fail at COPY weights/model.onnx.
+.gcloudignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+weights/*.pt
