@@ -2,7 +2,6 @@
 
 An accessibility-first gaming companion for people with disabilities: hands-free control through head/face tracking, voice, and a guided setup assistant (GabAI).
 
-This is the build from **Prompt 1 of 3 (architecture foundation)**. Prompt 2 adds camera, ML and mic. Prompt 3 adds GabAI and production hardening.
 
 ## Build
 
