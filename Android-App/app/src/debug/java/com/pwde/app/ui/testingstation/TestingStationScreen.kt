@@ -94,7 +94,6 @@ fun TestingStationScreen(viewModel: TestingStationViewModel, onBack: () -> Unit)
         onBack = onBack,
         voiceHint = "Say \"swap gesture\", or anything — it shows up in the Voice panel",
     ) {
-        StatusPill("Debug build only — not in release", color = colors.warning, icon = Icons.Outlined.BugReport)
         DemoModeBanner(face)
         CameraFeed(
             faceState = face,
@@ -103,8 +102,8 @@ fun TestingStationScreen(viewModel: TestingStationViewModel, onBack: () -> Unit)
             onCameraPermissionResult = viewModel::onCameraPermissionResult,
             showLandmarks = true,
         )
-        FacePanel(face)
         GesturesPanel(face)
+        FacePanel(face)
         Panel("Voice", Icons.Outlined.Mic) {
             Reading("State", when {
                 voice.usesTextFallback -> voice.availability.label

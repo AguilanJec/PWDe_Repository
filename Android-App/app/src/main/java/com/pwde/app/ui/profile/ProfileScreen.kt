@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -230,12 +231,18 @@ fun ProfileScreen(
         SectionTitle("Calibration profiles")
         if (state.calibrationProfiles.isEmpty()) {
             InfoNote("No calibration profiles yet. GabAI will help you make one.")
-            PwdeButton("Make one with GabAI", onNewWithGabAi, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.fillMaxWidth())
+            PwdeButton(
+                "Make one with GabAI", onNewWithGabAi, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome,
+                modifier = Modifier.fillMaxWidth(), contentPadding = buttonPadding(),
+            )
         } else {
             notice?.let { StatusPill(it, icon = Icons.Outlined.CheckCircle) }
             state.calibrationProfiles.forEach {
                 ProfileRow(SavedProfile.Calibration(it), Icons.Outlined.Tune, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
-                    PwdeButton("Use now", { viewModel.useCalibration(it) }, icon = Icons.Outlined.CheckCircle, modifier = Modifier.fillMaxWidth())
+                    PwdeButton(
+                        "Use now", { viewModel.useCalibration(it) }, icon = Icons.Outlined.CheckCircle,
+                        modifier = Modifier.fillMaxWidth(), contentPadding = buttonPadding(),
+                    )
                 }
             }
         }
@@ -246,9 +253,15 @@ fun ProfileScreen(
         } else {
             state.gameProfiles.forEach {
                 ProfileRow(SavedProfile.Game(it), Icons.Outlined.SportsEsports, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PwdeButton("Play", { onPlayGameProfile(it.gameId, it.id) }, icon = Icons.Outlined.SportsEsports, modifier = Modifier.weight(1f))
-                        PwdeButton("Edit buttons", { onEditGameProfile(it.id) }, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+                        PwdeButton(
+                            "Play", { onPlayGameProfile(it.gameId, it.id) }, icon = Icons.Outlined.SportsEsports,
+                            modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                        )
+                        PwdeButton(
+                            "Edit buttons", { onEditGameProfile(it.id) }, icon = Icons.Outlined.AutoAwesome,
+                            modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                        )
                     }
                 }
             }
@@ -260,7 +273,10 @@ fun ProfileScreen(
     }
 }
 
-/** One saved profile with rename and delete. */
+/**
+ * One saved profile (calibration or game) with rename and delete. Card padding and the gaps between
+ * header, primary action and rename/delete all come from the spacing tokens.
+ */
 @Composable
 private fun ProfileRow(
     profile: SavedProfile,
@@ -270,21 +286,38 @@ private fun ProfileRow(
     primary: @Composable () -> Unit,
 ) {
     val colors = PwdeTheme.colors
-    GradientCard(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconBadge(icon)
-            Column(Modifier.weight(1f)) {
-                Text(profile.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
-                Text(profile.detail, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+    val spacing = PwdeTheme.spacing
+    GradientCard(Modifier.fillMaxWidth(), contentPadding = spacing.screenMargin) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+                IconBadge(icon)
+                Column(Modifier.weight(1f)) {
+                    Text(profile.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
+                    Text(profile.detail, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+                }
             }
-        }
-        Box(Modifier.padding(top = 8.dp)) { primary() }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PwdeButton("Rename", { onRename(profile) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Edit, modifier = Modifier.weight(1f))
-            PwdeButton("Delete", { onDelete(profile) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Delete, modifier = Modifier.weight(1f))
+            primary()
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+                PwdeButton(
+                    "Rename", { onRename(profile) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Edit,
+                    modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                )
+                PwdeButton(
+                    "Delete", { onDelete(profile) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Delete,
+                    modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                )
+            }
         }
     }
 }
+
+/** Profile-screen button padding: roomier than PwdeButton's default 16 × 12dp, from the spacing tokens. */
+@Composable
+private fun buttonPadding() = PaddingValues(horizontal = PwdeTheme.spacing.screenMargin, vertical = PwdeTheme.spacing.internal)
+
+/** Two buttons side by side: same vertical padding, narrower sides so labels don't wrap on small phones. */
+@Composable
+private fun pairedButtonPadding() = PaddingValues(horizontal = PwdeTheme.spacing.internal, vertical = PwdeTheme.spacing.internal)
 
 @Composable
 private fun RenameDialog(profile: SavedProfile, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
@@ -294,8 +327,8 @@ private fun RenameDialog(profile: SavedProfile, onDismiss: () -> Unit, onConfirm
         containerColor = PwdeTheme.colors.surface,
         title = { Text("Rename profile", color = PwdeTheme.colors.text) },
         text = { PwdeTextField(label = "Name", value = name, onValueChange = { name = it }) },
-        confirmButton = { PwdeButton("Save", { onConfirm(name) }, enabled = name.isNotBlank()) },
-        dismissButton = { PwdeButton("Cancel", onDismiss, style = ButtonStyle.SECONDARY) },
+        confirmButton = { PwdeButton("Save", { onConfirm(name) }, enabled = name.isNotBlank(), contentPadding = buttonPadding()) },
+        dismissButton = { PwdeButton("Cancel", onDismiss, style = ButtonStyle.SECONDARY, contentPadding = buttonPadding()) },
     )
 }
 
@@ -306,54 +339,68 @@ private fun DeleteDialog(profile: SavedProfile, onDismiss: () -> Unit, onConfirm
         containerColor = PwdeTheme.colors.surface,
         title = { Text("Delete \"${profile.name}\"?", color = PwdeTheme.colors.text) },
         text = { Text("This removes it from this phone. It can't be undone.", color = PwdeTheme.colors.textMuted) },
-        confirmButton = { PwdeButton("Delete", onConfirm, style = ButtonStyle.DESTRUCTIVE) },
-        dismissButton = { PwdeButton("Keep it", onDismiss, style = ButtonStyle.SECONDARY) },
+        confirmButton = { PwdeButton("Delete", onConfirm, style = ButtonStyle.DESTRUCTIVE, contentPadding = buttonPadding()) },
+        dismissButton = { PwdeButton("Keep it", onDismiss, style = ButtonStyle.SECONDARY, contentPadding = buttonPadding()) },
     )
 }
-
 @Composable
 private fun SyncCard(state: ProfileUiState, onSignIn: () -> Unit, onSignOut: () -> Unit) {
     val colors = PwdeTheme.colors
-    GradientCard(Modifier.fillMaxWidth()) {
-        when (state.syncStatus) {
-            SyncStatus.LocalOnly -> {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    IconBadge(Icons.Outlined.PhoneAndroid)
-                    Column(Modifier.weight(1f)) {
-                        Text("Saved on this phone", style = MaterialTheme.typography.titleMedium, color = colors.text)
-                        Text(
-                            "Sign in to sync your profiles across devices. Nothing here is lost when you do.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMuted,
-                        )
+    val spacing = PwdeTheme.spacing
+    // Same card padding and item gaps as the profile cards; every child is spaced evenly.
+    GradientCard(Modifier.fillMaxWidth(), contentPadding = spacing.screenMargin) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.internal)) {
+            when (state.syncStatus) {
+                SyncStatus.LocalOnly -> {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+                        IconBadge(Icons.Outlined.PhoneAndroid)
+                        Column(Modifier.weight(1f)) {
+                            Text("Saved on this phone", style = MaterialTheme.typography.titleMedium, color = colors.text)
+                            Text(
+                                "Sign in to sync your profiles across devices. Nothing here is lost when you do.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textMuted,
+                            )
+                        }
+                    }
+                    SyncActionButton("Sign in to sync across devices", Icons.AutoMirrored.Outlined.Login, onSignIn)
+                    if (!state.cloudAvailable) {
+                        StatusPill("Accounts aren't set up in this build", color = colors.textMuted, icon = Icons.Outlined.CloudOff)
                     }
                 }
-                PwdeButton(
-                    "Sign in to sync across devices",
-                    onSignIn,
-                    style = ButtonStyle.SECONDARY,
-                    icon = Icons.AutoMirrored.Outlined.Login,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (!state.cloudAvailable) {
-                    StatusPill("Accounts aren't set up in this build", color = colors.textMuted, icon = Icons.Outlined.CloudOff)
-                }
-            }
-            SyncStatus.NotAvailable -> {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    IconBadge(Icons.Outlined.CloudSync)
-                    Column(Modifier.weight(1f)) {
-                        Text("Sync status", style = MaterialTheme.typography.titleMedium, color = colors.text)
-                        StatusPill("Cloud sync not available yet", color = colors.warning, icon = Icons.Outlined.CloudOff)
+                SyncStatus.NotAvailable -> {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+                        IconBadge(Icons.Outlined.CloudSync)
+                        Column(Modifier.weight(1f)) {
+                            Text("Sync status", style = MaterialTheme.typography.titleMedium, color = colors.text)
+                            StatusPill("Cloud sync not available yet", color = colors.warning, icon = Icons.Outlined.CloudOff)
+                        }
                     }
+                    Text(
+                        "You're signed in. Your profiles are safe on this phone; syncing them to the cloud is coming in a later update.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                    SyncActionButton("Sign out", Icons.AutoMirrored.Outlined.Logout, onSignOut)
                 }
-                Text(
-                    "You're signed in. Your profiles are safe on this phone; syncing them to the cloud is coming in a later update.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textMuted,
-                )
-                PwdeButton("Sign out", onSignOut, style = ButtonStyle.SECONDARY, icon = Icons.AutoMirrored.Outlined.Logout, modifier = Modifier.fillMaxWidth())
             }
         }
     }
+}
+
+/**
+ * The sync card's action ("Sign in to sync across devices" / "Sign out"): 24dp top and bottom, so
+ * it renders ≥ 68dp tall with centered text, clearly larger than the 56dp minimum; 20dp sides keep
+ * the long label on one line on most phones.
+ */
+@Composable
+private fun SyncActionButton(text: String, icon: ImageVector, onClick: () -> Unit) {
+    PwdeButton(
+        text,
+        onClick,
+        style = ButtonStyle.SECONDARY,
+        icon = icon,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = PwdeTheme.spacing.screenMargin, vertical = PwdeTheme.spacing.section),
+    )
 }
