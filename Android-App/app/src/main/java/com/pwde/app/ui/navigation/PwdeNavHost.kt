@@ -187,7 +187,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             DashboardScreen(
                 viewModel = pwdeViewModel {
                     DashboardViewModel(
-                        it.settingsRepository, it.authRepository, it.faceTrackingManager, it.voiceCommandManager, it.gabAiRepository,
+                        it.settingsRepository, it.authRepository, it.faceTrackingManager, it.voiceCommandManager,
                     )
                 },
                 onNavigate = { destination ->

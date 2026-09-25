@@ -48,14 +48,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtMost
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pwde.app.sensors.voice.MicAvailability
 import com.pwde.app.sensors.voice.VoiceState
 import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.scaled
 import com.pwde.app.ui.voice.LocalVoiceController
-import com.pwde.app.sensors.voice.MicAvailability
 
 /**
  * Docked voice bar (Figma "P3 / Voice Bar"). Shows what you can say, whether PWDe is listening
@@ -107,6 +110,7 @@ private fun heardLine(state: VoiceState): String? {
 }
 
 private fun statusLine(state: VoiceState): String = when {
+    // No mic permission: the mic button already offers to allow it, so don't spell it out here.
     state.usesTextFallback && state.availability == MicAvailability.NO_PERMISSION -> "Type a command instead"
     state.usesTextFallback -> "${state.availability.label} · type a command instead"
     !state.enabled -> "Voice off · tap the mic to turn it on"
@@ -139,7 +143,7 @@ private fun VoiceBarLayout(
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = 68.dp)
             .clip(PwdeShapes.pill)
             .background(colors.surfaceMuted)
             .border(if (listening) 2.dp else 1.dp, if (listening) colors.primary else colors.secondary.copy(alpha = 0.6f), PwdeShapes.pill)
@@ -171,30 +175,42 @@ private fun VoiceBarLayout(
         }
         Box(contentAlignment = Alignment.Center) {
             if (listening) {
-                Box(Modifier.size(44.dp).scale(ring).clip(CircleShape).background(colors.primary.copy(alpha = 0.25f)))
+                Box(Modifier.size(MicButtonSize).scale(ring).clip(CircleShape).background(colors.primary.copy(alpha = 0.25f)))
             }
             RoundIconButton(
                 icon = micIcon,
                 description = micDescription,
                 background = if (listening) colors.primary.copy(alpha = 0.45f) else colors.secondary.copy(alpha = 0.35f),
                 onClick = onMic,
+                size = MicButtonSize,
+                iconSize = 32.dp,
             )
         }
     }
 }
 
+/** The "use voice" mic button: larger than a plain 48dp target so it's easy to find and hit. */
+private val MicButtonSize = 60.dp
+
 @Composable
-private fun RoundIconButton(icon: ImageVector, description: String, background: Color, onClick: (() -> Unit)?) {
+private fun RoundIconButton(
+    icon: ImageVector,
+    description: String,
+    background: Color,
+    onClick: (() -> Unit)?,
+    size: Dp = MinTouchTarget,
+    iconSize: Dp = 24.dp,
+) {
     Box(
         Modifier
-            .size(MinTouchTarget)
+            .size(size)
             .clip(CircleShape)
             .background(background)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = PwdeTheme.colors.text)
+        Icon(icon, contentDescription = null, tint = PwdeTheme.colors.text, modifier = Modifier.size(iconSize.scaled().coerceAtMost(size * 0.7f)))
     }
 }
 
@@ -250,7 +266,7 @@ private fun TypedCommandField(onSend: (String) -> Unit, onClose: () -> Unit) {
                 cursorColor = colors.primary,
             ),
         )
-        RoundIconButton(Icons.AutoMirrored.Outlined.Send, "Send command", colors.primary.copy(alpha = 0.35f)) { send() }
+        RoundIconButton(Icons.AutoMirrored.Outlined.Send, "Send command", colors.primary.copy(alpha = 0.35f), onClick = { send() })
         RoundIconButton(Icons.Outlined.Close, "Close typing", Color.Transparent, onClose)
     }
 }

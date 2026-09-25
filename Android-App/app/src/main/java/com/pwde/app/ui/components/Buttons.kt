@@ -6,14 +6,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.scaled
 
 enum class ButtonStyle { PRIMARY, SECONDARY, DESTRUCTIVE }
 
@@ -61,11 +67,61 @@ fun PwdeButton(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
+                Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(22.dp.scaled()))
                 Box(Modifier.size(8.dp))
             }
             Text(text, style = MaterialTheme.typography.labelLarge, color = content, textAlign = TextAlign.Center)
         }
+    }
+}
+
+/**
+ * Primary-style (gradient, 56dp) button with a switch on its end, e.g. "Use PWDe". The whole button
+ * is one switch for TalkBack; [onClick] decides what a tap does (it may open Settings, not flip).
+ */
+@Composable
+fun PwdeToggleButton(
+    text: String,
+    checked: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    details: List<String>? = null,
+) {
+    val colors = PwdeTheme.colors
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(PwdeShapes.button)
+            .background(colors.buttonBrush)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = { onClick() })
+            .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (icon != null) Icon(icon, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(22.dp.scaled()))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text, style = MaterialTheme.typography.labelLarge, color = colors.onAccent)
+            if (!details.isNullOrEmpty()) {
+                details.forEach { line ->
+                    Text(line, style = MaterialTheme.typography.bodySmall, color = colors.onAccent.copy(alpha = 0.85f))
+                }
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            modifier = Modifier.clearAndSetSemantics { },
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = colors.onAccent,
+                checkedThumbColor = colors.primary,
+                checkedBorderColor = colors.onAccent,
+                uncheckedTrackColor = colors.onAccent.copy(alpha = 0.25f),
+                uncheckedThumbColor = colors.onAccent,
+                uncheckedBorderColor = colors.onAccent,
+            ),
+        )
     }
 }
 

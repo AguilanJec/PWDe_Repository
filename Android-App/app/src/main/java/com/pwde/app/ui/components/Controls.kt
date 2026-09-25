@@ -1,8 +1,6 @@
 package com.pwde.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,13 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import kotlin.math.roundToInt
 
 /** "Step 1 of 3 · What you need" + segmented progress bar. */
 @Composable
@@ -64,11 +62,12 @@ fun StepProgress(step: Int, total: Int, label: String, modifier: Modifier = Modi
 }
 
 /**
- * −  ▮▮▮▮▯▯▯▯▯▯  +  stepper (Figma "P3 / Stepper") in place of fine-motor sliders.
+ * Level slider (1..[max]) that snaps to whole levels. The thumb and track are sized for a 48dp+
+ * touch target, and TalkBack users can still step it with volume keys / swipe up-down.
  * [enabled] = false renders it inert.
  */
 @Composable
-fun LevelStepper(
+fun LevelSlider(
     label: String,
     level: Int,
     onLevelChange: (Int) -> Unit,
@@ -78,52 +77,36 @@ fun LevelStepper(
     enabled: Boolean = true,
 ) {
     val colors = PwdeTheme.colors
-    Column(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.titleMedium, color = colors.text, modifier = Modifier.weight(1f))
             Text(valueLabel, style = MaterialTheme.typography.labelMedium, color = colors.primary)
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.semantics(mergeDescendants = false) { stateDescription = "$valueLabel, $level of $max" },
-        ) {
-            StepperButton(
-                description = "Less $label",
-                enabled = enabled && level > 1,
-                onClick = { onLevelChange(level - 1) },
-            ) { Icon(Icons.Filled.Remove, contentDescription = null, tint = colors.primary) }
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                repeat(max) { i ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(14.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(if (i < level) colors.primary else colors.surfaceMuted),
-                    )
-                }
-            }
-            StepperButton(
-                description = "More $label",
-                enabled = enabled && level < max,
-                onClick = { onLevelChange(level + 1) },
-            ) { Icon(Icons.Filled.Add, contentDescription = null, tint = colors.primary) }
-        }
+        Slider(
+            value = level.toFloat(),
+            onValueChange = { value ->
+                val snapped = value.roundToInt().coerceIn(1, max)
+                if (snapped != level) onLevelChange(snapped)
+            },
+            enabled = enabled,
+            valueRange = 1f..max.toFloat(),
+            steps = (max - 2).coerceAtLeast(0),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = MinTouchTarget)
+                .semantics {
+                    contentDescription = label
+                    stateDescription = "$valueLabel, $level of $max"
+                },
+            colors = SliderDefaults.colors(
+                thumbColor = colors.primary,
+                activeTrackColor = colors.primary,
+                inactiveTrackColor = colors.surfaceMuted,
+                activeTickColor = colors.onAccent.copy(alpha = 0.6f),
+                inactiveTickColor = colors.textMuted.copy(alpha = 0.6f),
+            ),
+        )
     }
-}
-
-@Composable
-private fun StepperButton(description: String, enabled: Boolean, onClick: () -> Unit, content: @Composable () -> Unit) {
-    Box(
-        Modifier
-            .size(MinTouchTarget)
-            .clip(PwdeShapes.button)
-            .border(2.dp, PwdeTheme.colors.primary.copy(alpha = if (enabled) 1f else 0.35f), PwdeShapes.button)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) { content() }
 }
 
 fun levelWord(level: Int): String = when {

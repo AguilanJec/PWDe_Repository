@@ -56,7 +56,7 @@ import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.JoystickView
-import com.pwde.app.ui.components.LevelStepper
+import com.pwde.app.ui.components.LevelSlider
 import com.pwde.app.ui.components.NavCard
 import com.pwde.app.ui.components.OptionCard
 import com.pwde.app.ui.components.OptionKind
@@ -303,7 +303,7 @@ private fun TryGesture(viewModel: ChooseGestureViewModel, gesture: FacialGesture
     val colors = PwdeTheme.colors
     val detected = gesture in face.gesture.active
     SectionTitle("Try \"${gesture.label}\"")
-    LevelStepper(
+    LevelSlider(
         label = "Sensitivity",
         level = level,
         onLevelChange = { viewModel.setSensitivity(gesture, it) },
@@ -420,14 +420,14 @@ fun CursorSpeedScreen(viewModel: CursorSpeedViewModel, onBack: () -> Unit) {
         SegmentedToggle(Detail.entries, detail, { it.label }, { detail = it })
         val t = tuning ?: return@PwdeScreen
         if (detail == Detail.BASIC) {
-            LevelStepper("Speed", CursorSpeedViewModel.overallSpeed(t), viewModel::setOverallSpeed)
+            LevelSlider("Speed", CursorSpeedViewModel.overallSpeed(t), viewModel::setOverallSpeed)
         } else {
-            LevelStepper("Moving up", t.speedUp, { level -> viewModel.update { it.copy(speedUp = level) } })
-            LevelStepper("Moving down", t.speedDown, { level -> viewModel.update { it.copy(speedDown = level) } })
-            LevelStepper("Moving left", t.speedLeft, { level -> viewModel.update { it.copy(speedLeft = level) } })
-            LevelStepper("Moving right", t.speedRight, { level -> viewModel.update { it.copy(speedRight = level) } })
+            LevelSlider("Moving up", t.speedUp, { level -> viewModel.update { it.copy(speedUp = level) } })
+            LevelSlider("Moving down", t.speedDown, { level -> viewModel.update { it.copy(speedDown = level) } })
+            LevelSlider("Moving left", t.speedLeft, { level -> viewModel.update { it.copy(speedLeft = level) } })
+            LevelSlider("Moving right", t.speedRight, { level -> viewModel.update { it.copy(speedRight = level) } })
         }
-        LevelStepper("Smoothing", t.smoothing, { level -> viewModel.update { it.copy(smoothing = level) } })
+        LevelSlider("Smoothing", t.smoothing, { level -> viewModel.update { it.copy(smoothing = level) } })
         InfoNote("More smoothing steadies a shaky pointer but makes it a little slower to react.")
     }
 }
@@ -491,10 +491,10 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
         SegmentedToggle(Detail.entries, detail, { it.label }, { detail = it })
         val t = tuning ?: return@PwdeScreen
         if (detail == Detail.BASIC) {
-            LevelStepper("Size", t.size, { level -> viewModel.update { it.copy(size = level) } })
-            LevelStepper("Sensitivity", t.sensitivity, { level -> viewModel.update { it.copy(sensitivity = level) } })
+            LevelSlider("Size", t.size, { level -> viewModel.update { it.copy(size = level) } })
+            LevelSlider("Sensitivity", t.sensitivity, { level -> viewModel.update { it.copy(sensitivity = level) } })
         } else {
-            LevelStepper("Dead zone", t.deadZone, { level -> viewModel.update { it.copy(deadZone = level) } })
+            LevelSlider("Dead zone", t.deadZone, { level -> viewModel.update { it.copy(deadZone = level) } })
             InfoNote("A bigger dead zone ignores small head movements, so the joystick doesn't drift while you rest.")
             PwdeButton("Reset center to straight ahead", viewModel::resetCenter, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
         }
