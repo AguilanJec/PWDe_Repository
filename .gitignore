@@ -1,0 +1,103 @@
+# ============================================================
+# Raw gameplay recordings — the actual ask: never commit these.
+# Large, regenerable from nothing you'd want in git history anyway.
+# ============================================================
+training/raw_footage/*.mp4
+training/raw_footage/*.mov
+training/raw_footage/*.mkv
+**/*.mp4
+**/*.mov
+**/*.mkv
+
+# ============================================================
+# Extracted frames + labeled dataset — regenerable from raw_footage
+# via dedup_frames.py / prepare_dataset.py. Also just large binary
+# data that doesn't belong in git history.
+# ============================================================
+training/extracted_frames/
+training/mlbb_dataset/images/
+training/mlbb_dataset/labels/
+training/clash_royale_dataset/images/
+training/clash_royale_dataset/labels/
+!training/mlbb_dataset/**/.gitkeep
+!training/clash_royale_dataset/**/.gitkeep
+
+# ============================================================
+# Trained model weights and training run artifacts
+# ============================================================
+training/runs/
+runs/
+training/*.resolved.yaml
+*.pt
+*.onnx
+*.tflite
+calibration-backend/weights/*.pt
+!calibration-backend/weights/.gitkeep
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# Android / Gradle
+# ============================================================
+Android-App/.gradle/
+Android-App/**/build/
+!Android-App/gradle/wrapper/gradle-wrapper.jar
+Android-App/.kotlin/
+Android-App/local.properties
+Android-App/google-services.json
+Android-App/*.keystore
+Android-App/*.jks
+Android-App/keystore.properties
+Android-App/**/*.iml
+Android-App/.idea/*
+!Android-App/.idea/codeStyles/
+!Android-App/.idea/runConfigurations/
+Android-App/captures/
+Android-App/.navigation/
+Android-App/.externalNativeBuild/
+Android-App/**/.cxx/
+Android-App/**/*.apk
+Android-App/**/*.aab
+Android-App/**/*.ap_
+Android-App/**/*.dex
+Android-App/**/output-metadata.json
+Android-App/**/*.hprof
+
+# ============================================================
+# Environment / secrets
+# ============================================================
+.env
+.env.*
+*.key
+*.pem
+google-services.json
+firebase-adminsdk-*.json
+
+# ============================================================
+# OS / editor junk
+# ============================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ============================================================
+# Docker / infra scratch
+# ============================================================
+*.log
+
+# ============================================================
+# Label Studio local runtime state — secrets, DB, uploaded media
+# ============================================================
+label-studio-data/
