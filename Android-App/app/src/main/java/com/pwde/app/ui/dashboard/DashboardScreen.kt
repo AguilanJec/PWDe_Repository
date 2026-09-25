@@ -2,8 +2,8 @@ package com.pwde.app.ui.dashboard
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,14 +30,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
-import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -62,7 +61,6 @@ import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeToggleButton
 import com.pwde.app.ui.components.StatusPill
-import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -169,28 +167,7 @@ fun DashboardScreen(
             details = statusLines(state, pwdeOn),
         )
 
-        GradientCard(
-            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            contentPadding = 24.dp,
-            borderAlpha = 0.8f,
-            background = Brush.linearGradient(
-                listOf(colors.primary.copy(alpha = 0.30f), colors.secondary.copy(alpha = 0.30f)),
-            ),
-        ) {
-            Text("Play your way", style = MaterialTheme.typography.headlineSmall, color = colors.text)
-            Text(
-                "Pick a game and PWDe sets up the controls with you.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.text,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            PwdeButton(
-                "Start playing",
-                { onNavigate(DashboardDestination.START_PLAYING) },
-                icon = Icons.Outlined.SportsEsports,
-                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-            )
-        }
+        PlayYourWayPanel(onStart = { onNavigate(DashboardDestination.START_PLAYING) })
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Using:", style = MaterialTheme.typography.labelMedium, color = colors.text)
@@ -203,7 +180,7 @@ fun DashboardScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             if (showTestingStation) {
-                EntryCard("Testing Station", Icons.Outlined.Radar, Modifier.weight(1f)) {
+                EntryCard("Testing Station", Icons.Outlined.Radar, Modifier.weight(1f), subtitle = "Debug build") {
                     onNavigate(DashboardDestination.TESTING_STATION)
                 }
             }
@@ -211,6 +188,49 @@ fun DashboardScreen(
         }
         EntryCard("GabAI setup", Icons.Outlined.AutoAwesome, Modifier.fillMaxWidth(), subtitle = "Guided calibration assistant") {
             onNavigate(DashboardDestination.GABAI)
+        }
+    }
+}
+
+/**
+ * "Play your way" hero panel over the castle artwork. A scrim in the theme's background colour keeps
+ * the text readable in every colour scheme (the art itself is light and busy).
+ */
+@Composable
+private fun PlayYourWayPanel(onStart: () -> Unit) {
+    val colors = PwdeTheme.colors
+    GradientCard(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentPadding = 0.dp, borderAlpha = 0.8f) {
+        Box(Modifier.fillMaxWidth()) {
+            Image(
+                painterResource(R.drawable.play_bg),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(colors.background.copy(alpha = 0.55f), colors.background.copy(alpha = 0.85f)),
+                        ),
+                    ),
+            )
+            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("Play your way", style = MaterialTheme.typography.headlineSmall, color = colors.text)
+                Text(
+                    "Pick a game and PWDe sets up the controls with you.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.text,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                PwdeButton(
+                    "Start playing",
+                    onStart,
+                    icon = Icons.Outlined.SportsEsports,
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+                )
+            }
         }
     }
 }
@@ -255,4 +275,3 @@ fun InputMode.icon(): ImageVector = when (this) {
     InputMode.JOYSTICK -> Icons.Outlined.Gamepad
     InputMode.VOICE -> Icons.Outlined.Mic
 }
-
