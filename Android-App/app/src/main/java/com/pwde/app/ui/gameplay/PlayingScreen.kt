@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.outlined.MicOff
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -73,6 +76,7 @@ import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.JoystickView
 import com.pwde.app.ui.components.PwdeButton
+import com.pwde.app.ui.components.PwdeIconButton
 import com.pwde.app.ui.components.StatusPill
 import com.pwde.app.ui.components.rememberCameraPermissionRequest
 import com.pwde.app.ui.theme.PwdeShapes
@@ -82,7 +86,8 @@ import com.pwde.app.ui.theme.PwdeTheme
  * D4/D5 Playing view: the game profile's screenshot (or a simulated arena) under a live PWDe
  * overlay — in-game voice state, detected gesture, cursor or joystick, and which mapped button
  * each voice command, gesture or joystick move just pressed. Back (touch or voice), "exit", or an
- * Exit gesture returns to the menu. The real game isn't launched.
+ * Exit gesture returns to the menu. The eye button (or "hide overlay") hides the status UI
+ * while keeping the mapped buttons and pointer. The real game isn't launched.
  */
 @Composable
 fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
@@ -91,6 +96,7 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val paused by viewModel.paused.collectAsStateWithLifecycle()
     val lastEvent by viewModel.lastEvent.collectAsStateWithLifecycle()
+    val overlayHidden by viewModel.overlayHidden.collectAsStateWithLifecycle()
     val requestCamera = rememberCameraPermissionRequest { viewModel.onCameraPermissionResult() }
     val colors = PwdeTheme.colors
     BackHandler(onBack = onExit)
@@ -122,19 +128,25 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // Hiding keeps the mapped buttons, pointer and joystick; only the status UI goes.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusPill(
-                    "SIMULATED — ${viewModel.game?.displayName ?: "preview"}" + (ui.profile?.let { " · ${it.profileName}" } ?: ""),
-                    color = colors.warning,
-                    modifier = Modifier.weight(1f).background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill),
-                )
-                GameVoiceIndicator(voice)
+                if (overlayHidden) {
+                    Spacer(Modifier.weight(1f))
+                } else {
+                    StatusPill(
+                        "SIMULATED — ${viewModel.game?.displayName ?: "preview"}" + (ui.profile?.let { " · ${it.profileName}" } ?: ""),
+                        color = colors.warning,
+                        modifier = Modifier.weight(1f).background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill),
+                    )
+                    GameVoiceIndicator(voice)
+                }
+                OverlayToggle(overlayHidden) { viewModel.setOverlayHidden(!overlayHidden) }
             }
-            ui.calibrationName?.let {
+            if (!overlayHidden) ui.calibrationName?.let {
                 StatusPill("Calibration: $it", modifier = Modifier.background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill))
             }
-            DemoModeBanner(face, Modifier.background(colors.background.copy(alpha = 0.85f), PwdeShapes.button))
-            if (face.isSimulated && viewModel.canRequestCamera) {
+            if (!overlayHidden) DemoModeBanner(face, Modifier.background(colors.background.copy(alpha = 0.85f), PwdeShapes.button))
+            if (!overlayHidden && face.isSimulated && viewModel.canRequestCamera) {
                 PwdeButton("Turn on camera", requestCamera, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Videocam)
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -146,15 +158,28 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
                     )
                 }
             }
-            if (voice.usesTextFallback) GameCommandField(voice.availability.label, viewModel::submitText)
-            OverlayPanel(face, voiceLine(voice), lastEvent, paused, viewModel::togglePause, onExit)
+            if (!overlayHidden) {
+                if (voice.usesTextFallback) GameCommandField(voice.availability.label, viewModel::submitText)
+                OverlayPanel(face, voiceLine(voice), lastEvent, paused, viewModel::togglePause, onExit)
+            }
         }
     }
 }
 
+/** Hides or shows the status UI so the screenshot underneath can be checked. */
+@Composable
+private fun OverlayToggle(hidden: Boolean, onClick: () -> Unit) {
+    PwdeIconButton(
+        if (hidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+        if (hidden) "Show overlay" else "Hide overlay",
+        onClick,
+        modifier = Modifier.background(PwdeTheme.colors.background.copy(alpha = 0.8f), PwdeShapes.button),
+    )
+}
+
 private fun voiceLine(voice: InGameVoiceState): String = when {
     voice.lastText != null -> "Heard: \"${voice.lastText}\""
-    else -> "Voice: say \"pause\", \"select\", \"exit\" or a button's command"
+    else -> "Voice: say \"pause\", \"select\", \"hide overlay\", \"exit\" or a button's command"
 }
 
 /** In-game voice status (the app-wide voice bar is paused while the game has the mic). */

@@ -73,6 +73,10 @@ class GameplayViewModel(
     private val _paused = MutableStateFlow(false)
     val paused: StateFlow<Boolean> = _paused.asStateFlow()
 
+    /** Status pills and the info panel are hidden so the game (or screenshot) shows through. */
+    private val _overlayHidden = MutableStateFlow(false)
+    val overlayHidden: StateFlow<Boolean> = _overlayHidden.asStateFlow()
+
     private val _lastEvent = MutableStateFlow<OverlayEvent?>(null)
     val lastEvent: StateFlow<OverlayEvent?> = _lastEvent.asStateFlow()
 
@@ -127,6 +131,12 @@ class GameplayViewModel(
         post(if (_paused.value) "Paused — gestures and voice won't play" else "Resumed", OverlayEvent.Kind.ACTION)
     }
 
+    fun setOverlayHidden(hidden: Boolean) {
+        if (_overlayHidden.value == hidden) return
+        _overlayHidden.value = hidden
+        post(if (hidden) "Overlay hidden — say \"show overlay\" to bring it back" else "Overlay shown", OverlayEvent.Kind.ACTION)
+    }
+
     fun select() {
         if (_paused.value) return post("Paused — say \"resume\" first", OverlayEvent.Kind.IGNORED)
         post("Select", OverlayEvent.Kind.SELECT)
@@ -155,6 +165,8 @@ class GameplayViewModel(
             BACK, MENU, EXIT -> exit()
             SELECT -> select()
             RECENTER -> recenter()
+            HIDE_OVERLAY -> setOverlayHidden(true)
+            SHOW_OVERLAY -> setOverlayHidden(false)
             else -> {
                 if (_paused.value) return post("Paused — say \"resume\" first", OverlayEvent.Kind.IGNORED)
                 _ui.value.buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let(::press)
@@ -210,6 +222,8 @@ class GameplayViewModel(
         const val EXIT = "game_exit"
         const val SELECT = "game_select"
         const val RECENTER = "game_recenter"
+        const val HIDE_OVERLAY = "game_hide_overlay"
+        const val SHOW_OVERLAY = "game_show_overlay"
 
         fun buttonCommandId(buttonId: Int) = "button:$buttonId"
 
@@ -222,6 +236,8 @@ class GameplayViewModel(
             VoiceCommandBinding(EXIT, listOf("exit", "exit game", "quit", "exit to pwde")),
             VoiceCommandBinding(SELECT, listOf("select", "tap", "click")),
             VoiceCommandBinding(RECENTER, listOf("recenter", "center")),
+            VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel")),
+            VoiceCommandBinding(SHOW_OVERLAY, listOf("show overlay", "show panel")),
         )
     }
 }
