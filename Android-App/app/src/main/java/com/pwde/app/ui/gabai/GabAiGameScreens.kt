@@ -185,7 +185,9 @@ internal fun ScreenshotStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         }
         PwdeButton(if (shot == null) "Choose screenshot" else "Choose a different one", pick, icon = Icons.Outlined.Image, modifier = Modifier.fillMaxWidth())
         PwdeButton("Use a blank screen instead", viewModel::useBlankScreen, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
-        InfoNote("Take the screenshot in the game first (it stays on this phone). Without one, you'll place buttons on a blank screen.")
+        if (ui.detectingButtons) InfoNote("Finding the buttons on your screenshot…")
+        val privacy = if (viewModel.autoDetectsButtons) "It's sent to PWDe's server once to find the buttons, then kept on this phone." else "It stays on this phone."
+        InfoNote("Take the screenshot in the game first. $privacy Without one, you'll place buttons on a blank screen.")
     }
 }
 
