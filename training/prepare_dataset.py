@@ -19,6 +19,9 @@ Expects `source` to contain images (.jpg/.png) and same-named .txt
 label files side by side — the default Label Studio/CVAT YOLO export
 layout. If your export already separates images/ and labels/, point
 --source at the parent folder that contains both.
+
+Class names for the distribution report come from the export's own
+classes.txt when there is one, falling back to the MLBB classes.
 """
 
 import argparse
@@ -123,10 +126,14 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    class_names = [
-        "recall", "regen", "spell", "buy_item", "use_item",
-        "basic_attack", "skill_button", "skill_upgrade", "joystick",
-    ]
+    classes_file = args.source / "classes.txt"
+    if classes_file.exists():
+        class_names = [c.strip() for c in classes_file.read_text().splitlines() if c.strip()]
+    else:
+        class_names = [
+            "recall", "regen", "spell", "buy_item", "use_item",
+            "basic_attack", "skill_button", "skill_upgrade", "joystick",
+        ]
 
     pairs = find_pairs(args.source)
     print(f"Found {len(pairs)} labeled image/label pairs.\n")

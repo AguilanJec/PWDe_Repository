@@ -29,11 +29,22 @@ Two things this script has to handle that a naive export wouldn't:
 Label Studio's percentage/top-left box format is converted to YOLO's
 normalized/center format here directly (see label_studio_box_to_yolo).
 
+The sqlite db holds every project, so pass --project-id to export just
+one (MLBB is project 1, Clash Royale is project 4), and --classes when
+the project isn't MLBB. Class ids follow the order given.
+
 Usage:
     python export_yolo_from_db.py \\
         --db ../label-studio-data/label_studio.sqlite3 \\
+        --project-id 1 \\
         --frames-root extracted_frames \\
         --dest label_studio_full_export
+
+    python export_yolo_from_db.py \\
+        --db ../label-studio-data/label_studio.sqlite3 \\
+        --project-id 4 --classes card champion_ability \\
+        --frames-root extracted_frames \\
+        --dest clash_royale_export
 """
 
 import argparse
@@ -92,12 +103,15 @@ def pick_best_annotation(rows: list[tuple]) -> tuple | None:
     return best if count_boxes(best[1]) > 0 else None
 
 
-def load_annotations(db_path: Path) -> dict[int, tuple]:
+def load_annotations(db_path: Path, project_id: int | None) -> dict[int, tuple]:
     con = sqlite3.connect(str(db_path))
     cur = con.cursor()
+    project_filter = "" if project_id is None else " WHERE t.project_id = ?"
+    params = () if project_id is None else (project_id,)
     cur.execute(
-        "SELECT id, task_id, result, was_cancelled, result_count, updated_at "
-        "FROM task_completion"
+        "SELECT a.id, a.task_id, a.result, a.was_cancelled, a.result_count, a.updated_at "
+        "FROM task_completion a JOIN task t ON t.id = a.task_id" + project_filter,
+        params,
     )
     by_task = defaultdict(list)
     for row_id, task_id, result, was_cancelled, result_count, updated_at in cur.fetchall():
@@ -116,7 +130,7 @@ def load_annotations(db_path: Path) -> dict[int, tuple]:
         print(f"WARNING: {len(empty_tasks)} tasks have no usable (non-empty, "
               f"non-cancelled) annotation, skipping: {sorted(empty_tasks)}")
 
-    cur.execute("SELECT id, data FROM task")
+    cur.execute("SELECT t.id, t.data FROM task t" + project_filter, params)
     tasks = {task_id: json.loads(data) for task_id, data in cur.fetchall()}
     con.close()
     return best, tasks
@@ -132,9 +146,16 @@ def main():
                               "at (contains one subfolder per clip, e.g. "
                               "extracted_frames/)")
     parser.add_argument("--dest", required=True, type=Path)
+    parser.add_argument("--project-id", type=int, default=None,
+                         help="Label Studio project to export (default: every "
+                              "project in the db)")
+    parser.add_argument("--classes", nargs="+", default=CANONICAL_CLASS_NAMES,
+                         help="Class names in class-id order (default: the MLBB "
+                              "classes)")
     args = parser.parse_args()
+    class_names = args.classes
 
-    annotations, tasks = load_annotations(args.db)
+    annotations, tasks = load_annotations(args.db, args.project_id)
     print(f"{len(tasks)} tasks total, {len(annotations)} with a usable annotation.")
 
     img_out = args.dest / "images"
@@ -167,11 +188,11 @@ def main():
             if item.get("type") != "rectanglelabels":
                 continue
             class_name = item["value"]["rectanglelabels"][0]
-            if class_name not in CANONICAL_CLASS_NAMES:
+            if class_name not in class_names:
                 print(f"  WARNING: task {task_id} has unknown class "
                       f"{class_name!r}, skipping that box")
                 continue
-            class_id = CANONICAL_CLASS_NAMES.index(class_name)
+            class_id = class_names.index(class_name)
             cx, cy, w, h = label_studio_box_to_yolo(item["value"])
             lines.append(f"{class_id} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
 
@@ -179,7 +200,7 @@ def main():
         label_path.write_text("\n".join(lines) + ("\n" if lines else ""))
         written += 1
 
-    (args.dest / "classes.txt").write_text("\n".join(CANONICAL_CLASS_NAMES) + "\n")
+    (args.dest / "classes.txt").write_text("\n".join(class_names) + "\n")
 
     print(f"\nWrote {written} image/label pairs to {args.dest}")
     if missing_images:
