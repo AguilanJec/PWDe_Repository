@@ -52,7 +52,7 @@ import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.IconBadge
 import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.JoystickView
-import com.pwde.app.ui.components.LevelStepper
+import com.pwde.app.ui.components.LevelSlider
 import com.pwde.app.ui.components.NavCard
 import com.pwde.app.ui.components.OptionCard
 import com.pwde.app.ui.components.OptionKind
@@ -269,7 +269,7 @@ private fun CursorAxisStep(viewModel: GabAiViewModel, ui: GabAiUiState, axis: Ax
         )
         TargetPad(face.cursor.x, face.cursor.y, face.hasFace, axis)
         PwdeButton("Recenter pointer", viewModel::recenterCursor, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
-        LevelStepper(if (axis == Axis.DIAGONAL) "Smoothing" else "Speed moving ${axis.label.lowercase()}", level, ::set)
+        LevelSlider(if (axis == Axis.DIAGONAL) "Smoothing" else "Speed moving ${axis.label.lowercase()}", level, ::set)
     }
 }
 
@@ -338,9 +338,9 @@ private fun JoystickStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
             }
         }
         PwdeButton("Set center here", viewModel::setJoystickCenterHere, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
-        LevelStepper("Sensitivity", joystick.sensitivity, { viewModel.setJoystick(joystick.copy(sensitivity = it)) })
-        LevelStepper("Dead zone", joystick.deadZone, { viewModel.setJoystick(joystick.copy(deadZone = it)) })
-        LevelStepper("Size", joystick.size, { viewModel.setJoystick(joystick.copy(size = it)) })
+        LevelSlider("Sensitivity", joystick.sensitivity, { viewModel.setJoystick(joystick.copy(sensitivity = it)) })
+        LevelSlider("Dead zone", joystick.deadZone, { viewModel.setJoystick(joystick.copy(deadZone = it)) })
+        LevelSlider("Size", joystick.size, { viewModel.setJoystick(joystick.copy(size = it)) })
     }
 }
 

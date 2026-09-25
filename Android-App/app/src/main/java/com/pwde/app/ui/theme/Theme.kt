@@ -45,16 +45,32 @@ object PwdeShapes {
 /** Accessibility-critical minimum touch target. */
 val MinTouchTarget = 48.dp
 
+/** Minimum height of every actionable button (PwdeButton, PwdeToggleButton, PwdeIconButton). */
+val ControlHeight = 56.dp
+
+/**
+ * Icon size derived from the component it sits in, so a bigger button/tile/badge gets a bigger
+ * icon. Multiply by [scaled] on top to also follow the user's text size.
+ */
+fun iconSizeFor(componentSize: Dp, ratio: Float = 0.4f): Dp = (componentSize * ratio).coerceIn(18.dp, 40.dp)
+
 private val LocalPwdeColors = staticCompositionLocalOf { colorsFor(ColorSchemeOption.DEFAULT) }
 private val LocalPwdeSpacing = staticCompositionLocalOf { spacingFor(LayoutMode.STANDARD) }
 private val LocalBaseDensity = staticCompositionLocalOf<Density?> { null }
+private val LocalTextScale = staticCompositionLocalOf { TextSizeOption.MEDIUM.scale }
 
 object PwdeTheme {
     val colors: PwdeColors
         @Composable @ReadOnlyComposable get() = LocalPwdeColors.current
     val spacing: PwdeSpacing
         @Composable @ReadOnlyComposable get() = LocalPwdeSpacing.current
+    /** The user's text size multiplier (e.g. 1.3 for Large). Icons use it via [scaled]. */
+    val textScale: Float
+        @Composable @ReadOnlyComposable get() = LocalTextScale.current
 }
+@Composable
+@ReadOnlyComposable
+fun Dp.scaled(): Dp = this * PwdeTheme.textScale
 
 /**
  * App-wide theme driven by the user's settings. Text size is applied by scaling the font scale in
@@ -96,6 +112,7 @@ fun PwdeTheme(
         LocalPwdeSpacing provides spacingFor(layoutMode),
         LocalBaseDensity provides baseDensity,
         LocalDensity provides scaledDensity,
+        LocalTextScale provides textSize.scale,
     ) {
         MaterialTheme(colorScheme = material, typography = PwdeTypography, content = content)
     }

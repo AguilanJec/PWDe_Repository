@@ -74,6 +74,7 @@ import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.OptionCard
 import com.pwde.app.ui.components.OptionKind
 import com.pwde.app.ui.components.PwdeButton
+import com.pwde.app.ui.components.PwdeIconButton
 import com.pwde.app.ui.components.PwdeTextField
 import com.pwde.app.ui.components.SectionTitle
 import com.pwde.app.ui.components.SegmentedToggle
@@ -82,7 +83,6 @@ import com.pwde.app.ui.components.VoiceCommandsEffect
 import com.pwde.app.ui.games.GameCard
 import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.data.local.inputModeOrDefault
-import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 
@@ -191,7 +191,8 @@ internal fun ScreenshotStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
 
 // ---------------- Button mapping ----------------
 
-private val MAPPING_COMMANDS = listOf(
+/** Internal so the Voice screen can list it; ids unchanged. */
+internal val MAPPING_COMMANDS = listOf(
     voiceCommand("place", "place", "add button", "place here", "add"),
     voiceCommand("delete", "delete", "remove"),
     voiceCommand("rename", "rename", "name it"),
@@ -282,19 +283,10 @@ private fun SelectedButtonEditor(viewModel: GabAiViewModel, button: MappedButton
     }
 }
 
+/** Same 56dp size, shape and border as every other Controls button; the icon scales with it. */
 @Composable
 private fun NudgeButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(MinTouchTarget)
-            .clip(PwdeShapes.button)
-            .border(2.dp, PwdeTheme.colors.primary, PwdeShapes.button)
-            .pointerInput(onClick) { detectTapGestures { onClick() } }
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-        androidx.compose.material3.Icon(icon, contentDescription = null, tint = PwdeTheme.colors.primary)
-    }
+    PwdeIconButton(icon, description, onClick)
 }
 
 /**
@@ -414,7 +406,7 @@ private val TRIGGER_COMMANDS = listOf(
     voiceCommand("type:JOYSTICK", "joystick", "joystick action"),
     voiceCommand("next", "next", "done"),
 ) + FacialGesture.curated.map { voiceCommand("gesture:${it.name}", it.spokenName) } +
-    JoystickDirection.entries.filter { it != JoystickDirection.CENTER }.map { voiceCommand("dir:${it.name}", "stick ${it.label.lowercase()}") }
+        JoystickDirection.entries.filter { it != JoystickDirection.CENTER }.map { voiceCommand("dir:${it.name}", "stick ${it.label.lowercase()}") }
 
 @Composable
 internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: GabAiState.TriggerAssignment) {

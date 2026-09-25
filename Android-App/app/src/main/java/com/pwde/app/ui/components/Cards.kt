@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -40,24 +41,27 @@ import androidx.compose.ui.unit.dp
 import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.iconSizeFor
+import com.pwde.app.ui.theme.scaled
 
-/** Gradient card with an accent border. Clickable when [onClick] is given. */
 @Composable
 fun GradientCard(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     onClick: (() -> Unit)? = null,
     contentPadding: Dp = PwdeTheme.spacing.internal,
+    borderAlpha: Float = 0.55f,
+    background: Brush = PwdeTheme.colors.cardBrush,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = PwdeTheme.colors
     Column(
         modifier
             .clip(PwdeShapes.card)
-            .background(colors.cardBrush)
+            .background(background)
             .border(
                 width = if (selected) 3.dp else 1.dp,
-                color = if (selected) colors.primary else colors.secondary.copy(alpha = 0.55f),
+                color = if (selected) colors.primary else colors.secondary.copy(alpha = borderAlpha),
                 shape = PwdeShapes.card,
             )
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
@@ -81,17 +85,40 @@ fun Panel(
     )
 }
 
+/** Round icon badge. [size] is the Medium-text size; it grows with the user's text size. */
 @Composable
 fun IconBadge(icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 44.dp, tint: Color = PwdeTheme.colors.primary) {
+    val badgeSize = size.scaled()
     Box(
         modifier
-            .size(size)
+            .size(badgeSize)
             .clip(CircleShape)
             .background(tint.copy(alpha = 0.18f))
             .border(1.5.dp, tint, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.55f))
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSizeFor(badgeSize, 0.55f)))
+    }
+}
+
+@Composable
+fun CheckBadge(
+    description: String?,
+    modifier: Modifier = Modifier,
+    color: Color = PwdeTheme.colors.primary,
+    size: Dp = 22.dp,
+) {
+    val badgeSize = size.scaled()
+    Box(
+        modifier
+            .size(badgeSize)
+            .clip(CircleShape)
+            .background(color)
+            .border(1.5.dp, PwdeTheme.colors.background, CircleShape)
+            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.Check, contentDescription = null, tint = PwdeTheme.colors.onAccent, modifier = Modifier.size(badgeSize * 0.7f))
     }
 }
 
@@ -130,7 +157,7 @@ fun OptionCard(
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = colors.text)
             if (description != null) {
-                Text(description, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+                Text(description, style = MaterialTheme.typography.bodyMedium, color = colors.textMuted)
             }
         }
         if (trailing != null) trailing() else SelectionIndicator(selected, kind)
@@ -204,7 +231,7 @@ fun StatusPill(text: String, modifier: Modifier = Modifier, color: Color = PwdeT
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (icon != null) Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        if (icon != null) Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp.scaled()))
         Text(text, style = MaterialTheme.typography.labelSmall, color = color)
     }
 }
@@ -221,7 +248,7 @@ fun InfoNote(text: String, modifier: Modifier = Modifier, icon: ImageVector = Ic
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = PwdeTheme.colors.primary, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = PwdeTheme.colors.primary, modifier = Modifier.size(22.dp.scaled()))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = PwdeTheme.colors.text)
     }
 }
