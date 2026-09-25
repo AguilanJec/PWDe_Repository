@@ -39,7 +39,9 @@ class AppContainer(private val context: Context) {
     }
 
     /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). */
-    val voiceCommandManager: VoiceCommandManager by lazy { AndroidVoiceCommandManager(context, controlsRepository) }
+    val voiceCommandManager: VoiceCommandManager by lazy {
+        AndroidVoiceCommandManager(context, controlsRepository, settingsRepository)
+    }
 
     fun newTutorialPlayer() = TutorialPlayer(context)
 

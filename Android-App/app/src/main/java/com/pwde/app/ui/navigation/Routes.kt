@@ -21,7 +21,6 @@ object Routes {
     fun gameDetail(gameId: String) = "games/$gameId"
     const val PLAYING = "playing/{gameId}"
     fun playing(gameId: String) = "playing/$gameId"
-    const val LEADERBOARD = "leaderboard"
     const val FILTER = "filter"
 
     // E · Controls
@@ -60,7 +59,6 @@ object Routes {
         GAMES -> "Games"
         GAME_DETAIL -> "Game details"
         PLAYING -> "Playing"
-        LEADERBOARD -> "Leaderboard"
         FILTER -> "Filter games"
         CONTROLS -> "Controls"
         CONTROLS_INPUT -> "Input mode"

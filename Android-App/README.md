@@ -89,6 +89,5 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 | Playing view | Live PWDe overlay (voice, gestures, pointer/joystick, actions) over a **simulated** game background |
 | Profile | Real: guest/signed-in state, profile lists with rename/delete, sync status |
 | GabAI | Welcome screen only; each choice shows "Coming in Prompt 3" |
-| Leaderboard | "Planned" notice; no invented scores |
 
 Gesture actions like Notifications, All apps and Touch & hold act inside PWDe's overlay only. PWDe has no accessibility service or system-level control.

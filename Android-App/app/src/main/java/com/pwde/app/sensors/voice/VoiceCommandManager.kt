@@ -14,6 +14,7 @@ import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
+import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -91,6 +92,7 @@ interface VoiceCommandManager {
 class AndroidVoiceCommandManager(
     context: Context,
     private val controlsRepository: ControlsRepository,
+    private val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : VoiceCommandManager {
     private val appContext = context.applicationContext
@@ -120,8 +122,13 @@ class AndroidVoiceCommandManager(
                     return@collectLatest
                 }
                 try {
-                    combine(controlsRepository.config, permissionTick, screenCommands) { config, _, screens -> config to screens }
-                        .collect { (latest, screens) ->
+                    combine(
+                        controlsRepository.config,
+                        permissionTick,
+                        screenCommands,
+                        settingsRepository.settings.map { it.pwdeEnabled }.distinctUntilChanged(),
+                    ) { latest, _, screens, pwdeEnabled -> Triple(latest, screens, pwdeEnabled) }
+                        .collect { (latest, screens, pwdeEnabled) ->
                             config = latest
                             val availability = availability()
                             _state.update {
@@ -133,7 +140,9 @@ class AndroidVoiceCommandManager(
                                     commands = screens.values.flatten() + globalCommands(latest),
                                 )
                             }
-                            if (latest.voiceEnabled && availability == MicAvailability.AVAILABLE) startListening() else stopListening()
+                            // The home screen's master switch wins: PWDe off means nothing listens.
+                            val canListen = pwdeEnabled && latest.voiceEnabled && availability == MicAvailability.AVAILABLE
+                            if (canListen) startListening() else stopListening()
                         }
                 } finally {
                     stopListening()

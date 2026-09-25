@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Style
@@ -153,25 +152,6 @@ fun GameDetailScreen(game: Game, onBack: () -> Unit, onPlay: () -> Unit, onSetUp
                 "but the real game isn't launched.",
             icon = Icons.Outlined.Info,
         )
-    }
-}
-
-/** Leaderboard: not part of this build. Says so instead of showing invented scores. */
-@Composable
-fun LeaderboardScreen(onTab: (MainTab) -> Unit) {
-    PwdeScreen(
-        title = "Leaderboard",
-        subtitle = "See how you're doing over time.",
-        bottomBar = { PwdeBottomNav(MainTab.LEADERBOARD, onTab) },
-    ) {
-        PlaceholderNotice(
-            "No scores yet",
-            "PWDe doesn't read scores from games. A progress view is planned for a future update.",
-            tag = "Planned",
-        )
-        Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-            Icon(Icons.Outlined.EmojiEvents, contentDescription = null, tint = PwdeTheme.colors.textMuted, modifier = Modifier.size(72.dp))
-        }
     }
 }
 

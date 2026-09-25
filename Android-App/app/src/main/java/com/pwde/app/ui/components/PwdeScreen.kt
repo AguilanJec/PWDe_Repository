@@ -24,7 +24,6 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Person
@@ -131,7 +130,6 @@ fun ScreenHeader(title: String, subtitle: String?, onBack: (() -> Unit)?) {
 enum class MainTab(val label: String, val icon: ImageVector) {
     PLAY("Play", Icons.Outlined.SportsEsports),
     GAMES("Games", Icons.Outlined.GridView),
-    LEADERBOARD("Leaderboard", Icons.Outlined.EmojiEvents),
     FILTER("Filter", Icons.Outlined.FilterList),
     PROFILE("Profile", Icons.Outlined.Person),
 }

@@ -43,7 +43,6 @@ import com.pwde.app.ui.games.FilterScreen
 import com.pwde.app.ui.games.GameDetailScreen
 import com.pwde.app.ui.games.GamesScreen
 import com.pwde.app.ui.games.GamesViewModel
-import com.pwde.app.ui.games.LeaderboardScreen
 import com.pwde.app.ui.onboarding.AuthViewModel
 import com.pwde.app.ui.onboarding.CreateAccountScreen
 import com.pwde.app.ui.onboarding.ForgotPasswordScreen
@@ -98,7 +97,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         val route = when (tab) {
             MainTab.PLAY -> Routes.DASHBOARD
             MainTab.GAMES -> Routes.GAMES
-            MainTab.LEADERBOARD -> Routes.LEADERBOARD
             MainTab.FILTER -> Routes.FILTER
             MainTab.PROFILE -> Routes.PROFILE
         }
@@ -232,7 +230,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 onExit = ::back,
             )
         }
-        composable(Routes.LEADERBOARD) { LeaderboardScreen(onTab = ::openTab) }
         composable(Routes.FILTER) {
             FilterScreen(
                 viewModel = pwdeViewModel { GamesViewModel(it.profileRepository) },
