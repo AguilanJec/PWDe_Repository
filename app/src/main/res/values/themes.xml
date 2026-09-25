@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.PWDe" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Dark window background so there is no white flash before Compose draws. -->
+    <style name="Theme.Pwde" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/pwde_background</item>
+        <item name="android:statusBarColor">@color/pwde_background</item>
+        <item name="android:navigationBarColor">@color/pwde_background</item>
+    </style>
 </resources>

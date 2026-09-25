@@ -1,0 +1,188 @@
+package com.pwde.app.ui.games
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.SportsEsports
+import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.pwde.app.data.local.ProfileRepository
+import com.pwde.app.data.model.Game
+import com.pwde.app.ui.components.ButtonStyle
+import com.pwde.app.ui.components.GradientCard
+import com.pwde.app.ui.components.InfoNote
+import com.pwde.app.ui.components.MainTab
+import com.pwde.app.ui.components.OptionCard
+import com.pwde.app.ui.components.OptionKind
+import com.pwde.app.ui.components.PlaceholderNotice
+import com.pwde.app.ui.components.PwdeBottomNav
+import com.pwde.app.ui.components.PwdeButton
+import com.pwde.app.ui.components.PwdeScreen
+import com.pwde.app.ui.components.SectionTitle
+import com.pwde.app.ui.components.StatusPill
+import com.pwde.app.ui.theme.PwdeShapes
+import com.pwde.app.ui.theme.PwdeTheme
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+
+/** Which games already have a saved game profile (from Room). */
+class GamesViewModel(profileRepository: ProfileRepository) : ViewModel() {
+    val gamesWithProfiles: StateFlow<Set<String>> = profileRepository.gameProfiles
+        .map { profiles -> profiles.map { it.gameId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+}
+
+/** D2 Games: tiles show their setup status. */
+@Composable
+fun GamesScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
+    val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
+    PwdeScreen(
+        title = "Games",
+        subtitle = "Pick a game to play or set up.",
+        voiceHint = "Say a game's name",
+        bottomBar = { PwdeBottomNav(MainTab.GAMES, onTab) },
+    ) {
+        Game.entries.forEach { game -> GameCard(game, hasProfile = game.id in withProfiles, onClick = { onGame(game) }) }
+        InfoNote("More games and custom buttons for any game are on the way.")
+    }
+}
+
+@Composable
+fun GameCard(game: Game, hasProfile: Boolean, onClick: () -> Unit) {
+    val colors = PwdeTheme.colors
+    GradientCard(Modifier.fillMaxWidth(), onClick = onClick) {
+        GameArt(game)
+        Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(game.displayName, style = MaterialTheme.typography.titleLarge, color = colors.text)
+                Text(game.genre, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+            }
+            if (hasProfile) StatusPill("Profile ready", icon = Icons.Outlined.CheckCircle)
+            else StatusPill("No profile yet", color = colors.textMuted)
+        }
+    }
+}
+
+/** Stand-in artwork (no copyrighted game images are bundled). */
+@Composable
+private fun GameArt(game: Game) {
+    val colors = PwdeTheme.colors
+    val icon: ImageVector = if (game == Game.CLASH_ROYALE) Icons.Outlined.Style else Icons.Outlined.SportsEsports
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(2.4f)
+            .clip(PwdeShapes.button)
+            .background(Brush.linearGradient(listOf(colors.secondary.copy(alpha = 0.6f), colors.primary.copy(alpha = 0.35f)))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.text, modifier = Modifier.size(56.dp))
+    }
+}
+
+/** D3 Game detail: confirm the game before opening the (placeholder) play view. */
+@Composable
+fun GameDetailScreen(game: Game, onBack: () -> Unit, onPlay: () -> Unit, onSetUpWithGabAi: () -> Unit) {
+    val colors = PwdeTheme.colors
+    PwdeScreen(
+        title = game.displayName,
+        subtitle = game.genre,
+        onBack = onBack,
+        voiceHint = "Say \"launch game\"",
+        footer = { PwdeButton("Play ${game.displayName} with PWDe", onPlay, icon = Icons.Outlined.SportsEsports, modifier = Modifier.fillMaxWidth()) },
+    ) {
+        GameArt(game)
+        Text(game.description, style = MaterialTheme.typography.bodyLarge, color = colors.text)
+        PlaceholderNotice(
+            "No game profile yet",
+            "GabAI will walk you through mapping this game's buttons to your head, face and voice.",
+            tag = "Coming in Prompt 3",
+        )
+        PwdeButton("Set up with GabAI", onSetUpWithGabAi, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.fillMaxWidth())
+        InfoNote(
+            "The next screen is a preview of the in-game overlay. It doesn't open the real game yet.",
+            icon = Icons.Outlined.Info,
+        )
+    }
+}
+
+/** Leaderboard: not part of this build. Says so instead of showing invented scores. */
+@Composable
+fun LeaderboardScreen(onTab: (MainTab) -> Unit) {
+    PwdeScreen(
+        title = "Leaderboard",
+        subtitle = "See how you're doing over time.",
+        bottomBar = { PwdeBottomNav(MainTab.LEADERBOARD, onTab) },
+    ) {
+        PlaceholderNotice(
+            "No scores yet",
+            "PWDe doesn't read scores from games. A progress view is planned for a future update.",
+            tag = "Planned",
+        )
+        Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.EmojiEvents, contentDescription = null, tint = PwdeTheme.colors.textMuted, modifier = Modifier.size(72.dp))
+        }
+    }
+}
+
+private enum class GameFilter(val label: String, val matches: (Game, Set<String>) -> Boolean) {
+    ALL("All games", { _, _ -> true }),
+    STRATEGY("Strategy", { g, _ -> g.genre == "Strategy" }),
+    MOBA("MOBA", { g, _ -> g.genre == "MOBA" }),
+    READY("Profile ready", { g, ids -> g.id in ids }),
+}
+
+/** Filter: narrow the game list by genre or setup status. */
+@Composable
+fun FilterScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
+    val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
+    var filter by rememberSaveable { mutableStateOf(GameFilter.ALL) }
+    val results = Game.entries.filter { filter.matches(it, withProfiles) }
+    PwdeScreen(
+        title = "Filter",
+        subtitle = "Find a game by type or setup status.",
+        voiceHint = "Say a filter's name",
+        bottomBar = { PwdeBottomNav(MainTab.FILTER, onTab) },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+            GameFilter.entries.forEach { option ->
+                OptionCard(
+                    option.label, null, option == filter, { filter = option },
+                    kind = OptionKind.RADIO,
+                )
+            }
+        }
+        SectionTitle("${results.size} ${if (results.size == 1) "game" else "games"}")
+        if (results.isEmpty()) InfoNote("No games match. Profiles are created with GabAI (coming in Prompt 3).")
+        results.forEach { game -> GameCard(game, game.id in withProfiles) { onGame(game) } }
+    }
+}
