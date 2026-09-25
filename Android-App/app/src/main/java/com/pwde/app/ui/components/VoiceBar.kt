@@ -55,6 +55,7 @@ import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 import com.pwde.app.ui.voice.LocalVoiceController
+import com.pwde.app.sensors.voice.MicAvailability
 
 /**
  * Docked voice bar (Figma "P3 / Voice Bar"). Shows what you can say, whether PWDe is listening
@@ -106,6 +107,7 @@ private fun heardLine(state: VoiceState): String? {
 }
 
 private fun statusLine(state: VoiceState): String = when {
+    state.usesTextFallback && state.availability == MicAvailability.NO_PERMISSION -> "Type a command instead"
     state.usesTextFallback -> "${state.availability.label} · type a command instead"
     !state.enabled -> "Voice off · tap the mic to turn it on"
     state.listening -> "Listening…"
@@ -156,7 +158,7 @@ private fun VoiceBarLayout(
                 .weight(1f)
                 .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         ) {
-            Text(hint, style = MaterialTheme.typography.bodySmall, color = colors.text, maxLines = 2)
+            Text(hint, style = MaterialTheme.typography.bodyMedium, color = colors.text, maxLines = 2)
             Text(status, style = MaterialTheme.typography.labelSmall, color = if (listening) colors.primary else colors.textMuted, maxLines = 2)
         }
         if (onKeyboard != null) {

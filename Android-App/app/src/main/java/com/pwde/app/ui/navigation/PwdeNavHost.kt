@@ -15,7 +15,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.GestureAction
-import com.pwde.app.ui.common.FaceTrackingViewModel
 import com.pwde.app.ui.common.pwdeViewModel
 import com.pwde.app.ui.components.MainTab
 import com.pwde.app.ui.controls.ChooseGestureScreen
@@ -167,7 +166,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             val appearanceOnly = entry.arguments?.getBoolean("appearanceOnly") ?: false
             SetupScreen(
                 viewModel = pwdeViewModel(key = "setup-$appearanceOnly") { SetupViewModel(it.settingsRepository, appearanceOnly) },
-                tryIt = pwdeViewModel(key = "setup-try-it") { FaceTrackingViewModel(it.faceTrackingManager) },
                 onExit = ::back,
                 onFinished = {
                     if (appearanceOnly) back() else navController.navigate(Routes.VOICE_TUTORIAL)

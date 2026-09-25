@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pwde.app.data.prefs.AccessibilityNeed
 import com.pwde.app.data.prefs.ColorSchemeOption
-import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.prefs.LayoutMode
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.data.prefs.TextSizeOption
@@ -16,9 +15,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class SetupStep(val label: String) {
-    NEEDS("What you need"),
     APPEARANCE("How it looks"),
-    INPUT("How you'll play"),
+    NEEDS("What you need"),
+    PERMISSIONS("Permissions"),
+    TURN_ON("Turn on PWDe"),
 }
 
 data class SetupUiState(
@@ -29,9 +29,6 @@ data class SetupUiState(
     val colorScheme: ColorSchemeOption = ColorSchemeOption.DEFAULT,
     val textSize: TextSizeOption = TextSizeOption.MEDIUM,
     val layoutMode: LayoutMode = LayoutMode.STANDARD,
-    val inputMode: InputMode = InputMode.HEAD_FACE,
-    /** 0..1 position of the simulated target in "Try it now". Manual only — no sensors. */
-    val simulatedPosition: Float = 0.5f,
     val finished: Boolean = false,
 ) {
     val step: SetupStep get() = steps[stepIndex]
@@ -39,8 +36,9 @@ data class SetupUiState(
 }
 
 /**
- * Three skippable steps. Edits are held as a draft (so the Setup screen can preview them live)
+ * Skippable steps. Edits are held as a draft (so the Setup screen can preview them live)
  * and written to [SettingsRepository] only when the user taps Continue on that step.
+ * The permission (B5) and Settings (B6) steps grant things in Android itself, so they save nothing.
  *
  * @param appearanceOnly opened from Profile to change just the look; finishing returns there.
  */
@@ -63,7 +61,6 @@ class SetupViewModel(
                     colorScheme = saved.colorScheme,
                     textSize = saved.textSize,
                     layoutMode = saved.layoutMode,
-                    inputMode = saved.inputMode,
                 )
             }
         }
@@ -79,18 +76,14 @@ class SetupViewModel(
 
     fun setLayoutMode(mode: LayoutMode) = _state.update { it.copy(layoutMode = mode) }
 
-    fun setInputMode(mode: InputMode) = _state.update { it.copy(inputMode = mode) }
-
-    fun setSimulatedPosition(value: Float) = _state.update { it.copy(simulatedPosition = value.coerceIn(0f, 1f)) }
-
     /** Saves this step, then moves on. */
     fun continueStep() {
         val s = _state.value
         viewModelScope.launch {
             when (s.step) {
-                SetupStep.NEEDS -> settingsRepository.setAccessibilityNeeds(s.needs)
                 SetupStep.APPEARANCE -> settingsRepository.setAppearance(s.colorScheme, s.textSize, s.layoutMode)
-                SetupStep.INPUT -> settingsRepository.setInputMode(s.inputMode)
+                SetupStep.NEEDS -> settingsRepository.setAccessibilityNeeds(s.needs)
+                SetupStep.PERMISSIONS, SetupStep.TURN_ON -> Unit
             }
             advance()
         }
@@ -102,13 +95,13 @@ class SetupViewModel(
             val saved = settingsRepository.settings.first()
             _state.update {
                 when (it.step) {
-                    SetupStep.NEEDS -> it.copy(needs = saved.accessibilityNeeds)
                     SetupStep.APPEARANCE -> it.copy(
                         colorScheme = saved.colorScheme,
                         textSize = saved.textSize,
                         layoutMode = saved.layoutMode,
                     )
-                    SetupStep.INPUT -> it.copy(inputMode = saved.inputMode)
+                    SetupStep.NEEDS -> it.copy(needs = saved.accessibilityNeeds)
+                    SetupStep.PERMISSIONS, SetupStep.TURN_ON -> it
                 }
             }
             advance()

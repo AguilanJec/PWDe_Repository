@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">PWDe</string>
+    <string name="accessibility_service_description">Lets PWDe\'s head, face and voice controls work while you play. PWDe does not read or store what is on your screen.</string>
 </resources>
