@@ -19,6 +19,7 @@ training/mlbb_dataset/images/
 training/mlbb_dataset/labels/
 training/clash_royale_dataset/images/
 training/clash_royale_dataset/labels/
+training/label_studio_full_export/
 !training/mlbb_dataset/**/.gitkeep
 !training/clash_royale_dataset/**/.gitkeep
 
