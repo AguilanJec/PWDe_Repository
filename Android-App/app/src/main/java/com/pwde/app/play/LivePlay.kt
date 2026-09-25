@@ -21,6 +21,8 @@ data class LivePlayState(
     /** The user hid PWDe's floating UI; the pointer and taps still work. */
     val overlayHidden: Boolean = false,
     val face: FaceState = FaceState(),
+    /** A drag is holding the screen at the pointer until "drop". */
+    val dragging: Boolean = false,
     /** Latest feedback, e.g. "Pressed Skill 1" or why something was ignored. */
     val message: String? = null,
 )
@@ -35,8 +37,18 @@ class LivePlay {
 
     private val _actions = MutableSharedFlow<GameCommand>(extraBufferCapacity = 16)
 
-    /** Commands that act on the real screen: presses, select, touch & hold, and system actions. */
+    /** Commands that act on the real screen: presses, select, touch & hold, scroll, drag and system actions. */
     val actions: SharedFlow<GameCommand> = _actions.asSharedFlow()
+
+    private val _requests = MutableSharedFlow<GameCommand>(extraBufferCapacity = 16)
+
+    /** Commands from outside the session, e.g. the floating bubble's pause or mode switch. */
+    internal val requests: SharedFlow<GameCommand> = _requests.asSharedFlow()
+
+    /** Ask the running session to do [command], as if the user had said it. */
+    fun request(command: GameCommand) {
+        _requests.tryEmit(command)
+    }
 
     internal fun update(transform: (LivePlayState) -> LivePlayState) = _state.update(transform)
 

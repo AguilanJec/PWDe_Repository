@@ -21,6 +21,14 @@ sealed interface GameCommand {
     object Home : GameCommand
     object Notifications : GameCommand
     object AllApps : GameCommand
+    object Recents : GameCommand
+    /** Swipe the screen under the pointer so content moves the way [direction] reads, e.g. DOWN shows what's below. */
+    data class Scroll(val direction: ScrollDirection) : GameCommand
+    /** Press and hold at the pointer, then follow the head until [Drop]. */
+    object StartDrag : GameCommand
+    object Drop : GameCommand
+    object CursorMode : GameCommand
+    object JoystickMode : GameCommand
     /** Leave the game and go back to PWDe. */
     object Exit : GameCommand
     object HideOverlay : GameCommand
@@ -29,6 +37,8 @@ sealed interface GameCommand {
     /** Nothing to do; [reason] is shown to the user. */
     data class Ignored(val reason: String) : GameCommand
 }
+
+enum class ScrollDirection { UP, DOWN, LEFT, RIGHT }
 
 /**
  * Turns in-game input into [GameCommand]s. Shared by the simulated Playing screen and the live
@@ -44,6 +54,15 @@ object GameInput {
     const val RECENTER = "game_recenter"
     const val HIDE_OVERLAY = "game_hide_overlay"
     const val SHOW_OVERLAY = "game_show_overlay"
+    const val HOME = "game_home"
+    const val RECENTS = "game_recents"
+    const val NOTIFICATIONS = "game_notifications"
+    const val TOUCH_HOLD = "game_touch_hold"
+    const val DRAG = "game_drag"
+    const val DROP = "game_drop"
+    const val CURSOR_MODE = "game_cursor_mode"
+    const val JOYSTICK_MODE = "game_joystick_mode"
+    private const val SCROLL = "game_scroll:"
 
     fun buttonCommandId(buttonId: Int) = "button:$buttonId"
 
@@ -58,7 +77,15 @@ object GameInput {
         VoiceCommandBinding(RECENTER, listOf("recenter", "center")),
         VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel")),
         VoiceCommandBinding(SHOW_OVERLAY, listOf("show overlay", "show panel")),
-    )
+        VoiceCommandBinding(HOME, listOf("go home", "home screen")),
+        VoiceCommandBinding(RECENTS, listOf("recent apps", "recents")),
+        VoiceCommandBinding(NOTIFICATIONS, listOf("notifications", "open notifications")),
+        VoiceCommandBinding(TOUCH_HOLD, listOf("long press", "touch and hold")),
+        VoiceCommandBinding(DRAG, listOf("drag", "start drag")),
+        VoiceCommandBinding(DROP, listOf("drop", "let go")),
+        VoiceCommandBinding(CURSOR_MODE, listOf("cursor mode")),
+        VoiceCommandBinding(JOYSTICK_MODE, listOf("joystick mode")),
+    ) + ScrollDirection.entries.map { VoiceCommandBinding(SCROLL + it.name, listOf("scroll ${it.name.lowercase()}")) }
 
     /** The standard commands plus each button's own voice trigger. */
     fun bindings(buttons: List<MappedButton>): List<VoiceCommandBinding> =
@@ -76,7 +103,15 @@ object GameInput {
         RECENTER -> GameCommand.Recenter
         HIDE_OVERLAY -> GameCommand.HideOverlay
         SHOW_OVERLAY -> GameCommand.ShowOverlay
-        else -> buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let { GameCommand.Press(it) }
+        HOME -> GameCommand.Home
+        RECENTS -> GameCommand.Recents
+        NOTIFICATIONS -> GameCommand.Notifications
+        TOUCH_HOLD -> GameCommand.TouchHold
+        DRAG -> GameCommand.StartDrag
+        DROP -> GameCommand.Drop
+        CURSOR_MODE -> GameCommand.CursorMode
+        JOYSTICK_MODE -> GameCommand.JoystickMode
+        else -> ScrollDirection.entries.firstOrNull { commandId == SCROLL + it.name }?.let { GameCommand.Scroll(it) } ?: buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let { GameCommand.Press(it) }
     }
 
     /** A game button mapped to this gesture wins over the general gesture actions. */
@@ -103,7 +138,8 @@ object GameInput {
     /** While paused only commands that control PWDe itself still work. */
     fun worksWhilePaused(command: GameCommand): Boolean = when (command) {
         GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause, GameCommand.Recenter, GameCommand.Exit,
-        GameCommand.HideOverlay, GameCommand.ShowOverlay, is GameCommand.Ignored -> true
+        GameCommand.HideOverlay, GameCommand.ShowOverlay, GameCommand.CursorMode, GameCommand.JoystickMode,
+        GameCommand.Drop, is GameCommand.Ignored -> true
         else -> false
     }
 

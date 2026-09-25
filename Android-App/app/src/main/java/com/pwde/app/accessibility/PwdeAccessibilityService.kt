@@ -6,16 +6,22 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Path
+import android.graphics.PixelFormat
 import android.graphics.PointF
 import android.os.Build
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.pwde.app.PwdeApplication
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.LivePlay
+import com.pwde.app.play.LivePlayState
+import com.pwde.app.play.ScrollDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,12 +30,18 @@ import kotlinx.coroutines.launch
 
 /**
  * The "PWDe" entry in Android Settings → Accessibility (its switch reads "Use PWDe"). While a live
- * session runs over the real game ([LivePlay]), it performs that session's screen actions: taps on
- * mapped buttons, select and touch & hold at the head pointer, and Back / Home / Notifications /
- * All apps. It never reads what's on screen.
+ * session runs over the real game ([LivePlay]), it draws the head pointer and the mode bubble over
+ * any app and performs the session's screen actions: taps on mapped buttons, select, touch & hold,
+ * scroll and drag at the pointer, and Back / Home / Recents / Notifications / All apps. It never
+ * reads what's on screen.
  */
 class PwdeAccessibilityService : AccessibilityService() {
     private var scope: CoroutineScope? = null
+    private val windowManager by lazy { getSystemService(WindowManager::class.java) }
+    private var cursorView: CursorOverlayView? = null
+    private var bubbleView: ModeBubbleView? = null
+    private var bubbleParams: WindowManager.LayoutParams? = null
+    private var drag: ContinuousStroke? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -37,32 +49,150 @@ class PwdeAccessibilityService : AccessibilityService() {
         scope?.cancel()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { s ->
             s.launch { livePlay.actions.collect { perform(it, livePlay) } }
+            s.launch { livePlay.state.collect { render(it, livePlay) } }
         }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        scope?.cancel()
-        scope = null
+        shutDown()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        shutDown()
+        super.onDestroy()
+    }
+
+    private fun shutDown() {
         scope?.cancel()
         scope = null
-        super.onDestroy()
+        drag?.release()
+        drag = null
+        removeOverlays()
+    }
+
+    // ---- Overlays ----
+
+    private fun render(state: LivePlayState, livePlay: LivePlay) {
+        if (!state.active) {
+            drag?.release()
+            drag = null
+            removeOverlays()
+            return
+        }
+        val face = state.face
+        val joystick = face.outputMode == FaceOutputMode.JOYSTICK
+        if (joystick) {
+            removeView(cursorView)
+            cursorView = null
+        } else {
+            val view = cursorView ?: CursorOverlayView(this).takeIf { addOverlay(it, cursorParams()) }?.also { cursorView = it }
+            val point = toScreen(face.cursor.x, face.cursor.y)
+            view?.update(point.x, point.y, active = face.hasFace && !state.paused, dragging = state.dragging)
+        }
+        if (state.overlayHidden) {
+            removeView(bubbleView)
+            bubbleView = null
+        } else {
+            val view = bubbleView ?: createBubble(livePlay)
+            view?.update(if (joystick) "Joystick" else "Cursor", state.paused)
+        }
+    }
+
+    private fun createBubble(livePlay: LivePlay): ModeBubbleView? {
+        val params = bubbleParams ?: bubbleLayoutParams().also { bubbleParams = it }
+        val view = ModeBubbleView(
+            this,
+            onTap = { livePlay.request(GameCommand.TogglePause) },
+            onLongPress = {
+                val joystick = livePlay.state.value.face.outputMode == FaceOutputMode.JOYSTICK
+                livePlay.request(if (joystick) GameCommand.CursorMode else GameCommand.JoystickMode)
+            },
+            onMove = { dx, dy ->
+                params.x += dx
+                params.y += dy
+                bubbleView?.let { runCatching { windowManager.updateViewLayout(it, params) } }
+            },
+        )
+        if (!addOverlay(view, params)) return null
+        bubbleView = view
+        return view
+    }
+
+    private fun addOverlay(view: View, params: WindowManager.LayoutParams): Boolean =
+        runCatching { windowManager.addView(view, params) }
+            .onFailure { Log.w(TAG, "Couldn't show the overlay", it) }
+            .isSuccess
+
+    private fun removeView(view: View?) {
+        if (view != null) runCatching { windowManager.removeView(view) }
+    }
+
+    private fun removeOverlays() {
+        removeView(cursorView)
+        removeView(bubbleView)
+        cursorView = null
+        bubbleView = null
+    }
+
+    /** Covers the whole display, cutouts included, and never takes touches. */
+    private fun cursorParams() = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT,
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+    }
+
+    /** Starts at the top-left, below the status bar; the user can drag it anywhere. */
+    private fun bubbleLayoutParams() = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT,
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        val density = resources.displayMetrics.density
+        x = (16 * density).toInt()
+        y = (96 * density).toInt()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit
 
+    // ---- Actions ----
+
     private fun perform(command: GameCommand, livePlay: LivePlay) {
         val cursor = livePlay.state.value.face.cursor
+        val pointer = toScreen(cursor.x, cursor.y)
         when (command) {
             // Button positions are fractions of a full-screen screenshot from this phone.
             is GameCommand.Press -> tap(toScreen(command.button.x, command.button.y), TAP_MS)
-            GameCommand.Select -> tap(toScreen(cursor.x, cursor.y), TAP_MS)
-            GameCommand.TouchHold -> tap(toScreen(cursor.x, cursor.y), HOLD_MS)
+            GameCommand.Select -> {
+                tap(pointer, TAP_MS)
+                cursorView?.flash()
+            }
+            GameCommand.TouchHold -> tap(pointer, HOLD_MS)
+            is GameCommand.Scroll -> swipe(pointer, command.direction)
+            GameCommand.StartDrag -> {
+                drag?.release()
+                drag = ContinuousStroke(
+                    this,
+                    target = { livePlay.state.value.face.cursor.let { toScreen(it.x, it.y) } },
+                    onCancelled = { livePlay.request(GameCommand.Drop) },
+                ).also { it.press(pointer) }
+            }
+            GameCommand.Drop -> {
+                drag?.release()
+                drag = null
+            }
+            GameCommand.Recents -> performGlobalAction(GLOBAL_ACTION_RECENTS)
             GameCommand.Back -> performGlobalAction(GLOBAL_ACTION_BACK)
             GameCommand.Home -> performGlobalAction(GLOBAL_ACTION_HOME)
             GameCommand.Notifications -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
@@ -82,6 +212,28 @@ class PwdeAccessibilityService : AccessibilityService() {
         if (!dispatchGesture(gesture, null, null)) Log.w(TAG, "Tap at $point was rejected")
     }
 
+    /** Moves the content under the pointer so it scrolls the way [direction] reads. */
+    private fun swipe(center: PointF, direction: ScrollDirection) {
+        val (width, height) = displaySize()
+        val (dx, dy) = when (direction) {
+            // Showing what's below means the finger moves up, and so on.
+            ScrollDirection.DOWN -> 0f to -SCROLL_FRACTION * height
+            ScrollDirection.UP -> 0f to SCROLL_FRACTION * height
+            ScrollDirection.RIGHT -> -SCROLL_FRACTION * width to 0f
+            ScrollDirection.LEFT -> SCROLL_FRACTION * width to 0f
+        }
+        val clampX = { v: Float -> v.coerceIn(1f, width - 2f) }
+        val clampY = { v: Float -> v.coerceIn(1f, height - 2f) }
+        val path = Path().apply {
+            moveTo(clampX(center.x - dx / 2), clampY(center.y - dy / 2))
+            lineTo(clampX(center.x + dx / 2), clampY(center.y + dy / 2))
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, SCROLL_MS))
+            .build()
+        if (!dispatchGesture(gesture, null, null)) Log.w(TAG, "Scroll $direction was rejected")
+    }
+
     /** A 0–1 position to pixels on the whole display, as it's rotated right now. */
     private fun toScreen(x: Float, y: Float): PointF {
         val (width, height) = displaySize()
@@ -90,7 +242,6 @@ class PwdeAccessibilityService : AccessibilityService() {
     }
 
     private fun displaySize(): Pair<Int, Int> {
-        val windowManager = getSystemService(WindowManager::class.java)
         return if (Build.VERSION.SDK_INT >= 30) {
             val bounds = windowManager.maximumWindowMetrics.bounds
             bounds.width() to bounds.height()
@@ -106,6 +257,10 @@ class PwdeAccessibilityService : AccessibilityService() {
         private const val TAG = "PwdeAccessibility"
         private const val TAP_MS = 60L
         private const val HOLD_MS = 700L
+        private const val SCROLL_MS = 300L
+
+        /** How far one "scroll" moves, as a share of the screen. */
+        private const val SCROLL_FRACTION = 0.4f
 
         /** True when the user has switched "Use PWDe" on in Android's accessibility settings. */
         fun isEnabled(context: Context): Boolean {

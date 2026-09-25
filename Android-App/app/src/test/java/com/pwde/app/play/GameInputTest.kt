@@ -38,6 +38,18 @@ class GameInputTest {
     }
 
     @Test
+    fun cursorModeVoiceCommands() {
+        val scrollDown = GameInput.STANDARD_BINDINGS.single { "scroll down" in it.phrases }
+        assertEquals(GameCommand.Scroll(ScrollDirection.DOWN), GameInput.fromVoice(scrollDown.commandId, "scroll down", buttons))
+        assertEquals(GameCommand.StartDrag, GameInput.fromVoice(GameInput.DRAG, "drag", buttons))
+        assertEquals(GameCommand.Recents, GameInput.fromVoice(GameInput.RECENTS, "recent apps", buttons))
+        assertEquals(GameCommand.JoystickMode, GameInput.fromVoice(GameInput.JOYSTICK_MODE, "joystick mode", buttons))
+        // "drop" and mode switches still work while paused, so a drag can always be let go.
+        assertTrue(GameInput.worksWhilePaused(GameCommand.Drop))
+        assertFalse(GameInput.worksWhilePaused(GameCommand.StartDrag))
+    }
+
+    @Test
     fun aButtonMappedToAGestureWinsOverItsAction() {
         assertEquals(GameCommand.Press(attack), GameInput.fromGesture(gesture, buttons, ControlConfig()))
     }

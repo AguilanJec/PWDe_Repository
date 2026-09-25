@@ -192,6 +192,12 @@ class GameplayViewModel(
             GameCommand.Notifications -> post("Notifications (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.AllApps -> post("All apps (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.TouchHold -> post("Touch & hold (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.Recents -> post("Recent apps (in the real game only)", OverlayEvent.Kind.ACTION)
+            is GameCommand.Scroll -> post("Scroll ${command.direction.name.lowercase()} (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.StartDrag -> post("Drag (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.Drop -> post("Drop (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.CursorMode -> post("Cursor mode (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.JoystickMode -> post("Joystick mode (in the real game only)", OverlayEvent.Kind.ACTION)
             is GameCommand.Ignored -> post(command.reason, OverlayEvent.Kind.IGNORED)
         }
     }

@@ -10,6 +10,8 @@ import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.InGameVoiceEngine
+import com.pwde.app.data.prefs.InputMode
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -34,6 +36,9 @@ class LiveGameSession(
     private var lastDirection = JoystickDirection.CENTER
 
     /** Runs until cancelled. */
+    /** The session's own scope, for work that outlives one command (saving the input mode). */
+    private var scope: CoroutineScope? = null
+
     suspend fun run(game: Game, profileId: Long?) {
         val profile = profileId?.let { profileRepository.getGameProfile(it) }
         if (profile != null) applyProfileCalibration(profile, profileRepository, controlsRepository, settingsRepository)
@@ -43,6 +48,7 @@ class LiveGameSession(
         voiceEngine.start()
         try {
             coroutineScope {
+                scope = this
                 launch { controlsRepository.config.collect { config = it } }
                 // Collecting the state is what keeps the camera running in the background.
                 launch { faceTracking.state.collect { face -> livePlay.update { it.copy(face = face) } } }
@@ -51,8 +57,10 @@ class LiveGameSession(
                 }
                 launch { faceTracking.gestureEvents.collect(::onGesture) }
                 launch { voiceEngine.results.collect { onVoice(it.commandId, it.rawText) } }
+                launch { livePlay.requests.collect(::runUnlessPaused) }
             }
         } finally {
+            scope = null
             voiceEngine.stop()
             livePlay.end()
         }
@@ -101,9 +109,25 @@ class LiveGameSession(
                 livePlay.perform(command)
                 message("Pressed ${command.button.label}")
             }
+            GameCommand.CursorMode -> switchMode(InputMode.HEAD_FACE, "Cursor mode")
+            GameCommand.JoystickMode -> switchMode(InputMode.JOYSTICK, "Joystick mode")
+            GameCommand.StartDrag -> {
+                livePlay.update { it.copy(dragging = true) }
+                livePlay.perform(command)
+                message("Dragging — say \"drop\" to let go")
+            }
+            GameCommand.Drop -> {
+                livePlay.update { it.copy(dragging = false) }
+                livePlay.perform(command)
+            }
             GameCommand.Select, GameCommand.TouchHold, GameCommand.Back, GameCommand.Home,
-            GameCommand.Notifications, GameCommand.AllApps -> livePlay.perform(command)
+            GameCommand.Notifications, GameCommand.AllApps, GameCommand.Recents, is GameCommand.Scroll -> livePlay.perform(command)
         }
+    }
+
+    private fun switchMode(mode: InputMode, label: String) {
+        scope?.launch { settingsRepository.setInputMode(mode) }
+        message(label)
     }
 
     private fun setPaused(paused: Boolean) {
