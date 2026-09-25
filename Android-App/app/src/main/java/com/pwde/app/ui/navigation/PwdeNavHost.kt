@@ -327,7 +327,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 viewModel = pwdeViewModel(key = "gabai-$start") {
                     GabAiViewModel(
                         it.gabAiRepository, it.profileRepository, it.controlsRepository, it.settingsRepository,
-                        it.voiceCommandManager, it.faceTrackingManager, start,
+                        it.voiceCommandManager, it.faceTrackingManager, start, it.hudDetector,
                     )
                 },
                 onExit = ::back,

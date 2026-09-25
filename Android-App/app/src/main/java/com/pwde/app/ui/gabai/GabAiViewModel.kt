@@ -10,6 +10,7 @@ import com.pwde.app.data.gabai.GabAiForm
 import com.pwde.app.data.gabai.GabAiRepository
 import com.pwde.app.data.gabai.GabAiSession
 import com.pwde.app.data.gabai.GabAiState
+import com.pwde.app.data.gabai.HudDetector
 import com.pwde.app.data.local.CalibrationProfile
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
@@ -64,6 +65,8 @@ data class GabAiUiState(
     val selectedButtonId: Int? = null,
     /** Waiting for the next thing the user says to become the selected button's name. */
     val capturingLabel: Boolean = false,
+    /** The screenshot is being sent to the backend to find its buttons. */
+    val detectingButtons: Boolean = false,
     val message: String? = null,
 ) {
     val state: GabAiState get() = session?.state ?: GabAiState.Welcome
@@ -84,6 +87,7 @@ class GabAiViewModel(
     private val voiceCommandManager: VoiceCommandManager,
     faceTracking: FaceTrackingManager,
     start: GabAiStart,
+    private val hudDetector: HudDetector = HudDetector.None,
 ) : FaceTrackingViewModel(faceTracking) {
     private val _ui = MutableStateFlow(GabAiUiState())
     val ui: StateFlow<GabAiUiState> = _ui.asStateFlow()
@@ -95,6 +99,9 @@ class GabAiViewModel(
 
     private val _navigation = Channel<GabAiNavigation>(Channel.BUFFERED)
     val navigation: Flow<GabAiNavigation> = _navigation.receiveAsFlow()
+
+    /** Screenshots are sent to the detection backend to pre-place buttons. */
+    val autoDetectsButtons: Boolean get() = hudDetector.isAvailable
 
     private var loadedScreenshotPath: String? = null
     private var nextButtonId = 1
@@ -317,6 +324,35 @@ class GabAiViewModel(
         } else {
             updateForm { it.copy(screenshotPath = path) }
             loadScreenshot(path)
+            detectButtons(path)
+        }
+    }
+
+    /** Pre-places the buttons the backend model finds. Never overwrites buttons the user already placed. */
+    private suspend fun detectButtons(path: String) {
+        val gameId = _ui.value.form.gameId ?: return
+        if (!hudDetector.isAvailable || _ui.value.form.buttons.isNotEmpty()) return
+        _ui.update { it.copy(detectingButtons = true) }
+        val found = runCatching { hudDetector.detect(path, gameId) }
+        _ui.update { it.copy(detectingButtons = false) }
+        // The user may have picked another screenshot, or started placing buttons, while this ran.
+        if (_ui.value.form.screenshotPath != path || _ui.value.form.buttons.isNotEmpty()) return
+        found.onSuccess { detected ->
+            if (detected.isEmpty()) {
+                message("No buttons found on this screenshot — you can place them yourself next.")
+                return
+            }
+            val counts = mutableMapOf<String, Int>()
+            val buttons = detected.sortedWith(compareBy({ it.y }, { it.x })).map { d ->
+                val base = d.className.replace('_', ' ').replaceFirstChar { it.uppercase() }
+                val n = (counts[base] ?: 0) + 1
+                counts[base] = n
+                MappedButton(nextButtonId++, if (n == 1) base else "$base $n", d.x, d.y)
+            }
+            editButtons { buttons }
+            message("Found ${buttons.size} button${if (buttons.size == 1) "" else "s"}. Check them on the next step.")
+        }.onFailure {
+            message("Couldn't reach button detection — you can place buttons yourself next.")
         }
     }
 

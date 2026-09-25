@@ -3,7 +3,10 @@ package com.pwde.app.di
 import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import androidx.datastore.preferences.preferencesDataStore
+import com.pwde.app.BuildConfig
+import com.pwde.app.data.gabai.CloudHudDetector
 import com.pwde.app.data.gabai.GabAiRepository
+import com.pwde.app.data.gabai.HudDetector
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
 import com.pwde.app.data.local.PwdeDatabase
@@ -58,6 +61,11 @@ class AppContainer(private val context: Context) {
 
     /** Resumable GabAI sessions and game screenshots. */
     val gabAiRepository by lazy { GabAiRepository(context, database.gabAiSessionDao()) }
+
+    /** Auto-detects HUD buttons on GabAI screenshots; off unless pwde.detection.url is set. */
+    val hudDetector: HudDetector by lazy {
+        BuildConfig.DETECTION_URL.takeIf { it.isNotBlank() }?.let(::CloudHudDetector) ?: HudDetector.None
+    }
 
     fun newTutorialPlayer() = TutorialPlayer(context)
 

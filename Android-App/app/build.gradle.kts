@@ -10,6 +10,8 @@ plugins {
 //   pwde.firebase.apiKey=...
 //   pwde.firebase.appId=...
 //   pwde.firebase.projectId=...
+// Optional GabAI button auto-detection (calibration-backend on Cloud Run):
+//   pwde.detection.url=https://<service>-<hash>.<region>.run.app
 val localProps = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) file.inputStream().use { load(it) }
@@ -34,6 +36,7 @@ android {
         buildConfigField("String", "FIREBASE_API_KEY", "\"${localProp("pwde.firebase.apiKey")}\"")
         buildConfigField("String", "FIREBASE_APP_ID", "\"${localProp("pwde.firebase.appId")}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${localProp("pwde.firebase.projectId")}\"")
+        buildConfigField("String", "DETECTION_URL", "\"${localProp("pwde.detection.url")}\"")
     }
 
     buildTypes {

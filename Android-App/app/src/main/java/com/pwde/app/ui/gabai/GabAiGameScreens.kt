@@ -185,7 +185,9 @@ internal fun ScreenshotStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         }
         PwdeButton(if (shot == null) "Choose screenshot" else "Choose a different one", pick, icon = Icons.Outlined.Image, modifier = Modifier.fillMaxWidth())
         PwdeButton("Use a blank screen instead", viewModel::useBlankScreen, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
-        InfoNote("Take the screenshot in the game first (it stays on this phone). Without one, you'll place buttons on a blank screen.")
+        if (ui.detectingButtons) InfoNote("Finding the buttons on your screenshot…")
+        val privacy = if (viewModel.autoDetectsButtons) "It's sent to PWDe's server once to find the buttons, then kept on this phone." else "It stays on this phone."
+        InfoNote("Take the screenshot in the game first. $privacy Without one, you'll place buttons on a blank screen.")
     }
 }
 
@@ -353,12 +355,14 @@ internal fun ButtonCanvas(
         val diameter = 44.dp
         buttons.forEach { button ->
             val isSelected = button.id == selectedId || button.id == highlightId
-            Column(
-                Modifier.offset(
+            Box(
+                Modifier
+                    .offset(
                     x = maxWidth * button.x - diameter / 2,
                     y = maxHeight * button.y - diameter / 2,
-                ),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    )
+                    .size(diameter),
+                contentAlignment = Alignment.TopCenter,
             ) {
                 Box(
                     Modifier
@@ -373,7 +377,10 @@ internal fun ButtonCanvas(
                     color = Color.White,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill).padding(horizontal = 6.dp),
+                    modifier = Modifier
+                        .offset(y = diameter)
+                        .background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill)
+                        .padding(horizontal = 6.dp),
                 )
             }
         }
