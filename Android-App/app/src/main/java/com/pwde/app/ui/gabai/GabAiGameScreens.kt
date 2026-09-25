@@ -361,12 +361,14 @@ internal fun ButtonCanvas(
         val diameter = 44.dp
         buttons.forEach { button ->
             val isSelected = button.id == selectedId || button.id == highlightId
-            Column(
-                Modifier.offset(
+            Box(
+                Modifier
+                    .offset(
                     x = maxWidth * button.x - diameter / 2,
                     y = maxHeight * button.y - diameter / 2,
-                ),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    )
+                    .size(diameter),
+                contentAlignment = Alignment.TopCenter,
             ) {
                 Box(
                     Modifier
@@ -381,7 +383,10 @@ internal fun ButtonCanvas(
                     color = Color.White,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill).padding(horizontal = 6.dp),
+                    modifier = Modifier
+                        .offset(y = diameter)
+                        .background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill)
+                        .padding(horizontal = 6.dp),
                 )
             }
         }

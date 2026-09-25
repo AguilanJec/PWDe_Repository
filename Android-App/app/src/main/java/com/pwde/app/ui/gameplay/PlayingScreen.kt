@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
@@ -58,9 +59,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pwde.app.BuildConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.sensors.voice.InGameVoiceState
@@ -106,7 +109,7 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
         } else {
             SimulatedBackground()
         }
-        ProfileButtons(ui.buttons, lastEvent)
+        ProfileButtons(ui.buttons, lastEvent, shot)
         val active = face.hasFace && !paused
         val screenWidth = maxWidth
         if (face.outputMode == FaceOutputMode.JOYSTICK) {
@@ -213,7 +216,7 @@ private fun GameCommandField(reason: String, onSend: (String) -> Unit) {
 
 /** The game profile's mapped buttons; the one just pressed lights up. */
 @Composable
-private fun ProfileButtons(buttons: List<MappedButton>, lastEvent: OverlayEvent?) {
+private fun ProfileButtons(buttons: List<MappedButton>, lastEvent: OverlayEvent?, screenshot: ImageBitmap?) {
     if (buttons.isEmpty()) return
     val colors = PwdeTheme.colors
     val flash = remember { Animatable(0f) }
@@ -225,28 +228,71 @@ private fun ProfileButtons(buttons: List<MappedButton>, lastEvent: OverlayEvent?
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        val screenshotAspect = screenshot?.let { it.width.toFloat() / it.height } ?: (16f / 9f)
+        val containerAspect = maxWidth / maxHeight
+        val viewportWidth: Dp
+        val viewportHeight: Dp
+        val viewportLeft: Dp
+        val viewportTop: Dp
+        if (containerAspect > screenshotAspect) {
+            viewportHeight = maxHeight
+            viewportWidth = maxHeight * screenshotAspect
+            viewportLeft = (maxWidth - viewportWidth) / 2
+            viewportTop = 0.dp
+        } else {
+            viewportWidth = maxWidth
+            viewportHeight = maxWidth / screenshotAspect
+            viewportLeft = 0.dp
+            viewportTop = (maxHeight - viewportHeight) / 2
+        }
+        if (BuildConfig.DEBUG) {
+            val density = LocalDensity.current
+            val viewportWidthPx = with(density) { viewportWidth.roundToPx() }
+            val viewportHeightPx = with(density) { viewportHeight.roundToPx() }
+            val viewportLeftPx = with(density) { viewportLeft.roundToPx() }
+            val viewportTopPx = with(density) { viewportTop.roundToPx() }
+            Text(
+                "Mapping viewport ${screenshot?.width ?: 0}x${screenshot?.height ?: 0} -> " +
+                    "${viewportWidthPx}x${viewportHeightPx} px @ " +
+                    "(${viewportLeftPx}, ${viewportTopPx})",
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.7f), PwdeShapes.pill)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+            )
+        }
         val diameter = 48.dp
-        buttons.forEach { button ->
-            val pressed = button.id == pressedId && flash.value > 0f
-            Column(
-                Modifier.offset(x = maxWidth * button.x - diameter / 2, y = maxHeight * button.y - diameter / 2),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+        Box(Modifier.offset(viewportLeft, viewportTop).size(viewportWidth, viewportHeight)) {
+            buttons.forEach { button ->
+                val pressed = button.id == pressedId && flash.value > 0f
                 Box(
                     Modifier
-                        .size(diameter)
-                        .clip(CircleShape)
-                        .background(if (pressed) colors.primary.copy(alpha = 0.4f + 0.5f * flash.value) else colors.secondary.copy(alpha = 0.3f))
-                        .border(3.dp, if (pressed) colors.primary else Color.White.copy(alpha = 0.8f), CircleShape)
-                        .semantics { contentDescription = "${button.label}: ${button.trigger?.describe() ?: "no trigger"}" },
-                )
-                Text(
-                    button.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    maxLines = 1,
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill).padding(horizontal = 6.dp),
-                )
+                        .offset(x = viewportWidth * button.x - diameter / 2, y = viewportHeight * button.y - diameter / 2)
+                        .size(diameter),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    Box(
+                        Modifier
+                            .size(diameter)
+                            .clip(CircleShape)
+                            .background(if (pressed) colors.primary.copy(alpha = 0.4f + 0.5f * flash.value) else colors.secondary.copy(alpha = 0.3f))
+                            .border(3.dp, if (pressed) colors.primary else Color.White.copy(alpha = 0.8f), CircleShape)
+                            .semantics { contentDescription = "${button.label}: ${button.trigger?.describe() ?: "no trigger"}" },
+                    )
+                    Text(
+                        button.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .offset(y = diameter)
+                            .background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill)
+                            .padding(horizontal = 6.dp),
+                    )
+                }
             }
         }
     }
