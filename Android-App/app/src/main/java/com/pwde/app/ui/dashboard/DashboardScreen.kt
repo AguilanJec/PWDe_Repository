@@ -203,7 +203,7 @@ fun DashboardScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             if (showTestingStation) {
-                EntryCard("Testing Station", Icons.Outlined.Radar, Modifier.weight(1f), subtitle = "Debug build") {
+                EntryCard("Testing Station", Icons.Outlined.Radar, Modifier.weight(1f)) {
                     onNavigate(DashboardDestination.TESTING_STATION)
                 }
             }
@@ -227,13 +227,12 @@ private fun statusLines(state: DashboardUiState, pwdeOn: Boolean): List<String> 
         voice.listening -> "Voice: listening" to true
         else -> "Voice: on" to true
     }
-    val headText = if (state.cameraAllowed) "Head & face: camera ready" else "Head & face: demo mode (camera off)"
     val summary = when {
         !pwdeOn -> "PWDe is off · tap to turn it on in Settings"
         voiceOk && state.cameraAllowed -> "PWDe controls are ready"
         else -> "PWDe controls are partly on"
     }
-    return listOf(summary, headText, voiceText)
+    return listOf(summary, voiceText)
 }
 
 @Composable
