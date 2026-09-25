@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Face
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.compose.ui.semantics.semantics
@@ -63,10 +66,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class DashboardUiState(
     val greetingName: String? = null,
     val inputMode: InputMode = InputMode.HEAD_FACE,
+    val pwdeEnabled: Boolean = true,
     val cameraAllowed: Boolean = false,
     val voice: VoiceState = VoiceState(),
     /** Where an unfinished GabAI setup stopped, if there is one. */
@@ -74,7 +79,7 @@ data class DashboardUiState(
 )
 
 class DashboardViewModel(
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
     authRepository: AuthRepository,
     private val faceTracking: FaceTrackingManager,
     voiceCommandManager: VoiceCommandManager,
@@ -93,6 +98,7 @@ class DashboardViewModel(
         DashboardUiState(
             greetingName = (auth as? AuthState.SignedIn)?.let { it.displayName ?: it.email?.substringBefore('@') },
             inputMode = settings.inputMode,
+            pwdeEnabled = settings.pwdeEnabled,
             cameraAllowed = camera,
             voice = voice,
             gabAiUnfinished = gabAi?.state?.summary,
@@ -101,6 +107,11 @@ class DashboardViewModel(
 
     fun refresh() {
         cameraAllowed.value = faceTracking.hasCameraPermission
+    }
+
+    /** The home screen's master switch. Off stops head tracking and voice listening. */
+    fun setPwdeEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setPwdeEnabled(enabled) }
     }
 }
 
@@ -145,7 +156,7 @@ fun DashboardScreen(
             Text("Welcome back, $it", style = MaterialTheme.typography.titleLarge, color = colors.text)
         }
 
-        ServiceStatusBanner(state)
+        ServiceStatusBanner(state, viewModel::setPwdeEnabled)
 
         GradientCard(Modifier.fillMaxWidth()) {
             Text("Play your way", style = MaterialTheme.typography.headlineSmall, color = colors.text)
@@ -190,11 +201,15 @@ fun DashboardScreen(
     }
 }
 
-/** Honest status of both input pipelines. Tracking itself only runs on screens that use it. */
+/**
+ * The home screen's master PWDe switch: honest status of both input pipelines, and the control
+ * that turns them on and off. Off means no camera and nothing listening.
+ */
 @Composable
-private fun ServiceStatusBanner(state: DashboardUiState) {
+private fun ServiceStatusBanner(state: DashboardUiState, onToggle: (Boolean) -> Unit) {
     val colors = PwdeTheme.colors
     val voice = state.voice
+    val enabled = state.pwdeEnabled
     val (voiceText, voiceOk) = when {
         voice.usesTextFallback -> "Voice: typed commands (${voice.availability.label.lowercase()})" to false
         !voice.enabled -> "Voice: off" to false
@@ -202,7 +217,7 @@ private fun ServiceStatusBanner(state: DashboardUiState) {
         else -> "Voice: on" to true
     }
     val headText = if (state.cameraAllowed) "Head & face: camera ready" else "Head & face: demo mode (camera off)"
-    val allGood = voiceOk && state.cameraAllowed
+    val allGood = enabled && voiceOk && state.cameraAllowed
     val tint = if (allGood) colors.primary else colors.warning
     Row(
         Modifier
@@ -210,21 +225,34 @@ private fun ServiceStatusBanner(state: DashboardUiState) {
             .clip(PwdeShapes.button)
             .background(tint.copy(alpha = 0.10f))
             .border(1.5.dp, tint, PwdeShapes.button)
+            .toggleable(value = enabled, role = Role.Switch, onValueChange = onToggle)
             .padding(PwdeTheme.spacing.internal)
             .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         IconBadge(Icons.Outlined.PowerSettingsNew, tint = tint)
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(
-                if (allGood) "PWDe controls are ready" else "PWDe controls are partly on",
+                when {
+                    !enabled -> "PWDe controls are off"
+                    allGood -> "PWDe controls are ready"
+                    else -> "PWDe controls are partly on"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 color = colors.text,
             )
-            Text(headText, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
-            Text(voiceText, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+            Text(
+                if (enabled) "Tap to turn PWDe off" else "Tap to turn PWDe on",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+            )
+            if (enabled) {
+                Text(headText, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+                Text(voiceText, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+            }
         }
+        Switch(checked = enabled, onCheckedChange = null)
     }
 }
 

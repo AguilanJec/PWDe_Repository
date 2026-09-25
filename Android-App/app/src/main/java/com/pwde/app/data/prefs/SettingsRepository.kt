@@ -20,6 +20,7 @@ interface SettingsRepository {
     suspend fun setAccessibilityNeeds(needs: Set<AccessibilityNeed>)
     suspend fun setAppearance(colorScheme: ColorSchemeOption, textSize: TextSizeOption, layoutMode: LayoutMode)
     suspend fun setInputMode(mode: InputMode)
+    suspend fun setPwdeEnabled(enabled: Boolean)
     suspend fun setScreenReading(enabled: Boolean, speed: TtsSpeed, usesOtherScreenReader: Boolean)
     suspend fun setSetupCompleted(completed: Boolean)
     suspend fun setVoiceTutorialCompleted(completed: Boolean)
@@ -53,6 +54,10 @@ class DataStoreSettingsRepository(
         dataStore.edit { it[Keys.INPUT_MODE] = mode.name }
     }
 
+    override suspend fun setPwdeEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.PWDE_ENABLED] = enabled }
+    }
+
     override suspend fun setScreenReading(enabled: Boolean, speed: TtsSpeed, usesOtherScreenReader: Boolean) {
         dataStore.edit {
             it[Keys.TTS_ENABLED] = enabled
@@ -75,6 +80,7 @@ class DataStoreSettingsRepository(
         val TEXT_SIZE = stringPreferencesKey("text_size")
         val LAYOUT_MODE = stringPreferencesKey("layout_mode")
         val INPUT_MODE = stringPreferencesKey("input_mode")
+        val PWDE_ENABLED = booleanPreferencesKey("pwde_enabled")
         val TTS_ENABLED = booleanPreferencesKey("tts_enabled")
         val TTS_SPEED = stringPreferencesKey("tts_speed")
         val OTHER_SCREEN_READER = booleanPreferencesKey("other_screen_reader")
@@ -91,6 +97,7 @@ class DataStoreSettingsRepository(
             textSize = enumOrNull<TextSizeOption>(this[Keys.TEXT_SIZE]) ?: defaults.textSize,
             layoutMode = enumOrNull<LayoutMode>(this[Keys.LAYOUT_MODE]) ?: defaults.layoutMode,
             inputMode = enumOrNull<InputMode>(this[Keys.INPUT_MODE]) ?: defaults.inputMode,
+            pwdeEnabled = this[Keys.PWDE_ENABLED] ?: defaults.pwdeEnabled,
             ttsEnabled = this[Keys.TTS_ENABLED] ?: defaults.ttsEnabled,
             ttsSpeed = enumOrNull<TtsSpeed>(this[Keys.TTS_SPEED]) ?: defaults.ttsSpeed,
             usesOtherScreenReader = this[Keys.OTHER_SCREEN_READER] ?: defaults.usesOtherScreenReader,

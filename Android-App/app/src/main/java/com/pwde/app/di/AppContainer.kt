@@ -46,7 +46,9 @@ class AppContainer(private val context: Context) {
     private val micArbiter by lazy { MicArbiter() }
 
     /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). Used everywhere except gameplay. */
-    val voiceCommandManager: VoiceCommandManager by lazy { AndroidVoiceCommandManager(context, controlsRepository, micArbiter) }
+    val voiceCommandManager: VoiceCommandManager by lazy {
+        AndroidVoiceCommandManager(context, controlsRepository, settingsRepository, micArbiter)
+    }
 
     /** Gameplay-time voice recognition, scoped to the active game profile's commands. */
     val inGameVoiceEngine: InGameVoiceEngine by lazy {

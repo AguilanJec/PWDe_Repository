@@ -103,7 +103,6 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 | Games, game detail | Real: play, edit or create profiles per game; voice-selectable |
 | Playing view | Live overlay over your game screenshot (or a simulated arena). Mapped buttons are pressed by voice (in-game engine), gesture or joystick |
 | Profile | Real: profile lists with rename/delete, "Use now" for calibrations, Play/Edit for game profiles, sync status |
-| Leaderboard | "Planned" notice; no invented scores |
 
 ## Known limitations
 

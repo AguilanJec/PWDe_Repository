@@ -22,6 +22,8 @@ class FakeSettingsRepository(initial: UserSettings = UserSettings()) : SettingsR
 
     override suspend fun setInputMode(mode: InputMode) = settings.update { it.copy(inputMode = mode) }
 
+    override suspend fun setPwdeEnabled(enabled: Boolean) = settings.update { it.copy(pwdeEnabled = enabled) }
+
     override suspend fun setScreenReading(enabled: Boolean, speed: TtsSpeed, usesOtherScreenReader: Boolean) =
         settings.update { it.copy(ttsEnabled = enabled, ttsSpeed = speed, usesOtherScreenReader = usesOtherScreenReader) }
 

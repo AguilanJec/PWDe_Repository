@@ -7,6 +7,8 @@ data class UserSettings(
     val textSize: TextSizeOption = TextSizeOption.MEDIUM,
     val layoutMode: LayoutMode = LayoutMode.STANDARD,
     val inputMode: InputMode = InputMode.HEAD_FACE,
+    /** Master switch for PWDe's head/face and voice control. When off, nothing listens or moves. */
+    val pwdeEnabled: Boolean = true,
     val ttsEnabled: Boolean = false,
     val ttsSpeed: TtsSpeed = TtsSpeed.NORMAL,
     val usesOtherScreenReader: Boolean = false,

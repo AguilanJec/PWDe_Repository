@@ -23,7 +23,6 @@ object Routes {
 
     /** [profileId] picks a game profile; without one, the game's most recent profile (if any) is used. */
     fun playing(gameId: String, profileId: Long? = null) = "playing/$gameId?profile=${profileId ?: -1}"
-    const val LEADERBOARD = "leaderboard"
     const val FILTER = "filter"
 
     // E · Controls
@@ -65,7 +64,6 @@ object Routes {
         GAMES -> "Games"
         GAME_DETAIL -> "Game details"
         PLAYING -> "Playing"
-        LEADERBOARD -> "Leaderboard"
         FILTER -> "Filter games"
         CONTROLS -> "Controls"
         CONTROLS_INPUT -> "Input mode"

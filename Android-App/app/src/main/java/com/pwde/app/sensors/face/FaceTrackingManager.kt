@@ -49,7 +49,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,7 +93,7 @@ interface FaceTrackingManager {
 class MediaPipeFaceTrackingManager(
     context: Context,
     private val controlsRepository: ControlsRepository,
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : FaceTrackingManager {
     private val appContext = context.applicationContext
@@ -108,8 +111,11 @@ class MediaPipeFaceTrackingManager(
             TrackingTuning(controls, settings.inputMode.faceOutputMode())
         }
 
-    override val state: StateFlow<FaceState> = permissionTick
-        .flatMapLatest { session() }
+    override val state: StateFlow<FaceState> = combine(
+        permissionTick,
+        settingsRepository.settings.map { it.pwdeEnabled }.distinctUntilChanged(),
+    ) { _, pwdeEnabled -> pwdeEnabled }
+        .flatMapLatest { pwdeEnabled -> if (pwdeEnabled) session() else offSession() }
         .stateIn(scope, SharingStarted.WhileSubscribed(0), FaceState())
 
     override val gestureEvents: SharedFlow<FacialGesture> = _gestureEvents.asSharedFlow()
@@ -131,6 +137,9 @@ class MediaPipeFaceTrackingManager(
         controlsRepository.setJoystickCenter(pose.pitch, pose.roll)
         return true
     }
+
+    /** The home screen's master switch is off: report Idle and keep the camera closed. */
+    private fun offSession(): Flow<FaceState> = flowOf(FaceState(status = TrackingStatus.Idle))
 
     /** One tracking session: the camera when possible, otherwise the labelled motion-sensor demo. */
     private fun session(): Flow<FaceState> = channelFlow {

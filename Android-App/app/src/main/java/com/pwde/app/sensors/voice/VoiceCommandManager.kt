@@ -5,6 +5,7 @@ import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
+import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -81,6 +82,7 @@ interface VoiceCommandManager {
 class AndroidVoiceCommandManager(
     context: Context,
     private val controlsRepository: ControlsRepository,
+    private val settingsRepository: SettingsRepository,
     private val micArbiter: MicArbiter,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : VoiceCommandManager {
@@ -123,9 +125,9 @@ class AndroidVoiceCommandManager(
                         permissionTick,
                         screenCommands,
                         micArbiter.gameHasMic,
-                    ) { config, _, screens, gameHasMic -> Triple(config, screens, gameHasMic) }
-                        .collect { (latest, screens, gameHasMic) ->
-                            config = latest
+                        settingsRepository.settings.map { it.pwdeEnabled }.distinctUntilChanged(),
+                    ) { config, _, screens, gameHasMic, pwdeEnabled -> ListenInputs(config, screens, gameHasMic, pwdeEnabled) }
+                        .collect { (latest, screens, gameHasMic, pwdeEnabled) ->                            config = latest
                             val availability = recognizer.availability()
                             _state.update {
                                 it.copy(
@@ -137,7 +139,8 @@ class AndroidVoiceCommandManager(
                                     pausedForGame = gameHasMic,
                                 )
                             }
-                            val listen = latest.voiceEnabled && availability == MicAvailability.AVAILABLE && !gameHasMic
+                            // The home screen's master switch wins: PWDe off means nothing listens.
+                            val listen = pwdeEnabled && latest.voiceEnabled && availability == MicAvailability.AVAILABLE && !gameHasMic
                             if (listen) recognizer.start() else stopListening()
                         }
                 } finally {
@@ -181,4 +184,11 @@ class AndroidVoiceCommandManager(
         _state.update { it.copy(lastTranscript = transcript, lastCommand = command ?: it.lastCommand) }
         _results.tryEmit(VoiceResult(transcript, isFinal, command, source))
     }
+
+    private data class ListenInputs(
+        val config: ControlConfig,
+        val screens: Map<Any, List<VoiceCommand>>,
+        val gameHasMic: Boolean,
+        val pwdeEnabled: Boolean,
+    )
 }
