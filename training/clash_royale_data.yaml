@@ -1,0 +1,17 @@
+# YOLOv8 dataset config for Clash Royale HUD detection.
+#
+# Paths are relative to this file's location. Populate images/{train,val,test}
+# and labels/{train,val,test} using prepare_dataset.py before training.
+#
+# Class order MUST match the PWDe-ClashRoyale labeling config and the
+# --classes passed to export_yolo_from_db.py — if you change one, change all.
+
+path: ./clash_royale_dataset
+train: images/train
+val: images/val
+test: images/test
+
+nc: 2
+names:
+  0: card
+  1: champion_ability
