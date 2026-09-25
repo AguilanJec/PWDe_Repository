@@ -157,7 +157,7 @@ private sealed interface ProfileDialog {
     data class Delete(val profile: SavedProfile) : ProfileDialog
 }
 
-private val PROFILE_COMMANDS = listOf(
+internal val PROFILE_COMMANDS = listOf(
     voiceCommand("gabai", "gabai", "gab ai", "new profile"),
     voiceCommand("sign_in", "sign in", "sync"),
     voiceCommand("appearance", "appearance"),

@@ -45,6 +45,15 @@ object PwdeShapes {
 /** Accessibility-critical minimum touch target. */
 val MinTouchTarget = 48.dp
 
+/** Minimum height of every actionable button (PwdeButton, PwdeToggleButton, PwdeIconButton). */
+val ControlHeight = 56.dp
+
+/**
+ * Icon size derived from the component it sits in, so a bigger button/tile/badge gets a bigger
+ * icon. Multiply by [scaled] on top to also follow the user's text size.
+ */
+fun iconSizeFor(componentSize: Dp, ratio: Float = 0.4f): Dp = (componentSize * ratio).coerceIn(18.dp, 40.dp)
+
 private val LocalPwdeColors = staticCompositionLocalOf { colorsFor(ColorSchemeOption.DEFAULT) }
 private val LocalPwdeSpacing = staticCompositionLocalOf { spacingFor(LayoutMode.STANDARD) }
 private val LocalBaseDensity = staticCompositionLocalOf<Density?> { null }

@@ -193,8 +193,8 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 onNavigate = { destination ->
                     when (destination) {
                         DashboardDestination.CONTROLS -> navController.navigate(Routes.CONTROLS)
+                        DashboardDestination.INPUT -> navController.navigate(Routes.CONTROLS_INPUT) // Added missing branch
                         DashboardDestination.VOICE -> navController.navigate(Routes.VOICE_CONFIG)
-                        // Release builds have no such destination at all (see src/release).
                         DashboardDestination.TESTING_STATION -> if (TESTING_STATION_AVAILABLE) navController.navigate(Routes.TESTING_STATION)
                         DashboardDestination.WATCH_TUTORIAL -> navController.navigate(Routes.WATCH_TUTORIAL)
                         DashboardDestination.GABAI -> navController.navigate(Routes.gabai())

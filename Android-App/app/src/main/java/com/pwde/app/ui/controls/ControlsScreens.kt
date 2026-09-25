@@ -4,12 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -49,6 +52,7 @@ import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.sensors.face.GestureThresholds
 import com.pwde.app.sensors.voice.VoiceCommand
 import com.pwde.app.ui.components.ButtonStyle
+import com.pwde.app.ui.components.CheckBadge
 import com.pwde.app.ui.components.CameraFeed
 import com.pwde.app.ui.components.CursorPad
 import com.pwde.app.ui.components.DemoModeBanner
@@ -74,6 +78,8 @@ import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.dashboard.icon
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.iconSizeFor
+import com.pwde.app.ui.theme.scaled
 
 enum class ControlsDestination { INPUT, GESTURES, CURSOR, JOYSTICK, VOICE, CUSTOM_BUTTONS }
 
@@ -105,7 +111,7 @@ fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit)
     }
 }
 
-private val INPUT_COMMANDS = listOf(
+internal val INPUT_COMMANDS = listOf(
     voiceCommand(InputMode.HEAD_FACE.name, "head", "head and face", "face"),
     voiceCommand(InputMode.JOYSTICK.name, "joystick"),
     voiceCommand(InputMode.VOICE.name, "voice"),
@@ -143,14 +149,14 @@ fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
         }
         InfoNote(
             "Head & face and Voice move a pointer with your head. Joystick turns head tilt into an 8-way joystick. " +
-                "Switch any time by saying \"cursor mode\" or \"joystick mode\".",
+                    "Switch any time by saying \"cursor mode\" or \"joystick mode\".",
         )
     }
 }
 
 private const val ACTIONS_PER_PAGE = 4
 
-private val GESTURES_COMMANDS = GestureAction.entries.map { voiceCommand(it.name, "change ${it.label}", it.label) } + listOf(
+internal val GESTURES_COMMANDS = GestureAction.entries.map { voiceCommand(it.name, "change ${it.label}", it.label) } + listOf(
     voiceCommand("next_page", "next page"),
     voiceCommand("previous_page", "previous page", "previous"),
 )
@@ -182,7 +188,11 @@ fun GesturesScreen(viewModel: GesturesViewModel, onBack: () -> Unit, onChoose: (
             GradientCard(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(action.label, style = MaterialTheme.typography.titleMedium, color = PwdeTheme.colors.text)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(action.label, style = MaterialTheme.typography.titleMedium, color = PwdeTheme.colors.text)
+                            // "Configured" at a glance; the conflict pill below stays separate.
+                            if (gesture != null) CheckBadge("Gesture assigned")
+                        }
                         Text(
                             gesture?.let { "${it.label} · sensitivity ${levelWord(current.sensitivityOf(it)).lowercase()}" } ?: "Not set",
                             style = MaterialTheme.typography.bodySmall,
@@ -200,14 +210,14 @@ fun GesturesScreen(viewModel: GesturesViewModel, onBack: () -> Unit, onChoose: (
                     PwdeButton(
                         if (gesture == null) "Add" else "Change",
                         { onChoose(action) },
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = 12.dp).widthIn(min = 120.dp),
                     )
                 }
             }
         }
         InfoNote(
             "Gestures fire their actions in PWDe's play overlay. Notifications, All apps and Touch & hold need " +
-                "system access PWDe doesn't have, so they act inside the overlay only, not on the rest of your phone.",
+                    "system access PWDe doesn't have, so they act inside the overlay only, not on the rest of your phone.",
         )
     }
 }
@@ -346,7 +356,13 @@ private fun GestureTile(
     modifier: Modifier = Modifier,
 ) {
     val colors = PwdeTheme.colors
-    Column(
+    // Both states mean "this move already has a mapping"; only the colour differs.
+    val markColor = when {
+        selected -> colors.primary
+        usedBy.isNotEmpty() -> colors.warning
+        else -> null
+    }
+    BoxWithConstraints(
         modifier
             .heightIn(min = 120.dp)
             .clip(PwdeShapes.card)
@@ -354,24 +370,35 @@ private fun GestureTile(
             .border(if (selected) 3.dp else 1.dp, if (selected) colors.primary else colors.secondary.copy(alpha = 0.5f), PwdeShapes.card)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            Modifier.size(40.dp).clip(CircleShape).background(colors.surface),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Outlined.Face, contentDescription = null, tint = colors.primary) }
-        Text(gesture.label, style = MaterialTheme.typography.titleMedium, color = colors.text)
-        Text(gesture.description, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
-        when {
-            selected -> StatusPill("Selected", icon = Icons.Outlined.CheckCircle)
-            usedBy.isNotEmpty() -> StatusPill("Used: ${usedBy.joinToString { it.label }}", color = colors.warning)
+        // Tiles share a row by weight, so their width varies by screen: size the badge from it.
+        val badgeSize = (maxWidth * 0.3f).coerceIn(40.dp, 64.dp).scaled()
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box {
+                Box(
+                    Modifier.size(badgeSize).clip(CircleShape).background(colors.surface),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.Face, contentDescription = null, tint = colors.primary, modifier = Modifier.size(iconSizeFor(badgeSize, 0.55f)))
+                }
+                // Visible even when the pill below wraps on narrow screens. The pill carries the words.
+                if (markColor != null) {
+                    CheckBadge(description = null, color = markColor, modifier = Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp))
+                }
+            }
+            Text(gesture.label, style = MaterialTheme.typography.titleMedium, color = colors.text)
+            Text(gesture.description, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+            when {
+                selected -> StatusPill("Selected", icon = Icons.Outlined.CheckCircle)
+                usedBy.isNotEmpty() -> StatusPill("Used: ${usedBy.joinToString { it.label }}", color = colors.warning, icon = Icons.Outlined.CheckCircle)
+            }
         }
     }
 }
 
 private enum class Detail(val label: String) { BASIC("Basic"), ADVANCED("Advanced") }
 
-private val CURSOR_COMMANDS = listOf(
+internal val CURSOR_COMMANDS = listOf(
     voiceCommand("faster", "faster", "speed up"),
     voiceCommand("slower", "slower", "slow down"),
     voiceCommand("advanced", "advanced"),
@@ -432,7 +459,7 @@ fun CursorSpeedScreen(viewModel: CursorSpeedViewModel, onBack: () -> Unit) {
     }
 }
 
-private val JOYSTICK_COMMANDS = listOf(
+internal val JOYSTICK_COMMANDS = listOf(
     voiceCommand("bigger", "bigger", "larger"),
     voiceCommand("smaller", "smaller"),
     voiceCommand("more_sensitive", "more sensitive"),

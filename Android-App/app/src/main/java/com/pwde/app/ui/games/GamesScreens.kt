@@ -65,8 +65,8 @@ class GamesViewModel(profileRepository: ProfileRepository) : ViewModel() {
 }
 
 /** Say a game's name to open it; say a tab's name to switch tabs. */
-private fun gameCommands(current: MainTab) = Game.entries.map { voiceCommand("game:${it.id}", it.displayName) } +
-    MainTab.entries.filter { it != current }.map { voiceCommand("tab:${it.name}", it.label) }
+internal fun gameCommands(current: MainTab) = Game.entries.map { voiceCommand("game:${it.id}", it.displayName) } +
+        MainTab.entries.filter { it != current }.map { voiceCommand("tab:${it.name}", it.label) }
 
 @Composable
 private fun GameListVoice(current: MainTab, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
@@ -187,7 +187,7 @@ fun GameDetailScreen(
         )
         InfoNote(
             "Play opens PWDe's live overlay over your game screenshot (or a simulated arena) — your head, face and " +
-                "voice really drive it, but the real game isn't launched.",
+                    "voice really drive it, but the real game isn't launched.",
             icon = Icons.Outlined.Info,
         )
     }
@@ -200,7 +200,7 @@ private enum class GameFilter(val label: String, val matches: (Game, Set<String>
     READY("Profile ready", { g, ids -> g.id in ids }),
 }
 
-private val GAME_DETAIL_COMMANDS = listOf(
+internal val GAME_DETAIL_COMMANDS = listOf(
     voiceCommand("play", "play", "launch game", "launch", "start"),
     voiceCommand("gabai", "set up with gabai", "new profile", "gabai", "gab ai"),
 )

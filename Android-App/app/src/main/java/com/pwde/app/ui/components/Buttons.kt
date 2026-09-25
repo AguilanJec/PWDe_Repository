@@ -27,10 +27,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.pwde.app.ui.theme.ControlHeight
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.iconSizeFor
 import com.pwde.app.ui.theme.scaled
 
 enum class ButtonStyle { PRIMARY, SECONDARY, DESTRUCTIVE }
@@ -56,7 +61,7 @@ fun PwdeButton(
     }
     Box(
         modifier = modifier
-            .heightIn(min = 56.dp)
+            .heightIn(min = ControlHeight)
             .alpha(if (enabled) 1f else 0.45f)
             .clip(PwdeShapes.button)
             .background(background)
@@ -67,7 +72,7 @@ fun PwdeButton(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(22.dp.scaled()))
+                Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(iconSizeFor(ControlHeight).scaled()))
                 Box(Modifier.size(8.dp))
             }
             Text(text, style = MaterialTheme.typography.labelLarge, color = content, textAlign = TextAlign.Center)
@@ -92,7 +97,7 @@ fun PwdeToggleButton(
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = ControlHeight)
             .clip(PwdeShapes.button)
             .background(colors.buttonBrush)
             .toggleable(value = checked, role = Role.Switch, onValueChange = { onClick() })
@@ -100,7 +105,7 @@ fun PwdeToggleButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (icon != null) Icon(icon, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(22.dp.scaled()))
+        if (icon != null) Icon(icon, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(iconSizeFor(ControlHeight).scaled()))
         Column(modifier = Modifier.weight(1f)) {
             Text(text, style = MaterialTheme.typography.labelLarge, color = colors.onAccent)
             if (!details.isNullOrEmpty()) {
@@ -122,6 +127,32 @@ fun PwdeToggleButton(
                 uncheckedBorderColor = colors.onAccent,
             ),
         )
+    }
+}
+
+/**
+ * Square outlined icon-only button, e.g. the GabAI nudge arrows. Same height, corner radius and
+ * border as a secondary [PwdeButton]; the icon grows with [size] and with the user's text size.
+ */
+@Composable
+fun PwdeIconButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = ControlHeight,
+) {
+    val colors = PwdeTheme.colors
+    Box(
+        modifier
+            .size(size)
+            .clip(PwdeShapes.button)
+            .border(2.dp, colors.primary, PwdeShapes.button)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.primary, modifier = Modifier.size(iconSizeFor(size, 0.5f).scaled()))
     }
 }
 

@@ -2,6 +2,7 @@ package com.pwde.app.ui.dashboard
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.SportsEsports
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,7 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -60,8 +65,9 @@ import com.pwde.app.ui.components.PwdeBottomNav
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeToggleButton
-import com.pwde.app.ui.components.StatusPill
+import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.scaled
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -103,7 +109,7 @@ class DashboardViewModel(
     }
 }
 
-enum class DashboardDestination { CONTROLS, VOICE, TESTING_STATION, WATCH_TUTORIAL, GABAI, START_PLAYING }
+enum class DashboardDestination { CONTROLS, VOICE, TESTING_STATION, WATCH_TUTORIAL, GABAI, START_PLAYING, INPUT }
 
 private const val USE_PWDE = "use_pwde"
 
@@ -111,6 +117,7 @@ private val DASHBOARD_COMMANDS = listOf(
     voiceCommand(USE_PWDE, "use pwde", "turn on pwde"),
     voiceCommand(DashboardDestination.START_PLAYING.name, "start playing", "play", "start"),
     voiceCommand(DashboardDestination.CONTROLS.name, "controls"),
+    voiceCommand(DashboardDestination.INPUT.name, "input", "input mode"),
     voiceCommand(DashboardDestination.VOICE.name, "voice"),
     voiceCommand(DashboardDestination.WATCH_TUTORIAL.name, "watch tutorial", "tutorial"),
     voiceCommand(DashboardDestination.GABAI.name, "gabai", "gab ai", "gabby", "setup assistant"),
@@ -169,9 +176,9 @@ fun DashboardScreen(
 
         PlayYourWayPanel(onStart = { onNavigate(DashboardDestination.START_PLAYING) })
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Using:", style = MaterialTheme.typography.labelMedium, color = colors.text)
-            StatusPill(state.inputMode.label, icon = state.inputMode.icon())
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Using:", style = MaterialTheme.typography.titleMedium, color = colors.text)
+            BigStatusPill(state.inputMode.label, icon = state.inputMode.icon())
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
@@ -180,7 +187,7 @@ fun DashboardScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             if (showTestingStation) {
-                EntryCard("Testing Station", Icons.Outlined.Radar, Modifier.weight(1f), subtitle = "Debug build") {
+                EntryCard("Testing Station", Icons.Outlined.Radar, Modifier.weight(1f)) {
                     onNavigate(DashboardDestination.TESTING_STATION)
                 }
             }
@@ -189,6 +196,27 @@ fun DashboardScreen(
         EntryCard("GabAI setup", Icons.Outlined.AutoAwesome, Modifier.fillMaxWidth(), subtitle = "Guided calibration assistant") {
             onNavigate(DashboardDestination.GABAI)
         }
+    }
+}
+
+/**
+ * Larger version of StatusPill for the "Using:" input-mode status: 48dp tall, 24dp icon, titleMedium
+ * text. Status only (not tappable); the icon and text grow with the user's text size.
+ */
+@Composable
+private fun BigStatusPill(text: String, icon: ImageVector, color: Color = PwdeTheme.colors.primary) {
+    Row(
+        Modifier
+            .heightIn(min = 48.dp)
+            .clip(PwdeShapes.pill)
+            .background(color.copy(alpha = 0.18f))
+            .border(1.5.dp, color, PwdeShapes.pill)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp.scaled()))
+        Text(text, style = MaterialTheme.typography.titleMedium, color = color)
     }
 }
 
@@ -242,10 +270,9 @@ private fun PlayYourWayPanel(onStart: () -> Unit) {
 private fun statusLines(state: DashboardUiState, pwdeOn: Boolean): List<String> {
     val voice = state.voice
     val (voiceText, voiceOk) = when {
-        voice.usesTextFallback -> "Voice: typed commands (${voice.availability.label.lowercase()})" to false
-        !voice.enabled -> "Voice: off" to false
-        voice.listening -> "Voice: listening" to true
-        else -> "Voice: on" to true
+        !voice.enabled -> "" to false // add text later
+        voice.listening -> "" to true
+        else -> "" to true
     }
     val summary = when {
         !pwdeOn -> "PWDe is off · tap to turn it on in Settings"

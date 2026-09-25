@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.iconSizeFor
 import com.pwde.app.ui.theme.scaled
 
 @Composable
@@ -96,7 +97,28 @@ fun IconBadge(icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 44.dp
             .border(1.5.dp, tint, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(badgeSize * 0.55f))
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(iconSizeFor(badgeSize, 0.55f)))
+    }
+}
+
+@Composable
+fun CheckBadge(
+    description: String?,
+    modifier: Modifier = Modifier,
+    color: Color = PwdeTheme.colors.primary,
+    size: Dp = 22.dp,
+) {
+    val badgeSize = size.scaled()
+    Box(
+        modifier
+            .size(badgeSize)
+            .clip(CircleShape)
+            .background(color)
+            .border(1.5.dp, PwdeTheme.colors.background, CircleShape)
+            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.Check, contentDescription = null, tint = PwdeTheme.colors.onAccent, modifier = Modifier.size(badgeSize * 0.7f))
     }
 }
 

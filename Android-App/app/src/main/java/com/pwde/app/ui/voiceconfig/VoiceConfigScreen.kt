@@ -1,17 +1,25 @@
 package com.pwde.app.ui.voiceconfig
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.MicOff
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,7 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -53,6 +64,8 @@ import com.pwde.app.ui.components.VoiceCommandsEffect
 import com.pwde.app.ui.components.rememberMicPermissionRequest
 import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.theme.PwdeTheme
+import com.pwde.app.ui.theme.iconSizeFor
+import com.pwde.app.ui.theme.scaled
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -119,7 +132,10 @@ private val VOICE_CONFIG_COMMANDS = listOf(
     voiceCommand("after", "after I finish", "after finish"),
     voiceCommand("next_page", "next page", "commands"),
     voiceCommand("previous_page", "previous page", "previous"),
+    voiceCommand("all_commands", "all commands", "all voice commands"),
 )
+
+private const val PAGE_COUNT = 3
 
 /** E11/E12 Voice: live mic, on/off, matching and activation modes, and the full command list. */
 @Composable
@@ -139,25 +155,25 @@ fun VoiceConfigScreen(viewModel: VoiceConfigViewModel, onBack: () -> Unit) {
             "anywhere" -> viewModel.setMatchMode(VoiceMatchMode.WORD_ANYWHERE)
             "immediate" -> viewModel.setActivationMode(VoiceActivationMode.IMMEDIATE)
             "after" -> viewModel.setActivationMode(VoiceActivationMode.AFTER_FINISH)
-            "next_page" -> page = 2
-            "previous_page" -> page = 1
+            "next_page" -> page = (page + 1).coerceAtMost(PAGE_COUNT)
+            "previous_page" -> page = (page - 1).coerceAtLeast(1)
+            "all_commands" -> page = PAGE_COUNT
         }
+    }
+    val setVoice: (Boolean) -> Unit = { enabled ->
+        if (enabled && !viewModel.hasMicPermission) requestMic() else viewModel.setVoiceEnabled(enabled)
     }
     PwdeScreen(
         title = "Voice",
         subtitle = "Say a button's name to press it. Changes save automatically.",
         onBack = onBack,
-        voiceHint = "Say \"word anywhere\", \"right away\" or \"next page\"",
-        footer = { Pager(page, 2, { page = 1 }, { page = 2 }) },
+        voiceHint = "Say \"word anywhere\", \"right away\" or \"all commands\"",
+        footer = { Pager(page, PAGE_COUNT, { page-- }, { page++ }) },
     ) {
         val current = config ?: return@PwdeScreen
         if (page == 1) {
-            SwitchRow(
-                "Voice control",
-                current.voiceEnabled,
-                { enabled -> if (enabled && !viewModel.hasMicPermission) requestMic() else viewModel.setVoiceEnabled(enabled) },
-                icon = Icons.Outlined.Mic,
-            )
+            BigMicButton(on = current.voiceEnabled, listening = voice.listening, onToggle = setVoice)
+            SwitchRow("Voice control", current.voiceEnabled, setVoice, icon = Icons.Outlined.Mic)
             MicLevel(voice, levels)
             SectionTitle("How words are matched")
             Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
@@ -177,7 +193,7 @@ fun VoiceConfigScreen(viewModel: VoiceConfigViewModel, onBack: () -> Unit) {
                     )
                 }
             }
-        } else {
+        } else if (page == 2) {
             SectionTitle("Your spoken shortcuts")
             VoiceShortcut.entries.forEach { shortcut ->
                 PwdeTextField(
@@ -193,8 +209,49 @@ fun VoiceConfigScreen(viewModel: VoiceConfigViewModel, onBack: () -> Unit) {
                 SectionTitle("On this screen")
                 CommandList(screenCommands.map { it.phrases.joinToString(" / ") })
             }
-            InfoNote("Every screen adds its own commands — usually the words on its buttons and cards.")
+            InfoNote("Every screen adds its own commands — usually the words on its buttons and cards. See them all on the next page.")
+        } else {
+            SectionTitle("All voice commands")
+            val shortcuts = StandardCommands.shortcuts(phrases.orEmpty())
+            allVoiceCommandGroups(VOICE_CONFIG_COMMANDS, shortcuts).forEach { group ->
+                SectionTitle(group.title)
+                CommandList(group.commands.map { it.phrases.joinToString(" / ") })
+            }
         }
+    }
+}
+
+/**
+ * Large dedicated mic toggle (88dp; the voice bar's mic is 60dp). Same on/off and mic-permission
+ * flow as the "Voice control" switch below it, which stays as a secondary control.
+ */
+@Composable
+private fun BigMicButton(on: Boolean, listening: Boolean, onToggle: (Boolean) -> Unit) {
+    val colors = PwdeTheme.colors
+    val size = 88.dp
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(if (on) colors.buttonBrush else SolidColor(colors.surfaceMuted))
+                .border(if (listening) 4.dp else 2.dp, colors.primary, CircleShape)
+                .toggleable(value = on, role = Role.Switch, onValueChange = onToggle)
+                .semantics { contentDescription = "Voice control" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (on) Icons.Outlined.Mic else Icons.Outlined.MicOff,
+                contentDescription = null,
+                tint = if (on) colors.onAccent else colors.primary,
+                modifier = Modifier.size(iconSizeFor(size, 0.45f).scaled().coerceAtMost(size * 0.65f)),
+            )
+        }
+        Text(
+            if (on) "Voice is on · tap to turn it off" else "Tap to turn voice on",
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.text,
+        )
     }
 }
 
