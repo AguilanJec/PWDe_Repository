@@ -35,6 +35,7 @@ import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ProducerScope
@@ -49,6 +50,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -89,7 +91,7 @@ interface FaceTrackingManager {
  * landmarker with blendshapes. Unlike GameFace there is no AccessibilityService: tracking only
  * drives PWDe's own screens.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class MediaPipeFaceTrackingManager(
     context: Context,
     private val controlsRepository: ControlsRepository,
@@ -224,11 +226,28 @@ class MediaPipeFaceTrackingManager(
                     }
                 }
                 owner.start()
-                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+                // Tracking needs only the analysis stream. The preview is added while a screen shows it:
+                // CameraX delivers no frames at all while a bound preview has no surface, which is the
+                // case whenever PWDe runs in the background over a game.
+                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
             }.onFailure { Log.e(TAG, "Couldn't open the front camera", it) }.isSuccess
         }
 
         if (bound) {
+            launch(Dispatchers.Main) {
+                _surfaceRequest.subscriptionCount
+                    .map { it > 0 }
+                    .distinctUntilChanged()
+                    // Screen changes briefly drop the count to zero; don't restart the preview for that.
+                    .debounce { shown -> if (shown) 0L else PREVIEW_RELEASE_DELAY_MS }
+                    .collect { shown ->
+                        runCatching {
+                            provider.unbind(preview)
+                            _surfaceRequest.value = null
+                            if (shown) provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview)
+                        }.onFailure { Log.w(TAG, "Couldn't ${if (shown) "show" else "hide"} the camera preview", it) }
+                    }
+            }
             launch(Dispatchers.Default) {
                 for ((result, timestamp) in results) {
                     val next = processor.process(
@@ -306,6 +325,9 @@ class MediaPipeFaceTrackingManager(
 
         /** ~30 FPS. */
         private const val FRAME_INTERVAL_MS = 33L
+
+        /** How long no screen may show the preview before it's detached. */
+        private const val PREVIEW_RELEASE_DELAY_MS = 500L
     }
 }
 
