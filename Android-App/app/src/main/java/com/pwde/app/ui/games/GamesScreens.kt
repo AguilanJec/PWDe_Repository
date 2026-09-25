@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -47,6 +48,8 @@ import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.SectionTitle
 import com.pwde.app.ui.components.StatusPill
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 import kotlinx.coroutines.flow.SharingStarted
@@ -61,10 +64,26 @@ class GamesViewModel(profileRepository: ProfileRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 }
 
+/** Say a game's name to open it; say a tab's name to switch tabs. */
+private fun gameCommands(current: MainTab) = Game.entries.map { voiceCommand("game:${it.id}", it.displayName) } +
+    MainTab.entries.filter { it != current }.map { voiceCommand("tab:${it.name}", it.label) }
+
+@Composable
+private fun GameListVoice(current: MainTab, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
+    val commands = remember(current) { gameCommands(current) }
+    VoiceCommandsEffect(commands) { id ->
+        when {
+            id.startsWith("game:") -> Game.byId(id.removePrefix("game:"))?.let(onGame)
+            id.startsWith("tab:") -> onTab(MainTab.valueOf(id.removePrefix("tab:")))
+        }
+    }
+}
+
 /** D2 Games: tiles show their setup status. */
 @Composable
 fun GamesScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
     val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
+    GameListVoice(MainTab.GAMES, onGame, onTab)
     PwdeScreen(
         title = "Games",
         subtitle = "Pick a game to play or set up.",
@@ -113,11 +132,12 @@ private fun GameArt(game: Game) {
 @Composable
 fun GameDetailScreen(game: Game, onBack: () -> Unit, onPlay: () -> Unit, onSetUpWithGabAi: () -> Unit) {
     val colors = PwdeTheme.colors
+    VoiceCommandsEffect(GAME_DETAIL_COMMANDS) { id -> if (id == "play") onPlay() else onSetUpWithGabAi() }
     PwdeScreen(
         title = game.displayName,
         subtitle = game.genre,
         onBack = onBack,
-        voiceHint = "Say \"launch game\"",
+        voiceHint = "Say \"play\" or \"launch game\"",
         footer = { PwdeButton("Play ${game.displayName} with PWDe", onPlay, icon = Icons.Outlined.SportsEsports, modifier = Modifier.fillMaxWidth()) },
     ) {
         GameArt(game)
@@ -129,7 +149,8 @@ fun GameDetailScreen(game: Game, onBack: () -> Unit, onPlay: () -> Unit, onSetUp
         )
         PwdeButton("Set up with GabAI", onSetUpWithGabAi, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.fillMaxWidth())
         InfoNote(
-            "The next screen is a preview of the in-game overlay. It doesn't open the real game yet.",
+            "Play opens PWDe's live overlay over a simulated game — your head, face and voice really drive it, " +
+                "but the real game isn't launched.",
             icon = Icons.Outlined.Info,
         )
     }
@@ -161,12 +182,20 @@ private enum class GameFilter(val label: String, val matches: (Game, Set<String>
     READY("Profile ready", { g, ids -> g.id in ids }),
 }
 
+private val GAME_DETAIL_COMMANDS = listOf(
+    voiceCommand("play", "play", "launch game", "launch", "start"),
+    voiceCommand("gabai", "set up with gabai", "gabai", "gab ai"),
+)
+
 /** Filter: narrow the game list by genre or setup status. */
 @Composable
 fun FilterScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
     val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(GameFilter.ALL) }
     val results = Game.entries.filter { filter.matches(it, withProfiles) }
+    GameListVoice(MainTab.FILTER, onGame, onTab)
+    val filterCommands = remember { GameFilter.entries.map { voiceCommand(it.name, it.label) } }
+    VoiceCommandsEffect(filterCommands) { id -> filter = GameFilter.valueOf(id) }
     PwdeScreen(
         title = "Filter",
         subtitle = "Find a game by type or setup status.",

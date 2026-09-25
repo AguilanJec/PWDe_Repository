@@ -1,0 +1,12 @@
+PWDe (SAWADIKAP)
+
+This product includes software adapted from Project GameFace
+(https://github.com/google/project-gameface), Copyright 2023 Google LLC,
+licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0). Adapted parts: the camera →
+MediaPipe Face Landmarker pipeline, blendshape-threshold gesture triggers, and
+relative head-pointer movement (app/src/main/java/com/pwde/app/sensors/face/).
+
+This product bundles the MediaPipe Face Landmarker model
+(app/src/main/assets/face_landmarker.task) and uses the MediaPipe Tasks
+library, Copyright Google LLC, licensed under the Apache License, Version 2.0.

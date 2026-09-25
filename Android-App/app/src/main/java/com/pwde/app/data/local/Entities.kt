@@ -1,11 +1,12 @@
 package com.pwde.app.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/** A saved set of control tunings. Created by GabAI (Prompt 3). */
+/** A saved set of control tunings. Created by GabAI (Prompt 3) from [ControlSettingsEntity]. */
 @Entity(tableName = "calibration_profiles")
 data class CalibrationProfile(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -18,8 +19,11 @@ data class CalibrationProfile(
     val joystickSensitivity: Int = 5,
     val joystickDeadZone: Int = 3,
     val joystickRadius: Int = 5,
+    @ColumnInfo(defaultValue = "7") val cursorSmoothing: Int = 7,
     /** JSON map of GestureAction name -> FacialGesture name. */
     val gestureAssignmentsJson: String = "{}",
+    /** JSON map of FacialGesture name -> sensitivity level 1–10. */
+    @ColumnInfo(defaultValue = "{}") val gestureSensitivityJson: String = "{}",
     val voiceEnabled: Boolean = true,
     val voiceMatchMode: String,
     val voiceActivationMode: String,
@@ -58,8 +62,9 @@ data class GameProfile(
 )
 
 /**
- * The single working copy of the user's controls (gesture picks, voice options). GabAI
- * snapshots this into a [CalibrationProfile] in Prompt 3. Always row [SINGLETON_ID].
+ * The single working copy of the user's controls (gesture picks and sensitivities, voice options,
+ * cursor and joystick tuning). This is the default / in-progress calibration that tracking reads
+ * live; GabAI snapshots it into a [CalibrationProfile] in Prompt 3. Always row [SINGLETON_ID].
  */
 @Entity(tableName = "control_settings")
 data class ControlSettingsEntity(
@@ -70,6 +75,17 @@ data class ControlSettingsEntity(
     val voiceActivationMode: String,
     val voiceShortcutsJson: String,
     val updatedAt: Long,
+    @ColumnInfo(defaultValue = "{}") val gestureSensitivityJson: String = "{}",
+    @ColumnInfo(defaultValue = "5") val cursorSpeedUp: Int = 5,
+    @ColumnInfo(defaultValue = "5") val cursorSpeedDown: Int = 5,
+    @ColumnInfo(defaultValue = "5") val cursorSpeedLeft: Int = 5,
+    @ColumnInfo(defaultValue = "5") val cursorSpeedRight: Int = 5,
+    @ColumnInfo(defaultValue = "7") val cursorSmoothing: Int = 7,
+    @ColumnInfo(defaultValue = "5") val joystickSize: Int = 5,
+    @ColumnInfo(defaultValue = "5") val joystickSensitivity: Int = 5,
+    @ColumnInfo(defaultValue = "3") val joystickDeadZone: Int = 3,
+    @ColumnInfo(defaultValue = "0") val joystickCenterPitch: Float = 0f,
+    @ColumnInfo(defaultValue = "0") val joystickCenterRoll: Float = 0f,
 ) {
     companion object {
         const val SINGLETON_ID = 0

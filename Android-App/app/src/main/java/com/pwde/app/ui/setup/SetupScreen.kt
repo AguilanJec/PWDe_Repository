@@ -54,7 +54,14 @@ import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.LevelStepper
 import com.pwde.app.ui.components.OptionCard
 import com.pwde.app.ui.components.OptionKind
-import com.pwde.app.ui.components.PlaceholderNotice
+import com.pwde.app.sensors.face.TrackingStatus
+import com.pwde.app.ui.common.FaceTrackingViewModel
+import com.pwde.app.ui.components.ButtonStyle
+import com.pwde.app.ui.components.CameraFeed
+import com.pwde.app.ui.components.DemoModeBanner
+import com.pwde.app.ui.components.PwdeButton
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.SectionTitle
 import com.pwde.app.ui.components.StepProgress
@@ -63,11 +70,32 @@ import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 import com.pwde.app.ui.theme.colorsFor
 
-/** B · Setup. The whole screen renders in the draft theme, so appearance changes preview live. */
+private val SETUP_COMMANDS = listOf(
+    voiceCommand("continue", "continue", "next", "finish"),
+    voiceCommand("skip", "skip"),
+    voiceCommand("bigger", "bigger", "larger"),
+    voiceCommand("smaller", "smaller"),
+) + AccessibilityNeed.entries.map { voiceCommand("need:${it.name}", it.label) } +
+    InputMode.entries.map { voiceCommand("input:${it.name}", it.label, it.label.substringBefore(' ')) }
+
+/**
+ * B · Setup. The whole screen renders in the draft theme, so appearance changes preview live.
+ * [tryIt] drives the live "Try it now" pointer on the input step (camera starts only there).
+ */
 @Composable
-fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () -> Unit) {
+fun SetupScreen(viewModel: SetupViewModel, tryIt: FaceTrackingViewModel, onExit: () -> Unit, onFinished: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.finished) { if (state.finished) onFinished() }
+    VoiceCommandsEffect(SETUP_COMMANDS) { id ->
+        when {
+            id == "continue" -> viewModel.continueStep()
+            id == "skip" -> viewModel.skipStep()
+            id == "bigger" -> TextSizeOption.entries.getOrNull(state.textSize.ordinal + 1)?.let(viewModel::setTextSize)
+            id == "smaller" -> TextSizeOption.entries.getOrNull(state.textSize.ordinal - 1)?.let(viewModel::setTextSize)
+            id.startsWith("need:") -> viewModel.toggleNeed(AccessibilityNeed.valueOf(id.removePrefix("need:")))
+            id.startsWith("input:") -> viewModel.setInputMode(InputMode.valueOf(id.removePrefix("input:")))
+        }
+    }
     BackHandler { if (!viewModel.back()) onExit() }
     if (!state.loaded) return
 
@@ -110,7 +138,7 @@ fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () ->
             when (state.step) {
                 SetupStep.NEEDS -> NeedsStep(state.needs, viewModel::toggleNeed)
                 SetupStep.APPEARANCE -> AppearanceStep(state, viewModel)
-                SetupStep.INPUT -> InputStep(state, viewModel)
+                SetupStep.INPUT -> InputStep(state, viewModel, tryIt)
             }
         }
     }
@@ -203,7 +231,7 @@ private fun ColorSchemeTile(option: ColorSchemeOption, selected: Boolean, onClic
 }
 
 @Composable
-private fun InputStep(state: SetupUiState, viewModel: SetupViewModel) {
+private fun InputStep(state: SetupUiState, viewModel: SetupViewModel, tryIt: FaceTrackingViewModel) {
     Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
         InputMode.entries.forEach { mode ->
             OptionCard(
@@ -217,15 +245,69 @@ private fun InputStep(state: SetupUiState, viewModel: SetupViewModel) {
         }
     }
     SectionTitle("Try it now")
-    PlaceholderNotice(
-        title = "Live preview available after Prompt 2",
-        body = "Camera and microphone aren't connected yet, so PWDe can't follow your ${state.inputMode.label.lowercase()} " +
-            "here. Below is a manual simulation only — nothing is being tracked.",
-    )
-    SimulatedTarget(state.simulatedPosition, viewModel::setSimulatedPosition)
+    LiveTarget(state, viewModel, tryIt)
 }
 
-/** A manual stand-in for the live preview: the slider moves the pointer. Clearly labelled as simulated. */
+/**
+ * Live preview: head tracking moves the pointer onto the ring (joystick mode: head tilt). If no
+ * camera or motion sensor can be used at all, falls back to the manual, clearly labelled slider.
+ */
+@Composable
+private fun LiveTarget(state: SetupUiState, viewModel: SetupViewModel, tryIt: FaceTrackingViewModel) {
+    val face by tryIt.faceState.collectAsStateWithLifecycle()
+    val surface by tryIt.surfaceRequest.collectAsStateWithLifecycle()
+    if (face.status is TrackingStatus.Unavailable) {
+        SimulatedTarget(state.simulatedPosition, viewModel::setSimulatedPosition)
+        return
+    }
+    val position = if (state.inputMode == InputMode.JOYSTICK) (0.5f + face.joystick.x / 2f) else face.cursor.x
+    DemoModeBanner(face)
+    Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap), verticalAlignment = Alignment.CenterVertically) {
+        CameraFeed(
+            faceState = face,
+            surfaceRequest = surface,
+            canRequestCamera = tryIt.canRequestCamera,
+            onCameraPermissionResult = tryIt::onCameraPermissionResult,
+            modifier = Modifier.weight(0.45f),
+        )
+        Column(Modifier.weight(0.55f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TargetTrack(position.coerceIn(0f, 1f))
+            Text(
+                when {
+                    position > 0.9f -> "On target! That's how you'll aim in games."
+                    !face.hasFace && !face.isSimulated -> "Face the camera to start."
+                    state.inputMode == InputMode.JOYSTICK -> "Tilt your head right to push the joystick onto the ring."
+                    face.isSimulated -> "Tilt your phone right to move the pointer onto the ring."
+                    else -> "Turn your head right to move the pointer onto the ring."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = PwdeTheme.colors.text,
+            )
+            if (state.inputMode != InputMode.JOYSTICK) {
+                PwdeButton("Recenter", tryIt::recenterCursor, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun TargetTrack(position: Float) {
+    val colors = PwdeTheme.colors
+    BoxWithConstraints(Modifier.fillMaxWidth().height(72.dp).semantics { contentDescription = "Pointer ${(position * 100).toInt()} percent of the way to the target" }) {
+        val travel = maxWidth - 40.dp
+        Box(Modifier.align(Alignment.CenterEnd).size(56.dp).clip(CircleShape).border(3.dp, colors.primary, CircleShape))
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = travel * position)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.secondary),
+        )
+    }
+}
+
+/** Last-resort stand-in when neither camera nor motion sensors work: the slider moves the pointer. */
 @Composable
 private fun SimulatedTarget(position: Float, onPositionChange: (Float) -> Unit) {
     val colors = PwdeTheme.colors
@@ -237,7 +319,7 @@ private fun SimulatedTarget(position: Float, onPositionChange: (Float) -> Unit) 
             .padding(PwdeTheme.spacing.internal),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("SIMULATED — drag the slider", style = MaterialTheme.typography.labelSmall, color = colors.warning)
+        Text("SIMULATED — no camera or motion sensor. Drag the slider.", style = MaterialTheme.typography.labelSmall, color = colors.warning)
         BoxWithConstraints(Modifier.fillMaxWidth().height(72.dp)) {
             val travel = maxWidth - 40.dp
             Box(
@@ -261,7 +343,7 @@ private fun SimulatedTarget(position: Float, onPositionChange: (Float) -> Unit) 
             colors = SliderDefaults.colors(thumbColor = colors.primary, activeTrackColor = colors.primary),
         )
         Text(
-            if (position > 0.9f) "On target! In Prompt 2 your head or voice will do this."
+            if (position > 0.9f) "On target! With a camera, your head does this."
             else "Move the pointer onto the ring.",
             style = MaterialTheme.typography.bodySmall,
             color = colors.text,

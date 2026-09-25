@@ -32,6 +32,8 @@ import com.pwde.app.data.prefs.TtsSpeed
 import com.pwde.app.data.speech.SpeechStatus
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.FooterActions
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.IconBadge
 import com.pwde.app.ui.components.InfoNote
@@ -47,9 +49,15 @@ import com.pwde.app.ui.theme.PwdeTheme
 
 private val stepLabels = listOf("Say the button name", "Everything is voice controlled", "Read the screen aloud")
 
-/** C · Voice tutorial: three skippable steps. Informational until voice lands in Prompt 2, except TTS. */
+private val TUTORIAL_COMMANDS = listOf(
+    voiceCommand("next", "next", "continue", "finish"),
+    voiceCommand("skip", "skip"),
+)
+
+/** C · Voice tutorial: three skippable steps, controllable by voice ("next", "skip"). */
 @Composable
 fun VoiceTutorialScreen(viewModel: VoiceTutorialViewModel, onExit: () -> Unit, onFinished: () -> Unit) {
+    VoiceCommandsEffect(TUTORIAL_COMMANDS) { id -> if (id == "next") viewModel.next() else viewModel.skip() }
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.finished) { if (state.finished) onFinished() }
     BackHandler { if (!viewModel.back()) onExit() }
@@ -133,7 +141,7 @@ private fun EverythingVoiceStep() {
     AreaRow(Icons.Outlined.Settings, "Menus & settings", "Say any card or button name")
     AreaRow(Icons.Outlined.OpenWith, "Moving things", "Say \"move joystick up\" to reposition controls")
     AreaRow(Icons.Outlined.SportsEsports, "While you play", "Say \"pause\", \"recenter\" or a custom button's name")
-    InfoNote("Voice recognition switches on in the next update (Prompt 2). For now this is a preview of what's coming.")
+    InfoNote("Voice is on now: try saying \"next\". Moving controls by voice arrives with custom buttons in a later update.")
 }
 
 @Composable

@@ -31,7 +31,7 @@ enum class ButtonStyle { PRIMARY, SECONDARY, DESTRUCTIVE }
 
 /**
  * Full-width 56dp button. Primary = mint→purple gradient; secondary = outlined; destructive = red.
- * The visible text doubles as the button's spoken name for voice control (Prompt 2).
+ * The visible text doubles as the button's spoken name: screens register it as a voice command.
  */
 @Composable
 fun PwdeButton(

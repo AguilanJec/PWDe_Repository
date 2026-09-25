@@ -14,6 +14,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CenterFocusStrong
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Face
@@ -29,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,11 +39,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.data.model.MAX_LEVEL
+import com.pwde.app.data.model.MIN_LEVEL
+import com.pwde.app.data.model.faceOutputMode
 import com.pwde.app.data.prefs.InputMode
+import com.pwde.app.sensors.face.GestureThresholds
+import com.pwde.app.sensors.voice.VoiceCommand
 import com.pwde.app.ui.components.ButtonStyle
+import com.pwde.app.ui.components.CameraFeed
+import com.pwde.app.ui.components.CursorPad
+import com.pwde.app.ui.components.DemoModeBanner
+import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
+import com.pwde.app.ui.components.InfoNote
+import com.pwde.app.ui.components.JoystickView
 import com.pwde.app.ui.components.LevelStepper
 import com.pwde.app.ui.components.NavCard
 import com.pwde.app.ui.components.OptionCard
@@ -50,17 +64,32 @@ import com.pwde.app.ui.components.Pager
 import com.pwde.app.ui.components.PlaceholderNotice
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
+import com.pwde.app.ui.components.SectionTitle
 import com.pwde.app.ui.components.SegmentedToggle
 import com.pwde.app.ui.components.StatusPill
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.fmt
+import com.pwde.app.ui.components.levelWord
+import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.dashboard.icon
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 
 enum class ControlsDestination { INPUT, GESTURES, CURSOR, JOYSTICK, VOICE, CUSTOM_BUTTONS }
 
+private val HUB_COMMANDS = listOf(
+    voiceCommand(ControlsDestination.INPUT.name, "input", "input mode"),
+    voiceCommand(ControlsDestination.GESTURES.name, "gestures", "gesture"),
+    voiceCommand(ControlsDestination.CURSOR.name, "cursor speed", "cursor", "pointer"),
+    voiceCommand(ControlsDestination.JOYSTICK.name, "joystick"),
+    voiceCommand(ControlsDestination.VOICE.name, "voice"),
+    voiceCommand(ControlsDestination.CUSTOM_BUTTONS.name, "custom buttons"),
+)
+
 /** E1 Controls hub: six compact cards. */
 @Composable
 fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit) {
+    VoiceCommandsEffect(HUB_COMMANDS) { id -> onOpen(ControlsDestination.valueOf(id)) }
     PwdeScreen(
         title = "Controls",
         subtitle = "Everything that controls your games.",
@@ -76,10 +105,17 @@ fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit)
     }
 }
 
-/** Input mode picker. Saved to settings right away. */
+private val INPUT_COMMANDS = listOf(
+    voiceCommand(InputMode.HEAD_FACE.name, "head", "head and face", "face"),
+    voiceCommand(InputMode.JOYSTICK.name, "joystick"),
+    voiceCommand(InputMode.VOICE.name, "voice"),
+)
+
+/** Input mode picker. Saved right away; head tracking switches between pointer and joystick live. */
 @Composable
 fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
     val selected by viewModel.inputMode.collectAsStateWithLifecycle()
+    VoiceCommandsEffect(INPUT_COMMANDS) { id -> viewModel.select(InputMode.valueOf(id)) }
     PwdeScreen(
         title = "Input",
         subtitle = "Your main way to control games. Saved automatically.",
@@ -98,14 +134,26 @@ fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
                 )
             }
         }
-        PlaceholderNotice(
-            "Calibration comes next",
-            "Centering, range and live testing for each input arrive with camera and mic support in Prompt 2.",
+        selected?.let { mode ->
+            val output = mode.faceOutputMode()
+            StatusPill(
+                "Head movement drives: ${output.label}",
+                icon = if (output == FaceOutputMode.JOYSTICK) Icons.Outlined.Gamepad else Icons.Outlined.Mouse,
+            )
+        }
+        InfoNote(
+            "Head & face and Voice move a pointer with your head. Joystick turns head tilt into an 8-way joystick. " +
+                "Switch any time by saying \"cursor mode\" or \"joystick mode\".",
         )
     }
 }
 
 private const val ACTIONS_PER_PAGE = 4
+
+private val GESTURES_COMMANDS = GestureAction.entries.map { voiceCommand(it.name, "change ${it.label}", it.label) } + listOf(
+    voiceCommand("next_page", "next page"),
+    voiceCommand("previous_page", "previous page", "previous"),
+)
 
 /** E2/E3 Gestures: 8 actions over two pages, conflicts flagged. */
 @Composable
@@ -113,6 +161,13 @@ fun GesturesScreen(viewModel: GesturesViewModel, onBack: () -> Unit, onChoose: (
     val config by viewModel.config.collectAsStateWithLifecycle()
     var page by rememberSaveable { mutableIntStateOf(1) }
     val pages = GestureAction.entries.chunked(ACTIONS_PER_PAGE)
+    VoiceCommandsEffect(GESTURES_COMMANDS) { id ->
+        when (id) {
+            "next_page" -> if (page < pages.size) page++
+            "previous_page" -> if (page > 1) page--
+            else -> onChoose(GestureAction.valueOf(id))
+        }
+    }
     PwdeScreen(
         title = "Gestures",
         subtitle = "Pick a face move for each action.",
@@ -128,7 +183,11 @@ fun GesturesScreen(viewModel: GesturesViewModel, onBack: () -> Unit, onChoose: (
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(action.label, style = MaterialTheme.typography.titleMedium, color = PwdeTheme.colors.text)
-                        Text(gesture?.label ?: "Not set", style = MaterialTheme.typography.bodySmall, color = PwdeTheme.colors.textMuted)
+                        Text(
+                            gesture?.let { "${it.label} · sensitivity ${levelWord(current.sensitivityOf(it)).lowercase()}" } ?: "Not set",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PwdeTheme.colors.textMuted,
+                        )
                         if (conflict.isNotEmpty()) {
                             StatusPill(
                                 "Same as ${conflict.joinToString { it.label }}",
@@ -146,23 +205,59 @@ fun GesturesScreen(viewModel: GesturesViewModel, onBack: () -> Unit, onChoose: (
                 }
             }
         }
-        PlaceholderNotice(
-            "Saved, not active yet",
-            "Your picks are stored on this phone. PWDe starts reacting to them once face tracking lands in Prompt 2.",
+        InfoNote(
+            "Gestures fire their actions in PWDe's play overlay. Notifications, All apps and Touch & hold need " +
+                "system access PWDe doesn't have, so they act inside the overlay only, not on the rest of your phone.",
         )
     }
 }
 
-/** E4/E5 Choose a gesture from the catalog. Moves already in use are marked. */
+/** Which part of the catalog is shown: curated gestures, or all 52 raw MediaPipe blendshapes. */
+enum class GestureCatalog(val label: String, val gestures: List<FacialGesture>) {
+    GESTURES("Gestures (${FacialGesture.curated.size})", FacialGesture.curated),
+    MEDIAPIPE("MediaPipe (${FacialGesture.raw.size})", FacialGesture.raw),
+}
+
+private fun gesturePickCommands(catalog: GestureCatalog) = catalog.gestures.map { gesture ->
+    val extra = when (gesture) {
+        FacialGesture.EYEBROW_RAISE -> listOf("eyebrows", "raise eyebrows")
+        FacialGesture.OPEN_MOUTH -> listOf("mouth")
+        FacialGesture.CHEEK_PUFF -> listOf("cheek puff", "puff")
+        FacialGesture.CLOSE_EYES -> listOf("close eyes")
+        FacialGesture.SHAKE -> listOf("shake")
+        else -> emptyList()
+    }
+    VoiceCommand(gesture.name, listOf(gesture.spokenName) + extra)
+} + listOf(
+    voiceCommand("clear", "clear"),
+    voiceCommand("done", "done"),
+    voiceCommand("tab:GESTURES", "gestures", "curated"),
+    voiceCommand("tab:MEDIAPIPE", "mediapipe", "media pipe", "all blendshapes", "blendshapes"),
+)
+
+/** E4/E5 Choose a gesture from the catalog, by tap or by voice; tune its sensitivity and try it live. */
 @Composable
 fun ChooseGestureScreen(viewModel: ChooseGestureViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val colors = PwdeTheme.colors
+    // Open on the list that holds the current pick.
+    var catalog by rememberSaveable(state.selected?.isRaw) {
+        mutableStateOf(if (state.selected?.isRaw == true) GestureCatalog.MEDIAPIPE else GestureCatalog.GESTURES)
+    }
+    val commands = remember(catalog) { gesturePickCommands(catalog) }
+    VoiceCommandsEffect(commands) { id ->
+        when {
+            id == "clear" -> viewModel.clear()
+            id == "done" -> onBack()
+            id.startsWith("tab:") -> catalog = GestureCatalog.valueOf(id.removePrefix("tab:"))
+            else -> viewModel.select(FacialGesture.valueOf(id))
+        }
+    }
     PwdeScreen(
         title = "Gesture for \"${state.action.label}\"",
         subtitle = "Pick one. Moves already in use are marked.",
         onBack = onBack,
-        voiceHint = "Say a gesture's name",
+        voiceHint = "Say a gesture's name, like \"smile\"",
         footer = {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PwdeButton("Clear", viewModel::clear, style = ButtonStyle.SECONDARY, enabled = state.selected != null, modifier = Modifier.weight(1f))
@@ -170,7 +265,11 @@ fun ChooseGestureScreen(viewModel: ChooseGestureViewModel, onBack: () -> Unit) {
             }
         },
     ) {
-        FacialGesture.entries.chunked(2).forEach { row ->
+        SegmentedToggle(GestureCatalog.entries, catalog, { it.label }, { catalog = it })
+        if (catalog == GestureCatalog.MEDIAPIPE) {
+            InfoNote("Each of MediaPipe's 52 face scores on its own, named as MediaPipe names them. Say a name like \"brow down left\".")
+        }
+        catalog.gestures.chunked(2).forEach { row ->
             Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
                 row.forEach { gesture ->
                     GestureTile(
@@ -190,7 +289,52 @@ fun ChooseGestureScreen(viewModel: ChooseGestureViewModel, onBack: () -> Unit) {
                 color = colors.warning,
             )
         }
+        state.selected?.let { gesture ->
+            TryGesture(viewModel, gesture, state.sensitivityOf(gesture), Modifier.align(Alignment.CenterHorizontally))
+        }
     }
+}
+
+/** Sensitivity for the chosen move plus a live meter from the camera, so the user can feel it out. */
+@Composable
+private fun TryGesture(viewModel: ChooseGestureViewModel, gesture: FacialGesture, level: Int, cameraModifier: Modifier) {
+    val face by viewModel.faceState.collectAsStateWithLifecycle()
+    val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
+    val colors = PwdeTheme.colors
+    val detected = gesture in face.gesture.active
+    SectionTitle("Try \"${gesture.label}\"")
+    LevelStepper(
+        label = "Sensitivity",
+        level = level,
+        onLevelChange = { viewModel.setSensitivity(gesture, it) },
+        valueLabel = "${levelWord(level)} · fires at ${fmt(GestureThresholds.forGesture(gesture, level))}${gesture.unit()}",
+    )
+    GradientCard(Modifier.fillMaxWidth()) {
+        GestureMeter(gesture, face.gesture.measures[gesture], active = detected)
+        Text(
+            when {
+                detected -> "Detected!"
+                face.isSimulated && face.gesture.measures[gesture] == null -> "Demo mode can only simulate tilt, nod and shake."
+                !face.hasFace -> "Face the camera to try it."
+                else -> "Do the move — the bar passes the white tick when PWDe sees it."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (detected) colors.primary else colors.textMuted,
+        )
+    }
+    DemoModeBanner(face)
+    CameraFeed(
+        faceState = face,
+        surfaceRequest = surface,
+        canRequestCamera = viewModel.canRequestCamera,
+        onCameraPermissionResult = viewModel::onCameraPermissionResult,
+        modifier = cameraModifier.fillMaxWidth(0.6f),
+    )
+}
+
+private fun FacialGesture.unit() = when (this) {
+    FacialGesture.TILT_LEFT, FacialGesture.TILT_RIGHT, FacialGesture.NOD, FacialGesture.SHAKE -> "°"
+    else -> ""
 }
 
 @Composable
@@ -227,64 +371,134 @@ private fun GestureTile(
 
 private enum class Detail(val label: String) { BASIC("Basic"), ADVANCED("Advanced") }
 
-/** E6–E8 Cursor speed. Layout in place; values are wired to tracking in Prompt 2. */
+private val CURSOR_COMMANDS = listOf(
+    voiceCommand("faster", "faster", "speed up"),
+    voiceCommand("slower", "slower", "slow down"),
+    voiceCommand("advanced", "advanced"),
+    voiceCommand("basic", "basic"),
+    voiceCommand("recenter", "recenter", "center", "re center"),
+)
+
+/** E6–E8 Cursor speed: live camera + pointer; per-direction speeds saved to Room as you change them. */
 @Composable
-fun CursorSpeedScreen(onBack: () -> Unit) {
+fun CursorSpeedScreen(viewModel: CursorSpeedViewModel, onBack: () -> Unit) {
     var detail by rememberSaveable { mutableStateOf(Detail.BASIC) }
+    val tuning by viewModel.tuning.collectAsStateWithLifecycle()
+    val face by viewModel.faceState.collectAsStateWithLifecycle()
+    val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
+    VoiceCommandsEffect(CURSOR_COMMANDS) { id ->
+        when (id) {
+            "faster" -> viewModel.changeOverallSpeed(+1)
+            "slower" -> viewModel.changeOverallSpeed(-1)
+            "advanced" -> detail = Detail.ADVANCED
+            "basic" -> detail = Detail.BASIC
+            "recenter" -> viewModel.recenterCursor()
+        }
+    }
     PwdeScreen(
         title = "Cursor speed",
-        subtitle = "How the pointer follows your head.",
+        subtitle = "How the pointer follows your head. Saved automatically.",
         onBack = onBack,
-        voiceHint = "Say \"faster\", \"slower\" or \"advanced\"",
+        voiceHint = "Say \"faster\", \"slower\", \"recenter\" or \"advanced\"",
     ) {
-        SegmentedToggle(Detail.entries, detail, { it.label }, { detail = it })
-        PlaceholderNotice(
-            "Tuning connects in Prompt 2",
-            "These controls show the layout only. They'll adjust the real pointer once head tracking is connected.",
+        DemoModeBanner(face)
+        CameraFeed(
+            faceState = face,
+            surfaceRequest = surface,
+            canRequestCamera = viewModel.canRequestCamera,
+            onCameraPermissionResult = viewModel::onCameraPermissionResult,
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.55f),
         )
+        CursorPad(face.cursor, active = face.hasFace)
+        PwdeButton(
+            "Recenter pointer",
+            viewModel::recenterCursor,
+            style = ButtonStyle.SECONDARY,
+            icon = Icons.Outlined.CenterFocusStrong,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        SegmentedToggle(Detail.entries, detail, { it.label }, { detail = it })
+        val t = tuning ?: return@PwdeScreen
         if (detail == Detail.BASIC) {
-            InertStepper("Speed", 5)
-            InertStepper("Smoothing", 7)
+            LevelStepper("Speed", CursorSpeedViewModel.overallSpeed(t), viewModel::setOverallSpeed)
         } else {
-            InertStepper("Moving up", 5)
-            InertStepper("Moving down", 5)
-            InertStepper("Moving left", 3)
-            InertStepper("Moving right", 3)
-            InertStepper("Pointer smoothing", 7)
-            InertStepper("Gesture smoothing", 5)
+            LevelStepper("Moving up", t.speedUp, { level -> viewModel.update { it.copy(speedUp = level) } })
+            LevelStepper("Moving down", t.speedDown, { level -> viewModel.update { it.copy(speedDown = level) } })
+            LevelStepper("Moving left", t.speedLeft, { level -> viewModel.update { it.copy(speedLeft = level) } })
+            LevelStepper("Moving right", t.speedRight, { level -> viewModel.update { it.copy(speedRight = level) } })
         }
+        LevelStepper("Smoothing", t.smoothing, { level -> viewModel.update { it.copy(smoothing = level) } })
+        InfoNote("More smoothing steadies a shaky pointer but makes it a little slower to react.")
     }
 }
 
-/** E9/E10 Joystick. Layout in place; values are wired in Prompt 2. */
+private val JOYSTICK_COMMANDS = listOf(
+    voiceCommand("bigger", "bigger", "larger"),
+    voiceCommand("smaller", "smaller"),
+    voiceCommand("more_sensitive", "more sensitive"),
+    voiceCommand("less_sensitive", "less sensitive"),
+    voiceCommand("set_center", "set center", "center here", "set centre"),
+    voiceCommand("advanced", "advanced"),
+    voiceCommand("basic", "basic"),
+)
+
+/** E9/E10 Joystick: live head-tilt joystick with size, sensitivity, dead zone and center. */
 @Composable
-fun JoystickScreen(onBack: () -> Unit) {
+fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
     var detail by rememberSaveable { mutableStateOf(Detail.BASIC) }
+    val tuning by viewModel.tuning.collectAsStateWithLifecycle()
+    val face by viewModel.faceState.collectAsStateWithLifecycle()
+    val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
+    val colors = PwdeTheme.colors
+    fun step(level: Int, delta: Int) = (level + delta).coerceIn(MIN_LEVEL, MAX_LEVEL)
+    VoiceCommandsEffect(JOYSTICK_COMMANDS) { id ->
+        when (id) {
+            "bigger" -> viewModel.update { it.copy(size = step(it.size, +1)) }
+            "smaller" -> viewModel.update { it.copy(size = step(it.size, -1)) }
+            "more_sensitive" -> viewModel.update { it.copy(sensitivity = step(it.sensitivity, +1)) }
+            "less_sensitive" -> viewModel.update { it.copy(sensitivity = step(it.sensitivity, -1)) }
+            "set_center" -> viewModel.setCenterHere()
+            "advanced" -> detail = Detail.ADVANCED
+            "basic" -> detail = Detail.BASIC
+        }
+    }
     PwdeScreen(
         title = "Joystick",
-        subtitle = "Your virtual joystick for moving in games.",
+        subtitle = "Tilt your head to steer. Saved automatically.",
         onBack = onBack,
-        voiceHint = "Say \"bigger\", \"more sensitive\" or \"advanced\"",
+        voiceHint = "Say \"bigger\", \"more sensitive\" or \"set center\"",
     ) {
+        DemoModeBanner(face)
+        Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap), verticalAlignment = Alignment.CenterVertically) {
+            CameraFeed(
+                faceState = face,
+                surfaceRequest = surface,
+                canRequestCamera = viewModel.canRequestCamera,
+                onCameraPermissionResult = viewModel::onCameraPermissionResult,
+                modifier = Modifier.weight(1f),
+            )
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // The preview grows with the size setting, as it will in game.
+                val sizeLevel = tuning?.size ?: 5
+                val sizeFraction = 0.55f + 0.45f * (sizeLevel - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL).toFloat()
+                JoystickView(face.joystick, Modifier.fillMaxWidth(sizeFraction), active = face.hasFace)
+                StatusPill(face.joystick.direction.label, icon = Icons.Outlined.Gamepad)
+            }
+        }
+        PwdeButton("Set center here", viewModel::setCenterHere, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
+        message?.let { Text(it.text, style = MaterialTheme.typography.bodyMedium, color = if (it.isError) colors.warning else colors.primary) }
         SegmentedToggle(Detail.entries, detail, { it.label }, { detail = it })
-        PlaceholderNotice(
-            "Tuning connects in Prompt 2",
-            "The live joystick preview and these settings start working once tilt and head tracking are connected.",
-        )
+        val t = tuning ?: return@PwdeScreen
         if (detail == Detail.BASIC) {
-            InertStepper("Size", 5)
-            InertStepper("Sensitivity", 5)
+            LevelStepper("Size", t.size, { level -> viewModel.update { it.copy(size = level) } })
+            LevelStepper("Sensitivity", t.sensitivity, { level -> viewModel.update { it.copy(sensitivity = level) } })
         } else {
-            InertStepper("Dead zone", 3)
-            InertStepper("Visibility", 10)
-            InertStepper("Release delay", 5)
+            LevelStepper("Dead zone", t.deadZone, { level -> viewModel.update { it.copy(deadZone = level) } })
+            InfoNote("A bigger dead zone ignores small head movements, so the joystick doesn't drift while you rest.")
+            PwdeButton("Reset center to straight ahead", viewModel::resetCenter, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
         }
     }
-}
-
-@Composable
-private fun InertStepper(label: String, level: Int) {
-    LevelStepper(label = label, level = level, onLevelChange = {}, enabled = false)
 }
 
 /** Custom buttons land with GabAI game profiles in Prompt 3. */

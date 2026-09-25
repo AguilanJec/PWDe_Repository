@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.outlined.MicOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -66,7 +65,7 @@ fun StepProgress(step: Int, total: Int, label: String, modifier: Modifier = Modi
 
 /**
  * −  ▮▮▮▮▯▯▯▯▯▯  +  stepper (Figma "P3 / Stepper") in place of fine-motor sliders.
- * [enabled] = false renders it inert, used where values are wired in a later prompt.
+ * [enabled] = false renders it inert.
  */
 @Composable
 fun LevelStepper(
@@ -172,41 +171,6 @@ fun <T> SegmentedToggle(
                     modifier = Modifier.padding(start = 4.dp),
                 )
             }
-        }
-    }
-}
-
-/**
- * Docked voice bar (Figma "P3 / Voice Bar"), shown in its honest Off state: it tells the user what
- * they will be able to say, but voice recognition itself arrives in Prompt 2.
- */
-@Composable
-fun VoiceHintBar(hint: String, modifier: Modifier = Modifier) {
-    val colors = PwdeTheme.colors
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clip(PwdeShapes.pill)
-            .background(colors.surfaceMuted)
-            .border(1.dp, colors.secondary.copy(alpha = 0.6f), PwdeShapes.pill)
-            .padding(start = 16.dp, end = 6.dp)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "Voice control is off in this version. Later you will be able to say: $hint"
-            },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(colors.textMuted))
-        Column(Modifier.weight(1f)) {
-            Text(hint, style = MaterialTheme.typography.bodySmall, color = colors.text, maxLines = 2)
-            Text("Voice off · arrives in Prompt 2", style = MaterialTheme.typography.labelSmall, color = colors.textMuted)
-        }
-        Box(
-            Modifier.size(44.dp).clip(CircleShape).background(colors.secondary.copy(alpha = 0.35f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.MicOff, contentDescription = null, tint = colors.text)
         }
     }
 }

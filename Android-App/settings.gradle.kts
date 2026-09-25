@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Pwdenamaluto"
+rootProject.name = "PWDe"
 include(":app")
  

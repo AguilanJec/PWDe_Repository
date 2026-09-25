@@ -13,6 +13,10 @@ import com.pwde.app.data.remote.AuthRepository
 import com.pwde.app.data.remote.NoOpSyncRepository
 import com.pwde.app.data.remote.SyncRepository
 import com.pwde.app.data.speech.SpeechOutput
+import com.pwde.app.sensors.face.FaceTrackingManager
+import com.pwde.app.sensors.face.MediaPipeFaceTrackingManager
+import com.pwde.app.sensors.voice.AndroidVoiceCommandManager
+import com.pwde.app.sensors.voice.VoiceCommandManager
 
 private val Context.settingsDataStore by preferencesDataStore(name = "user_settings")
 
@@ -28,6 +32,14 @@ class AppContainer(private val context: Context) {
     val authRepository: AuthRepository by lazy { AuthRepository.create(context) }
     val syncRepository: SyncRepository by lazy { NoOpSyncRepository(authRepository) }
     val speechOutput by lazy { SpeechOutput(context) }
+
+    /** Camera + MediaPipe head/face tracking (motion-sensor demo mode when the camera can't be used). */
+    val faceTrackingManager: FaceTrackingManager by lazy {
+        MediaPipeFaceTrackingManager(context, controlsRepository, settingsRepository)
+    }
+
+    /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). */
+    val voiceCommandManager: VoiceCommandManager by lazy { AndroidVoiceCommandManager(context, controlsRepository) }
 
     fun newTutorialPlayer() = TutorialPlayer(context)
 

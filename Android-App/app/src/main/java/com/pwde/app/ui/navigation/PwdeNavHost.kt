@@ -2,8 +2,10 @@ package com.pwde.app.ui.navigation
 
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -13,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.ui.common.FaceTrackingViewModel
 import com.pwde.app.ui.common.pwdeViewModel
 import com.pwde.app.ui.components.MainTab
 import com.pwde.app.ui.controls.ChooseGestureScreen
@@ -20,18 +23,21 @@ import com.pwde.app.ui.controls.ChooseGestureViewModel
 import com.pwde.app.ui.controls.ControlsDestination
 import com.pwde.app.ui.controls.ControlsHubScreen
 import com.pwde.app.ui.controls.CursorSpeedScreen
+import com.pwde.app.ui.controls.CursorSpeedViewModel
 import com.pwde.app.ui.controls.CustomButtonsScreen
 import com.pwde.app.ui.controls.GesturesScreen
 import com.pwde.app.ui.controls.GesturesViewModel
 import com.pwde.app.ui.controls.InputModeScreen
 import com.pwde.app.ui.controls.InputModeViewModel
 import com.pwde.app.ui.controls.JoystickScreen
+import com.pwde.app.ui.controls.JoystickViewModel
 import com.pwde.app.ui.dashboard.DashboardDestination
 import com.pwde.app.ui.dashboard.DashboardScreen
 import com.pwde.app.ui.dashboard.DashboardViewModel
 import com.pwde.app.ui.gabai.GabAiChoice
 import com.pwde.app.ui.gabai.GabAiComingScreen
 import com.pwde.app.ui.gabai.GabAiWelcomeScreen
+import com.pwde.app.ui.gameplay.GameplayViewModel
 import com.pwde.app.ui.gameplay.PlayingScreen
 import com.pwde.app.ui.games.FilterScreen
 import com.pwde.app.ui.games.GameDetailScreen
@@ -49,11 +55,13 @@ import com.pwde.app.ui.profile.ProfileScreen
 import com.pwde.app.ui.profile.ProfileViewModel
 import com.pwde.app.ui.setup.SetupScreen
 import com.pwde.app.ui.setup.SetupViewModel
-import com.pwde.app.ui.testingstation.TestingStationScreen
 import com.pwde.app.ui.tutorial.WatchTutorialScreen
 import com.pwde.app.ui.tutorial.WatchTutorialViewModel
 import com.pwde.app.ui.voiceconfig.VoiceConfigScreen
 import com.pwde.app.ui.voiceconfig.VoiceConfigViewModel
+import com.pwde.app.ui.voice.LocalVoiceController
+import com.pwde.app.ui.voice.VoiceNavigation
+import com.pwde.app.ui.voice.VoiceViewModel
 import com.pwde.app.ui.voicetutorial.VoiceTutorialScreen
 import com.pwde.app.ui.voicetutorial.VoiceTutorialViewModel
 
@@ -62,9 +70,25 @@ import com.pwde.app.ui.voicetutorial.VoiceTutorialViewModel
 fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
     val activity = LocalActivity.current
     val screenReader = pwdeViewModel { ScreenReaderViewModel(it.settingsRepository, it.speechOutput) }
+    val voice = pwdeViewModel { VoiceViewModel(it.voiceCommandManager, it.controlsRepository, it.settingsRepository) }
+    // Observing voice state here keeps the recognizer running on every screen while PWDe is visible.
+    voice.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     LaunchedEffect(currentRoute) { screenReader.onScreenShown(Routes.spokenTitle(currentRoute)) }
+
+    fun inMainApp() = runCatching { navController.getBackStackEntry(Routes.DASHBOARD) }.isSuccess
+
+    // Standard voice commands. Voice "back" never closes the app from the root screen.
+    LaunchedEffect(voice) {
+        voice.navigation.collect { request ->
+            when (request) {
+                VoiceNavigation.BACK -> navController.popBackStack()
+                VoiceNavigation.HOME -> if (inMainApp()) navController.popBackStack(Routes.DASHBOARD, inclusive = false)
+                VoiceNavigation.SETTINGS -> if (inMainApp()) navController.navigate(Routes.CONTROLS) { launchSingleTop = true }
+            }
+        }
+    }
 
     fun back() {
         if (!navController.popBackStack()) activity?.finish()
@@ -99,6 +123,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         else navController.navigate(Routes.setup())
     }
 
+    CompositionLocalProvider(LocalVoiceController provides voice) {
     NavHost(navController, startDestination = Routes.SPLASH) {
         // A · Account
         composable(Routes.SPLASH) {
@@ -142,6 +167,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             val appearanceOnly = entry.arguments?.getBoolean("appearanceOnly") ?: false
             SetupScreen(
                 viewModel = pwdeViewModel(key = "setup-$appearanceOnly") { SetupViewModel(it.settingsRepository, appearanceOnly) },
+                tryIt = pwdeViewModel(key = "setup-try-it") { FaceTrackingViewModel(it.faceTrackingManager) },
                 onExit = ::back,
                 onFinished = {
                     if (appearanceOnly) back() else navController.navigate(Routes.VOICE_TUTORIAL)
@@ -161,7 +187,9 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         // D · Play
         composable(Routes.DASHBOARD) {
             DashboardScreen(
-                viewModel = pwdeViewModel { DashboardViewModel(it.settingsRepository, it.authRepository) },
+                viewModel = pwdeViewModel {
+                    DashboardViewModel(it.settingsRepository, it.authRepository, it.faceTrackingManager, it.voiceCommandManager)
+                },
                 onNavigate = { destination ->
                     when (destination) {
                         DashboardDestination.CONTROLS -> navController.navigate(Routes.CONTROLS)
@@ -196,7 +224,13 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             }
         }
         composable(Routes.PLAYING, arguments = listOf(navArgument("gameId") { type = NavType.StringType })) { entry ->
-            PlayingScreen(game = Game.byId(entry.arguments?.getString("gameId")), onExit = ::back)
+            val game = Game.byId(entry.arguments?.getString("gameId"))
+            PlayingScreen(
+                viewModel = pwdeViewModel {
+                    GameplayViewModel(it.faceTrackingManager, it.voiceCommandManager, it.controlsRepository, game)
+                },
+                onExit = ::back,
+            )
         }
         composable(Routes.LEADERBOARD) { LeaderboardScreen(onTab = ::openTab) }
         composable(Routes.FILTER) {
@@ -238,20 +272,26 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 LaunchedEffect(Unit) { back() }
             } else {
                 ChooseGestureScreen(
-                    viewModel = pwdeViewModel(key = "gesture-${action.name}") { ChooseGestureViewModel(it.controlsRepository, action) },
+                    viewModel = pwdeViewModel(key = "gesture-${action.name}") {
+                        ChooseGestureViewModel(it.controlsRepository, it.faceTrackingManager, action)
+                    },
                     onBack = ::back,
                 )
             }
         }
-        composable(Routes.CONTROLS_CURSOR) { CursorSpeedScreen(onBack = ::back) }
-        composable(Routes.CONTROLS_JOYSTICK) { JoystickScreen(onBack = ::back) }
+        composable(Routes.CONTROLS_CURSOR) {
+            CursorSpeedScreen(pwdeViewModel { CursorSpeedViewModel(it.controlsRepository, it.faceTrackingManager) }, onBack = ::back)
+        }
+        composable(Routes.CONTROLS_JOYSTICK) {
+            JoystickScreen(pwdeViewModel { JoystickViewModel(it.controlsRepository, it.faceTrackingManager) }, onBack = ::back)
+        }
         composable(Routes.CUSTOM_BUTTONS) { CustomButtonsScreen(onBack = ::back) }
         composable(Routes.VOICE_CONFIG) {
-            VoiceConfigScreen(pwdeViewModel { VoiceConfigViewModel(it.controlsRepository) }, onBack = ::back)
+            VoiceConfigScreen(pwdeViewModel { VoiceConfigViewModel(it.controlsRepository, it.voiceCommandManager) }, onBack = ::back)
         }
 
-        // F · Testing, tutorial video
-        composable(Routes.TESTING_STATION) { TestingStationScreen(onBack = ::back) }
+        // F · Testing Station (debug builds only — see debug/ and release/ source sets), tutorial video
+        debugDestinations(onBack = ::back)
         composable(Routes.WATCH_TUTORIAL) {
             WatchTutorialScreen(pwdeViewModel { WatchTutorialViewModel(it.newTutorialPlayer()) }, onBack = ::back)
         }
@@ -274,5 +314,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 onTab = ::openTab,
             )
         }
+    }
     }
 }

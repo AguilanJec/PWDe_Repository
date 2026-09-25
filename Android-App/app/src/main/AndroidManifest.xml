@@ -1,13 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Only needed for optional Firebase sign-in. No camera or microphone yet (Prompt 2). -->
+    <!-- Only needed for optional Firebase sign-in. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Lets TextToSpeech find the installed engine on Android 11+. -->
+    <!-- Head/face tracking (front camera, processed on-device) and voice commands. Both are
+         optional: if either is denied PWDe falls back to a labelled demo mode or typed commands. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
     <queries>
+        <!-- Lets TextToSpeech find the installed engine on Android 11+. -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- Lets SpeechRecognizer find the installed recognition service on Android 11+. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 

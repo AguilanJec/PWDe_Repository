@@ -235,7 +235,7 @@ fun PlaceholderNotice(
     title: String,
     body: String,
     modifier: Modifier = Modifier,
-    tag: String = "Coming in Prompt 2",
+    tag: String = "Coming soon",
 ) {
     val colors = PwdeTheme.colors
     Column(

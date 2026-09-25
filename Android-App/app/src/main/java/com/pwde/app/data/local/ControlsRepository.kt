@@ -1,8 +1,12 @@
 package com.pwde.app.data.local
 
 import com.pwde.app.data.model.ControlConfig
+import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.data.model.JoystickTuning
+import com.pwde.app.data.model.MAX_LEVEL
+import com.pwde.app.data.model.MIN_LEVEL
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.data.model.VoiceShortcut
@@ -11,7 +15,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Persists the working controls configuration (gesture picks, voice options) to Room. */
+/** Persists the working controls configuration (gestures, voice, cursor, joystick) to Room. */
 class ControlsRepository(
     private val dao: ControlSettingsDao,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -24,6 +28,21 @@ class ControlsRepository(
         val updated = config.gestureAssignments.toMutableMap()
         if (gesture == null) updated.remove(action) else updated[action] = gesture
         config.copy(gestureAssignments = updated)
+    }
+
+    suspend fun setGestureSensitivity(gesture: FacialGesture, level: Int) = edit {
+        it.copy(gestureSensitivity = it.gestureSensitivity + (gesture to level.coerceIn(MIN_LEVEL, MAX_LEVEL)))
+    }
+
+    suspend fun setCursorTuning(tuning: CursorTuning) = edit { it.copy(cursor = tuning.clamped()) }
+
+    /** Size, sensitivity and dead zone. The center is kept; set it with [setJoystickCenter]. */
+    suspend fun setJoystickTuning(tuning: JoystickTuning) = edit {
+        it.copy(joystick = tuning.clamped().copy(centerPitch = it.joystick.centerPitch, centerRoll = it.joystick.centerRoll))
+    }
+
+    suspend fun setJoystickCenter(pitch: Float, roll: Float) = edit {
+        it.copy(joystick = it.joystick.copy(centerPitch = pitch, centerRoll = roll))
     }
 
     suspend fun setVoiceEnabled(enabled: Boolean) = edit { it.copy(voiceEnabled = enabled) }
@@ -42,13 +61,22 @@ class ControlsRepository(
     }
 }
 
+private fun Int.level() = coerceIn(MIN_LEVEL, MAX_LEVEL)
+
+private fun CursorTuning.clamped() = CursorTuning(speedUp.level(), speedDown.level(), speedLeft.level(), speedRight.level(), smoothing.level())
+
+private fun JoystickTuning.clamped() = copy(size = size.level(), sensitivity = sensitivity.level(), deadZone = deadZone.level())
+
 private fun ControlSettingsEntity.toConfig() = ControlConfig(
     gestureAssignments = ControlJson.decodeGestures(gestureAssignmentsJson),
+    gestureSensitivity = ControlJson.decodeSensitivity(gestureSensitivityJson),
     voiceEnabled = voiceEnabled,
     voiceMatchMode = VoiceMatchMode.entries.firstOrNull { it.name == voiceMatchMode } ?: VoiceMatchMode.WORD_ANYWHERE,
     voiceActivationMode = VoiceActivationMode.entries.firstOrNull { it.name == voiceActivationMode }
         ?: VoiceActivationMode.IMMEDIATE,
     voiceShortcuts = ControlJson.decodeShortcuts(voiceShortcutsJson),
+    cursor = CursorTuning(cursorSpeedUp, cursorSpeedDown, cursorSpeedLeft, cursorSpeedRight, cursorSmoothing).clamped(),
+    joystick = JoystickTuning(joystickSize, joystickSensitivity, joystickDeadZone, joystickCenterPitch, joystickCenterRoll).clamped(),
 )
 
 private fun ControlConfig.toEntity(now: Long) = ControlSettingsEntity(
@@ -58,4 +86,15 @@ private fun ControlConfig.toEntity(now: Long) = ControlSettingsEntity(
     voiceActivationMode = voiceActivationMode.name,
     voiceShortcutsJson = ControlJson.encodeShortcuts(voiceShortcuts),
     updatedAt = now,
+    gestureSensitivityJson = ControlJson.encodeSensitivity(gestureSensitivity),
+    cursorSpeedUp = cursor.speedUp,
+    cursorSpeedDown = cursor.speedDown,
+    cursorSpeedLeft = cursor.speedLeft,
+    cursorSpeedRight = cursor.speedRight,
+    cursorSmoothing = cursor.smoothing,
+    joystickSize = joystick.size,
+    joystickSensitivity = joystick.sensitivity,
+    joystickDeadZone = joystick.deadZone,
+    joystickCenterPitch = joystick.centerPitch,
+    joystickCenterRoll = joystick.centerRoll,
 )

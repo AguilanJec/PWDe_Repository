@@ -21,6 +21,8 @@ import com.pwde.app.ui.components.NavCard
 import com.pwde.app.ui.components.PlaceholderNotice
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.theme.PwdeTheme
 
 enum class GabAiChoice(val id: String, val title: String, val subtitle: String, val icon: ImageVector) {
@@ -33,10 +35,17 @@ enum class GabAiChoice(val id: String, val title: String, val subtitle: String, 
     }
 }
 
+private val GABAI_COMMANDS = listOf(
+    voiceCommand(GabAiChoice.NEW_CALIBRATION.id, "new calibration", "calibration"),
+    voiceCommand(GabAiChoice.NEW_GAME.id, "new game", "game profile"),
+    voiceCommand(GabAiChoice.CONTINUE.id, "continue", "continue existing"),
+)
+
 /** G1 GabAI – Start. The state machine behind each choice is built in Prompt 3. */
 @Composable
 fun GabAiWelcomeScreen(onBack: () -> Unit, onChoose: (GabAiChoice) -> Unit) {
     val colors = PwdeTheme.colors
+    VoiceCommandsEffect(GABAI_COMMANDS) { id -> GabAiChoice.byId(id)?.let(onChoose) }
     PwdeScreen(
         title = "GabAI",
         subtitle = "Your setup assistant.",

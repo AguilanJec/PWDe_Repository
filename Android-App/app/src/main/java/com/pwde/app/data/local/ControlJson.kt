@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.data.model.MAX_LEVEL
+import com.pwde.app.data.model.MIN_LEVEL
 import com.pwde.app.data.model.VoiceShortcut
 
 /** Serialises control mappings to the JSON strings stored in Room. Unknown names are dropped. */
@@ -19,6 +21,17 @@ object ControlJson {
             val action = GestureAction.entries.firstOrNull { it.name == key }
             val gesture = FacialGesture.entries.firstOrNull { it.name == value }
             if (action != null && gesture != null) action to gesture else null
+        }.toMap()
+
+    fun encodeSensitivity(map: Map<FacialGesture, Int>): String =
+        gson.toJson(map.entries.associate { (gesture, level) -> gesture.name to level.toString() })
+
+    /** Levels outside 1–10 are clamped; unparseable ones are dropped. */
+    fun decodeSensitivity(json: String?): Map<FacialGesture, Int> =
+        decodeStringMap(json).mapNotNull { (key, value) ->
+            val gesture = FacialGesture.entries.firstOrNull { it.name == key }
+            val level = value.toIntOrNull()?.coerceIn(MIN_LEVEL, MAX_LEVEL)
+            if (gesture != null && level != null) gesture to level else null
         }.toMap()
 
     fun encodeShortcuts(map: Map<VoiceShortcut, String>): String =
