@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PORT=8080 \
-    WEIGHTS_PATH=/app/weights/model.onnx
+    WEIGHTS_DIR=/app/weights
 
 WORKDIR /app
 
@@ -13,9 +13,10 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app/ app/
-# Produced by training/export_model.py — the build fails here if it's missing,
-# which is what we want rather than deploying a service with no model.
-COPY weights/model.onnx weights/model.onnx
+# Produced by training/export_model.py (one per game in app/constants.py GAMES) —
+# the build fails here if one is missing, which is what we want rather than
+# deploying a service with no model.
+COPY weights/mlbb.onnx weights/clash_royale.onnx weights/
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser

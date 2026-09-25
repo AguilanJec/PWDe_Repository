@@ -12,8 +12,6 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
-from .constants import CLASS_NAMES
-
 LETTERBOX_FILL = (114, 114, 114)  # ultralytics' padding colour
 
 
@@ -26,8 +24,9 @@ class Detection:
 
 
 class YOLOv8Detector:
-    def __init__(self, weights_path: str, conf_threshold: float = 0.25,
-                 iou_threshold: float = 0.45):
+    def __init__(self, weights_path: str, class_names: list[str],
+                 conf_threshold: float = 0.25, iou_threshold: float = 0.45):
+        self.class_names = class_names
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.session = ort.InferenceSession(weights_path, opts,
@@ -39,9 +38,9 @@ class YOLOv8Detector:
         self.iou_threshold = iou_threshold
 
         n_out_classes = self.session.get_outputs()[0].shape[1] - 4
-        if n_out_classes != len(CLASS_NAMES):
-            raise ValueError(f"Model has {n_out_classes} classes but CLASS_NAMES "
-                             f"has {len(CLASS_NAMES)} — they must match.")
+        if n_out_classes != len(class_names):
+            raise ValueError(f"{weights_path} has {n_out_classes} classes but "
+                             f"class_names has {len(class_names)} — they must match.")
 
     def _letterbox(self, img: Image.Image) -> tuple[np.ndarray, float, tuple[int, int]]:
         w, h = img.size
@@ -81,7 +80,7 @@ class YOLOv8Detector:
             cid = int(class_ids[i])
             results.append(Detection(
                 class_id=cid,
-                class_name=CLASS_NAMES[cid],
+                class_name=self.class_names[cid],
                 confidence=round(float(confs[i]), 4),
                 box=tuple(round(float(v), 1) for v in boxes[i]),
             ))

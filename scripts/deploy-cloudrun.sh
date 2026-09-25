@@ -3,8 +3,8 @@
 #
 # Prereqs:
 #   - gcloud auth login && gcloud config set project <PROJECT_ID>
-#   - calibration-backend/weights/model.onnx exists
-#     (run: cd training && python export_model.py --weights <best.pt>)
+#   - calibration-backend/weights/<game>.onnx exists for every game
+#     (run: cd training && python export_model.py --game <game> --weights <best.pt>)
 #
 # Usage:
 #   scripts/deploy-cloudrun.sh
@@ -22,10 +22,12 @@ if [[ -z "$PROJECT" ]]; then
   echo "No GCP project set. Run: gcloud config set project <PROJECT_ID>" >&2
   exit 1
 fi
-if [[ ! -f "$BACKEND_DIR/weights/model.onnx" ]]; then
-  echo "Missing $BACKEND_DIR/weights/model.onnx — run training/export_model.py first." >&2
-  exit 1
-fi
+for weights in mlbb.onnx clash_royale.onnx; do
+  if [[ ! -f "$BACKEND_DIR/weights/$weights" ]]; then
+    echo "Missing $BACKEND_DIR/weights/$weights — run training/export_model.py first." >&2
+    exit 1
+  fi
+done
 
 if [[ "${PUBLIC:-0}" == "1" ]]; then
   AUTH_FLAG="--allow-unauthenticated"
@@ -36,7 +38,7 @@ fi
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com --project "$PROJECT"
 
-# 960x960 inference on CPU: 1 vCPU / 1 GiB is plenty for a ~12 MB model.
+# 960x960 inference on CPU: 1 vCPU / 1 GiB is plenty for two ~12-43 MB models.
 # Concurrency is kept low because each request is CPU-bound.
 gcloud run deploy "$SERVICE" \
   --project "$PROJECT" \

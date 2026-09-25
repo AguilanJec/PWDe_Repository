@@ -1,6 +1,6 @@
 # Used by `gcloud run deploy --source`. Deliberately does NOT include
-# .gitignore: *.onnx is git-ignored, but weights/model.onnx must be
-# uploaded or the Cloud Build step will fail at COPY weights/model.onnx.
+# .gitignore: *.onnx is git-ignored, but weights/*.onnx must be
+# uploaded or the Cloud Build step will fail at COPY weights/....
 .gcloudignore
 .venv/
 venv/

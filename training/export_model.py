@@ -6,8 +6,12 @@ The deployed service runs the model with onnxruntime instead of
 torch/ultralytics, which keeps the Cloud Run image a few hundred MB instead
 of several GB and makes cold starts much faster.
 
+The output file is weights/<game>.onnx, matching the backend's
+app/constants.py GAMES entry for that game.
+
 Usage:
-    python export_model.py --weights ../runs/detect/mlbb_v18/weights/best.pt
+    python export_model.py --game mlbb --weights ../runs/detect/mlbb_v18/weights/best.pt
+    python export_model.py --game clash_royale --weights ../runs/detect/clash_royale_v2/weights/best.pt
 """
 
 import argparse
@@ -25,8 +29,12 @@ def main():
     parser.add_argument("--weights", required=True, help="Path to trained best.pt")
     parser.add_argument("--imgsz", type=int, default=960,
                         help="Must match the imgsz the model was trained at.")
-    parser.add_argument("--out", default=str(BACKEND_WEIGHTS / "model.onnx"))
+    parser.add_argument("--game", required=True, choices=["mlbb", "clash_royale"],
+                        help="Which backend model this is; sets the output filename.")
+    parser.add_argument("--out", default=None,
+                        help="Default: calibration-backend/weights/<game>.onnx")
     args = parser.parse_args()
+    args.out = args.out or str(BACKEND_WEIGHTS / f"{args.game}.onnx")
 
     model = YOLO(args.weights)
     # Fixed input shape (dynamic=False) so onnxruntime can pre-plan memory;
