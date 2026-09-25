@@ -25,22 +25,30 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +56,7 @@ import androidx.lifecycle.viewModelScope
 import com.pwde.app.data.local.CalibrationProfile
 import com.pwde.app.data.local.GameProfile
 import com.pwde.app.data.local.ProfileRepository
+import com.pwde.app.data.model.Game
 import com.pwde.app.data.remote.AuthRepository
 import com.pwde.app.data.remote.AuthState
 import com.pwde.app.data.remote.SyncRepository
@@ -163,7 +172,7 @@ internal val PROFILE_COMMANDS = listOf(
     voiceCommand("sign_in", "sign in", "sync"),
     voiceCommand("appearance", "appearance"),
     voiceCommand("controls", "controls"),
-) + MainTab.entries.filter { it != MainTab.PROFILE }.map { voiceCommand("tab:${it.name}", it.label) }
+) + Game.entries.map { voiceCommand("folder:${it.id}", it.displayName) } + MainTab.entries.filter { it != MainTab.PROFILE }.map { voiceCommand("tab:${it.name}", it.label) }
 
 /** H1 Profile. Local profiles from Room, sign-in entry for guests, sync status for signed-in users. */
 @Composable
@@ -183,8 +192,14 @@ fun ProfileScreen(
     val name = signedIn?.let { it.displayName ?: it.email } ?: "Guest"
     var dialog by remember { mutableStateOf<ProfileDialog?>(null) }
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    // Game ids whose folder is expanded; closed by default so the list stays short.
+    var openFolders by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    fun toggleFolder(gameId: String) {
+        openFolders = if (gameId in openFolders) openFolders - gameId else openFolders + gameId
+    }
     VoiceCommandsEffect(PROFILE_COMMANDS) { id ->
         when {
+            id.startsWith("folder:") -> toggleFolder(id.removePrefix("folder:"))
             id.startsWith("tab:") -> onTab(MainTab.valueOf(id.removePrefix("tab:")))
             id == "sign_in" -> if (signedIn == null) onSignIn()
             id == "appearance" -> onEditAppearance()
@@ -206,7 +221,7 @@ fun ProfileScreen(
 
     PwdeScreen(
         title = "Profile",
-        voiceHint = "Say \"sign in\" or a profile's name",
+        voiceHint = "Say \"sign in\" or a game's name to open its folder",
         bottomBar = { PwdeBottomNav(MainTab.PROFILE, onTab) },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -251,17 +266,21 @@ fun ProfileScreen(
         if (state.gameProfiles.isEmpty()) {
             InfoNote("No game profiles yet. GabAI makes one for each game: you mark its buttons and pick how to press them.")
         } else {
-            state.gameProfiles.forEach {
-                ProfileRow(SavedProfile.Game(it), Icons.Outlined.SportsEsports, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
-                        PwdeButton(
-                            "Play", { onPlayGameProfile(it.gameId, it.id) }, icon = Icons.Outlined.SportsEsports,
-                            modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
-                        )
-                        PwdeButton(
-                            "Edit buttons", { onEditGameProfile(it.id) }, icon = Icons.Outlined.AutoAwesome,
-                            modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
-                        )
+            gameFolders(state.gameProfiles).forEach { folder ->
+                val open = folder.gameId in openFolders
+                GameFolderCard(folder, open, onToggle = { toggleFolder(folder.gameId) })
+                if (open) folder.profiles.forEach {
+                    ProfileRow(SavedProfile.Game(it), Icons.Outlined.SportsEsports, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+                            PwdeButton(
+                                "Play", { onPlayGameProfile(it.gameId, it.id) }, icon = Icons.Outlined.SportsEsports,
+                                modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                            )
+                            PwdeButton(
+                                "Edit buttons", { onEditGameProfile(it.id) }, icon = Icons.Outlined.AutoAwesome,
+                                modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                            )
+                        }
                     }
                 }
             }
@@ -270,6 +289,39 @@ fun ProfileScreen(
         SectionTitle("Settings")
         NavCard("Appearance", "Colors, text size, layout", Icons.Outlined.Palette, onEditAppearance)
         NavCard("Controls", "Input, gestures, voice", Icons.Outlined.Tune, onControls)
+    }
+}
+
+/** One game's profiles, like a folder. */
+private data class GameFolder(val gameId: String, val name: String, val profiles: List<GameProfile>)
+
+/** Supported games first, in catalog order; profiles for games no longer listed come last. */
+private fun gameFolders(profiles: List<GameProfile>): List<GameFolder> {
+    val order = Game.entries.map { it.id }
+    return profiles.groupBy { it.gameId }
+        .map { (gameId, list) -> GameFolder(gameId, Game.byId(gameId)?.displayName ?: list.first().gameName, list) }
+        .sortedWith(compareBy({ order.indexOf(it.gameId).let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it.name }))
+}
+
+@Composable
+private fun GameFolderCard(folder: GameFolder, open: Boolean, onToggle: () -> Unit) {
+    val colors = PwdeTheme.colors
+    val spacing = PwdeTheme.spacing
+    val count = "${folder.profiles.size} ${if (folder.profiles.size == 1) "profile" else "profiles"}"
+    GradientCard(
+        Modifier.fillMaxWidth().semantics { stateDescription = if (open) "Open" else "Closed" },
+        selected = open,
+        onClick = onToggle,
+        contentPadding = spacing.screenMargin,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+            IconBadge(if (open) Icons.Outlined.FolderOpen else Icons.Outlined.Folder)
+            Column(Modifier.weight(1f)) {
+                Text(folder.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
+                Text(count, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+            }
+            Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null, tint = colors.primary)
+        }
     }
 }
 
