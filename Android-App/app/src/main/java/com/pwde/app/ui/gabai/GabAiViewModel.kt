@@ -23,11 +23,13 @@ import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.TriggerType
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
+import com.pwde.app.sensors.voice.Dictation
 import com.pwde.app.sensors.voice.VoiceCommandManager
 import com.pwde.app.ui.common.FaceTrackingViewModel
 import kotlinx.coroutines.channels.Channel
@@ -36,7 +38,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -63,7 +67,7 @@ data class GabAiUiState(
     val resumable: GabAiSession? = null,
     val screenshot: ImageBitmap? = null,
     val selectedButtonId: Int? = null,
-    /** Waiting for the next thing the user says to become the selected button's name. */
+    /** Prompting the user to say "assign <name>" for the selected button. */
     val capturingLabel: Boolean = false,
     /** The screenshot is being sent to the backend to find its buttons. */
     val detectingButtons: Boolean = false,
@@ -121,15 +125,26 @@ class GabAiViewModel(
             }
         }
         viewModelScope.launch {
-            // "Rename by voice": the next thing said becomes the selected button's name.
+            // "assign <words>" / "use <words>" names the selected button or sets the voice trigger; "retry" undoes it.
             voiceCommandManager.results.collect { result ->
-                if (!result.isFinal || !_ui.value.capturingLabel) return@collect
-                val id = _ui.value.selectedButtonId ?: return@collect
-                val label = result.transcript.trim().replaceFirstChar { it.uppercase() }
-                _ui.update { it.copy(capturingLabel = false) }
-                renameButton(id, label)
+                if (!result.isFinal) return@collect
+                when (val parsed = Dictation.parse(result.transcript)) {
+                    is Dictation.Parsed.Assign -> assignByVoice(parsed.words)
+                    Dictation.Parsed.Retry -> retryAssignment()
+                    null -> Unit
+                }
             }
         }
+        viewModelScope.launch {
+            _ui.map { dictationTarget(it) != null }.distinctUntilChanged().collect {
+                voiceCommandManager.setDictating(this@GabAiViewModel, it)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        voiceCommandManager.setDictating(this, false)
+        super.onCleared()
     }
 
     // ---- Welcome ----
@@ -406,6 +421,65 @@ class GabAiViewModel(
             return
         }
         _ui.update { it.copy(capturingLabel = true) }
+        message("Say \"assign\" and the name, like \"assign skill one\".")
+    }
+
+    // ---- Spoken assignment ----
+
+    /** What "assign <words>" would change right now, if anything. */
+    private sealed interface DictationTarget {
+        data class Label(val buttonId: Int) : DictationTarget
+        data class Trigger(val buttonIndex: Int) : DictationTarget
+    }
+
+    /** What the last spoken assignment replaced, so "retry" can put it back. */
+    private sealed interface Assignment {
+        data class Label(val buttonId: Int, val previous: String) : Assignment
+        data class Trigger(val buttonIndex: Int, val previous: ButtonTrigger?) : Assignment
+    }
+
+    private var lastAssignment: Assignment? = null
+
+    private fun dictationTarget(ui: GabAiUiState): DictationTarget? = when (val state = ui.state) {
+        is GabAiState.ButtonMapping -> ui.selectedButtonId?.let { DictationTarget.Label(it) }
+        is GabAiState.TriggerAssignment -> DictationTarget.Trigger(state.buttonIndex)
+        else -> null
+    }
+
+    private fun assignByVoice(words: String) {
+        val buttons = _ui.value.form.buttons
+        when (val target = dictationTarget(_ui.value) ?: return) {
+            is DictationTarget.Label -> {
+                val button = buttons.firstOrNull { it.id == target.buttonId } ?: return
+                lastAssignment = Assignment.Label(button.id, button.label)
+                val label = words.replaceFirstChar { it.uppercase() }
+                renameButton(button.id, label)
+                _ui.update { it.copy(capturingLabel = false) }
+                message("Named it \"$label\". Say \"retry\" to try again.")
+            }
+            is DictationTarget.Trigger -> {
+                val button = buttons.getOrNull(target.buttonIndex) ?: return
+                lastAssignment = Assignment.Trigger(target.buttonIndex, button.trigger)
+                setTrigger(target.buttonIndex, ButtonTrigger(TriggerType.VOICE, words))
+                message("Say \"$words\" to press ${button.label}. Say \"retry\" to try again.")
+            }
+        }
+    }
+
+    private fun retryAssignment() {
+        val target = dictationTarget(_ui.value) ?: return
+        when (val last = lastAssignment) {
+            is Assignment.Label -> if (target == DictationTarget.Label(last.buttonId)) renameButton(last.buttonId, last.previous)
+            is Assignment.Trigger -> if (target == DictationTarget.Trigger(last.buttonIndex)) setTrigger(last.buttonIndex, last.previous)
+            null -> Unit
+        }
+        lastAssignment = null
+        if (target is DictationTarget.Label) {
+            _ui.update { it.copy(capturingLabel = true) }
+            message("Listening again — say \"assign\" and the name.")
+        } else {
+            message("Listening again — say \"assign\" and what you'll say to press it.")
+        }
     }
 
     fun buttonsDone() {

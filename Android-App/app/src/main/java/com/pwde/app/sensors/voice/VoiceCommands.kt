@@ -48,6 +48,37 @@ object StandardCommands {
         }
 }
 
+/**
+ * Spoken assignment, e.g. naming a button or setting its voice trigger: "assign <words>" or
+ * "use <words>" assigns the words; "retry" redoes the last assignment. Anything else isn't an
+ * assignment, so stray speech never renames a button.
+ */
+object Dictation {
+    val PREFIXES = listOf("assign", "use")
+    val RETRY = listOf("retry", "reassign", "try again")
+
+    sealed interface Parsed {
+        data class Assign(val words: String) : Parsed
+        object Retry : Parsed
+    }
+
+    fun parse(text: String): Parsed? {
+        val heard = CommandMatcher.normalize(text)
+        if (heard in RETRY) return Parsed.Retry
+        val prefix = PREFIXES.firstOrNull { heard.startsWith("$it ") } ?: return null
+        return heard.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }?.let(Parsed::Assign)
+    }
+
+    /**
+     * True as soon as an utterance starts like an assignment, even as a partial transcript, so
+     * the words being assigned ("use move left") can't fire commands on the way.
+     */
+    fun isAssignment(text: String): Boolean {
+        val first = CommandMatcher.normalize(text).substringBefore(' ')
+        return first in PREFIXES
+    }
+}
+
 /** Matches heard text against commands. Pure, so every rule here is unit-tested. */
 object CommandMatcher {
     fun normalize(text: String): String =

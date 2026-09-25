@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -233,7 +234,8 @@ internal fun ButtonMappingStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         viewModel, ui,
         title = "Mark the buttons",
         says = "Tap each on-screen button in the game — or point with your head and say \"place\". Then give each one a name.",
-        voiceHint = "Say \"place\", \"rename\", \"move left\" or \"done\"",
+        voiceHint = if (selected != null) "Say \"assign\" + a name, \"retry\", \"move left\" or \"done\""
+        else "Say \"place\", \"next button\" or \"done\"",
         footer = {
             PwdeButton(
                 "Done — ${buttons.size} ${if (buttons.size == 1) "button" else "buttons"}",
@@ -268,7 +270,7 @@ private fun SelectedButtonEditor(viewModel: GabAiViewModel, button: MappedButton
     GradientCard(Modifier.fillMaxWidth()) {
         PwdeTextField("Button name", button.label, { viewModel.renameButton(button.id, it) })
         PwdeButton(
-            if (capturing) "Listening — say the name…" else "Say its name",
+            if (capturing) "Listening — say \"assign\" and the name…" else "Say its name",
             viewModel::captureLabelByVoice,
             style = ButtonStyle.SECONDARY,
             icon = Icons.Outlined.Mic,
@@ -416,6 +418,8 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
     val button = buttons.getOrNull(state.buttonIndex) ?: return
     var type by rememberSaveable(button.id) { mutableStateOf(button.trigger?.type ?: TriggerType.VOICE) }
     val trigger = button.trigger
+    // "assign <words>" sets a voice trigger from anywhere on this step; show the matching tab.
+    LaunchedEffect(trigger?.type) { trigger?.type?.let { type = it } }
     val conflicts = trigger?.let { t -> buttons.filter { it.id != button.id && it.trigger == t }.map { it.label } }.orEmpty()
     fun set(t: ButtonTrigger?) = viewModel.setTrigger(state.buttonIndex, t)
     VoiceCommandsEffect(TRIGGER_COMMANDS) { id ->
@@ -430,7 +434,7 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
         viewModel, ui,
         title = "Button ${state.buttonIndex + 1} of ${state.totalButtons}",
         says = "How do you want to press \"${button.label}\"?",
-        voiceHint = "Say \"voice\", \"gesture\" or \"joystick\", then \"next\"",
+        voiceHint = "Say \"assign\" + words to press it by voice, or \"gesture\" / \"joystick\"; \"retry\" to redo, then \"next\"",
         footer = {
             PwdeButton(
                 if (state.buttonIndex + 1 < state.totalButtons) "Next button" else "Next",
@@ -447,6 +451,7 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
             TriggerType.VOICE -> {
                 val phrase = if (trigger?.type == TriggerType.VOICE) trigger.value else ""
                 PwdeTextField("What will you say?", phrase, { set(if (it.isBlank()) null else ButtonTrigger(TriggerType.VOICE, it)) })
+                InfoNote("Or say \"assign\" and the words, like \"assign ${button.label.lowercase()}\". Say \"retry\" to redo it.")
                 if (phrase.isEmpty()) {
                     PwdeButton(
                         "Use \"${button.label.lowercase()}\"",

@@ -62,6 +62,7 @@ private class FakeVoice : VoiceCommandManager {
     override fun submitText(text: String) = Unit
     override fun setScreenCommands(owner: Any, commands: List<VoiceCommand>) = Unit
     override fun clearScreenCommands(owner: Any) = Unit
+    override fun setDictating(owner: Any, dictating: Boolean) = Unit
 }
 
 @RunWith(RobolectricTestRunner::class)
