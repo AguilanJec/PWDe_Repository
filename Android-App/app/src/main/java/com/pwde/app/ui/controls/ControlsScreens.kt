@@ -101,7 +101,7 @@ fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit)
         NavCard("Cursor speed", "How fast the pointer moves", Icons.Outlined.Mouse, { onOpen(ControlsDestination.CURSOR) })
         NavCard("Joystick", "Size, sensitivity, dead zone", Icons.Outlined.Gamepad, { onOpen(ControlsDestination.JOYSTICK) })
         NavCard("Voice", "Commands and matching", Icons.Outlined.RecordVoiceOver, { onOpen(ControlsDestination.VOICE) })
-        NavCard("Custom buttons", "Make your own buttons", Icons.Outlined.Dashboard, { onOpen(ControlsDestination.CUSTOM_BUTTONS) }, badge = "Coming in Prompt 3")
+        NavCard("Custom buttons", "Map a game's buttons with GabAI", Icons.Outlined.Dashboard, { onOpen(ControlsDestination.CUSTOM_BUTTONS) })
     }
 }
 
@@ -498,17 +498,5 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
             InfoNote("A bigger dead zone ignores small head movements, so the joystick doesn't drift while you rest.")
             PwdeButton("Reset center to straight ahead", viewModel::resetCenter, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
         }
-    }
-}
-
-/** Custom buttons land with GabAI game profiles in Prompt 3. */
-@Composable
-fun CustomButtonsScreen(onBack: () -> Unit) {
-    PwdeScreen(title = "Custom buttons", subtitle = "Make your own on-screen buttons.", onBack = onBack) {
-        PlaceholderNotice(
-            "No custom buttons yet",
-            "You'll be able to name a button, place it over a game, and trigger it by voice or a face gesture.",
-            tag = "Coming in Prompt 3",
-        )
     }
 }

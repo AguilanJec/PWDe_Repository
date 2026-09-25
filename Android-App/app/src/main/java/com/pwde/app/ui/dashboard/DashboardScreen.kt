@@ -1,5 +1,6 @@
 package com.pwde.app.ui.dashboard
 
+import com.pwde.app.data.gabai.GabAiRepository
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -68,6 +69,8 @@ data class DashboardUiState(
     val inputMode: InputMode = InputMode.HEAD_FACE,
     val cameraAllowed: Boolean = false,
     val voice: VoiceState = VoiceState(),
+    /** Where an unfinished GabAI setup stopped, if there is one. */
+    val gabAiUnfinished: String? = null,
 )
 
 class DashboardViewModel(
@@ -75,6 +78,7 @@ class DashboardViewModel(
     authRepository: AuthRepository,
     private val faceTracking: FaceTrackingManager,
     voiceCommandManager: VoiceCommandManager,
+    gabAiRepository: GabAiRepository,
 ) : ViewModel() {
     // Re-checked whenever the screen comes back, e.g. after granting camera access elsewhere.
     private val cameraAllowed = MutableStateFlow(faceTracking.hasCameraPermission)
@@ -84,12 +88,14 @@ class DashboardViewModel(
         authRepository.authState,
         cameraAllowed,
         voiceCommandManager.state,
-    ) { settings, auth, camera, voice ->
+        gabAiRepository.unfinished,
+    ) { settings, auth, camera, voice, gabAi ->
         DashboardUiState(
             greetingName = (auth as? AuthState.SignedIn)?.let { it.displayName ?: it.email?.substringBefore('@') },
             inputMode = settings.inputMode,
             cameraAllowed = camera,
             voice = voice,
+            gabAiUnfinished = gabAi?.state?.summary,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
@@ -173,7 +179,12 @@ fun DashboardScreen(
             }
             EntryCard("Watch Tutorial", Icons.Outlined.OndemandVideo, Modifier.weight(1f)) { onNavigate(DashboardDestination.WATCH_TUTORIAL) }
         }
-        EntryCard("GabAI setup", Icons.Outlined.AutoAwesome, Modifier.fillMaxWidth(), subtitle = "Guided calibration assistant") {
+        EntryCard(
+            "GabAI setup",
+            Icons.Outlined.AutoAwesome,
+            Modifier.fillMaxWidth(),
+            subtitle = state.gabAiUnfinished?.let { "Continue: $it" } ?: "Guided calibration assistant",
+        ) {
             onNavigate(DashboardDestination.GABAI)
         }
     }

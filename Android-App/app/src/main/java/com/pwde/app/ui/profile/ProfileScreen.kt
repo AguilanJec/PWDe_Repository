@@ -1,5 +1,12 @@
 package com.pwde.app.ui.profile
 
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.AutoAwesome
+import com.pwde.app.data.prefs.SettingsRepository
+import com.pwde.app.data.local.inputModeOrDefault
+import com.pwde.app.data.local.ControlsRepository
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -77,7 +84,21 @@ class ProfileViewModel(
     private val authRepository: AuthRepository,
     syncRepository: SyncRepository,
     private val profileRepository: ProfileRepository,
+    private val controlsRepository: ControlsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
+    /** Makes a saved calibration the working controls (and its input mode the active one). */
+    fun useCalibration(profile: CalibrationProfile) {
+        viewModelScope.launch {
+            controlsRepository.applyCalibration(profile)
+            settingsRepository.setInputMode(profile.inputModeOrDefault)
+            _notice.value = "Now using \"${profile.name}\""
+        }
+    }
+
     val state: StateFlow<ProfileUiState> = combine(
         authRepository.authState,
         syncRepository.status,
@@ -137,6 +158,7 @@ private sealed interface ProfileDialog {
 }
 
 private val PROFILE_COMMANDS = listOf(
+    voiceCommand("gabai", "gabai", "gab ai", "new profile"),
     voiceCommand("sign_in", "sign in", "sync"),
     voiceCommand("appearance", "appearance"),
     voiceCommand("controls", "controls"),
@@ -147,6 +169,9 @@ private val PROFILE_COMMANDS = listOf(
 fun ProfileScreen(
     viewModel: ProfileViewModel,
     onSignIn: () -> Unit,
+    onEditGameProfile: (Long) -> Unit,
+    onPlayGameProfile: (gameId: String, profileId: Long) -> Unit,
+    onNewWithGabAi: () -> Unit,
     onEditAppearance: () -> Unit,
     onControls: () -> Unit,
     onTab: (MainTab) -> Unit,
@@ -156,12 +181,14 @@ fun ProfileScreen(
     val signedIn = state.auth as? AuthState.SignedIn
     val name = signedIn?.let { it.displayName ?: it.email } ?: "Guest"
     var dialog by remember { mutableStateOf<ProfileDialog?>(null) }
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
     VoiceCommandsEffect(PROFILE_COMMANDS) { id ->
         when {
             id.startsWith("tab:") -> onTab(MainTab.valueOf(id.removePrefix("tab:")))
             id == "sign_in" -> if (signedIn == null) onSignIn()
             id == "appearance" -> onEditAppearance()
             id == "controls" -> onControls()
+            id == "gabai" -> onNewWithGabAi()
         }
     }
     when (val d = dialog) {
@@ -202,19 +229,28 @@ fun ProfileScreen(
 
         SectionTitle("Calibration profiles")
         if (state.calibrationProfiles.isEmpty()) {
-            InfoNote("No calibration profiles yet. GabAI will help you make one (coming in Prompt 3).")
+            InfoNote("No calibration profiles yet. GabAI will help you make one.")
+            PwdeButton("Make one with GabAI", onNewWithGabAi, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.fillMaxWidth())
         } else {
+            notice?.let { StatusPill(it, icon = Icons.Outlined.CheckCircle) }
             state.calibrationProfiles.forEach {
-                ProfileRow(SavedProfile.Calibration(it), Icons.Outlined.Tune, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) })
+                ProfileRow(SavedProfile.Calibration(it), Icons.Outlined.Tune, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
+                    PwdeButton("Use now", { viewModel.useCalibration(it) }, icon = Icons.Outlined.CheckCircle, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
 
         SectionTitle("Game profiles")
         if (state.gameProfiles.isEmpty()) {
-            InfoNote("No game profiles yet. They're created with GabAI for each game (coming in Prompt 3).")
+            InfoNote("No game profiles yet. GabAI makes one for each game: you mark its buttons and pick how to press them.")
         } else {
             state.gameProfiles.forEach {
-                ProfileRow(SavedProfile.Game(it), Icons.Outlined.SportsEsports, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) })
+                ProfileRow(SavedProfile.Game(it), Icons.Outlined.SportsEsports, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PwdeButton("Play", { onPlayGameProfile(it.gameId, it.id) }, icon = Icons.Outlined.SportsEsports, modifier = Modifier.weight(1f))
+                        PwdeButton("Edit buttons", { onEditGameProfile(it.id) }, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
 
@@ -226,7 +262,13 @@ fun ProfileScreen(
 
 /** One saved profile with rename and delete. */
 @Composable
-private fun ProfileRow(profile: SavedProfile, icon: ImageVector, onRename: (SavedProfile) -> Unit, onDelete: (SavedProfile) -> Unit) {
+private fun ProfileRow(
+    profile: SavedProfile,
+    icon: ImageVector,
+    onRename: (SavedProfile) -> Unit,
+    onDelete: (SavedProfile) -> Unit,
+    primary: @Composable () -> Unit,
+) {
     val colors = PwdeTheme.colors
     GradientCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -236,7 +278,8 @@ private fun ProfileRow(profile: SavedProfile, icon: ImageVector, onRename: (Save
                 Text(profile.detail, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
             }
         }
-        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.padding(top = 8.dp)) { primary() }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PwdeButton("Rename", { onRename(profile) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Edit, modifier = Modifier.weight(1f))
             PwdeButton("Delete", { onDelete(profile) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Delete, modifier = Modifier.weight(1f))
         }

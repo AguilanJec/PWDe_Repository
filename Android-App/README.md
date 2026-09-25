@@ -20,12 +20,15 @@ com.pwde.app
 │   │                      + ProfileRepository, ControlsRepository
 │   ├── remote/            AuthRepository (Firebase or guest-only), SyncRepository (no-op)
 │   ├── speech/            SpeechOutput (Android TextToSpeech)
+│   ├── gabai/             GabAiState (sealed state machine), GabAiFlow (transitions),
+│   │                      GabAiRepository (resumable sessions, screenshots)
 │   ├── media/             TutorialPlayer (ExoPlayer)
 │   └── model/             gesture catalog, control tuning, voice options, games
 ├── sensors/
 │   ├── face/              FaceTrackingManager (CameraX + MediaPipe Face Landmarker),
 │   │                      GestureClassifier, Cursor/JoystickMapper, OrientationHeadTracker
-│   └── voice/             VoiceCommandManager (Android SpeechRecognizer), CommandMatcher
+│   └── voice/             VoiceCommandManager (app-wide), InGameVoiceEngine (gameplay),
+│                          ContinuousSpeechRecognizer (shared plumbing), MicArbiter, CommandMatcher
 └── ui/
     ├── theme/             PwdeTheme + ThemeViewModel (drives the whole app from settings)
     ├── components/        design-system components (buttons, cards, steppers, voice bar…)
@@ -70,6 +73,17 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 - No camera permission or no front camera: the phone's motion sensors stand in for your head. Every place this is active shows **"Demo Mode: Simulated Head Tracking"**.
 - No mic permission or no recognition service: the voice bar's keyboard button takes typed commands. They go through the same matching and command catalog.
 
+**In-game voice (swappable).** During gameplay only, voice goes through the `InGameVoiceEngine` interface. It recognizes just the active game profile's commands plus back/pause/menu, resume, select and recenter.
+- The current implementation, `SpeechRecognizerInGameVoiceEngine`, is a working placeholder: the same Android `SpeechRecognizer` plumbing, scoped to those commands.
+- To use a dedicated low-latency engine, change the one binding in `di/AppContainer.kt` (it's commented). `GameplayViewModel` and everything above it depend only on the interface.
+- `MicArbiter` guarantees one listener at a time: while a game holds the mic, the app-wide `VoiceCommandManager` stands down.
+- `BaseInGameVoiceEngine` carries the contract every engine inherits: scoped matching, the user's match and activation modes, and the typed fallback when the mic is unavailable.
+
+**GabAI** is a scripted, resumable state machine, not a chatbot. `GabAiState` is a sealed hierarchy (Welcome, then the calibration branch, then the game-profile branch), and `GabAiFlow` holds the pure transitions.
+- Every step is saved to Room (`gabai_sessions`) with the form data entered so far. Backing out, or force-closing the app, resumes on the same step from **GabAI → Continue Existing**; the Dashboard card shows where you stopped.
+- The calibration steps reuse the Prompt 2 camera, pointer and joystick UI and apply live. Saving creates a `CalibrationProfile`.
+- For a game profile, you pick a game and a calibration, choose a screenshot, and mark its buttons: tap, drag, or say "place" to drop a button at your head pointer. You name each button by typing or by voice, then choose how to press it (voice phrase, head gesture or joystick direction). The result is saved as a `GameProfile`, editable later from the Profile or game screen.
+
 **Testing Station** is a development tool, so only debug builds have it. Its code lives in `src/debug/`, and `src/release/` provides a no-op twin. A release build has neither the Dashboard card nor the route, and no Testing Station classes are in the APK.
 
 ## Real vs. placeholder in this build
@@ -80,15 +94,25 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 | Setup: needs, appearance (live preview), input mode | Real, saved to DataStore on Continue. The "Try it now" pointer is live head tracking |
 | Voice tutorial, including TTS read-aloud and speed | Real (Android TextToSpeech), voice-controllable |
 | Input mode (Controls) | Real; switches the tracking output (pointer / joystick) live |
-| Gestures + per-gesture sensitivity | Real: saved to Room, with a live "try it" meter |
+| Gestures + per-gesture sensitivity | Real: 25 gestures plus all 52 MediaPipe blendshapes, saved to Room, live "try it" meter |
 | Cursor speed, joystick | Real: live camera, live pointer/joystick; settings saved to Room |
 | Voice configuration | Real: live mic level, on/off, matching and activation modes, command list |
 | Testing Station (debug builds only) | Real: live face, gesture, voice, cursor and joystick readouts |
 | Watch Tutorial | Real player with a placeholder video (`res/raw/tutorial_placeholder.mp4`) |
-| Games, game detail | Real, voice-selectable |
-| Playing view | Live PWDe overlay (voice, gestures, pointer/joystick, actions) over a **simulated** game background |
-| Profile | Real: guest/signed-in state, profile lists with rename/delete, sync status |
-| GabAI | Welcome screen only; each choice shows "Coming in Prompt 3" |
+| GabAI | Real: calibration and game-profile flows, resumable after a force-close |
+| Games, game detail | Real: play, edit or create profiles per game; voice-selectable |
+| Playing view | Live overlay over your game screenshot (or a simulated arena). Mapped buttons are pressed by voice (in-game engine), gesture or joystick |
+| Profile | Real: profile lists with rename/delete, "Use now" for calibrations, Play/Edit for game profiles, sync status |
 | Leaderboard | "Planned" notice; no invented scores |
+
+## Known limitations
+
+- **No real game control.** PWDe doesn't launch or press buttons in Clash Royale or Mobile Legends. There's no accessibility service, by design. The playing view shows which mapped button would be pressed, over your screenshot.
+- **Buttons are placed by hand.** GabAI's button mapping is manual (tap, drag, or "place" at the head pointer). There's no ML button detection in this build.
+- **In-game voice is the baseline recognizer.** Until a dedicated engine is chosen, gameplay uses Android `SpeechRecognizer`. Latency and restart beeps depend on the phone's speech service.
+- **Cloud sync is a stub.** Signing in never blocks or deletes anything, but profiles only live on this phone for now.
+- **Direction and side checks.** Head-pose signs and MediaPipe's left/right blendshape sides were checked in theory and by unit tests. If a direction reads backwards on a device, there's one switch in each: `HeadPose.kt` and `Blendshapes.SIDES_SWAPPED`.
+- **Tracking speed.** Face tracking runs on the CPU at roughly 15–30 fps depending on the phone.
+- **Release signing.** No release signing config is set up. `assembleRelease` produces an unsigned APK to sign with your own key.
 
 Gesture actions like Notifications, All apps and Touch & hold act inside PWDe's overlay only. PWDe has no accessibility service or system-level control.

@@ -1,5 +1,7 @@
 package com.pwde.app.ui.voice
 
+import com.pwde.app.data.local.inputModeOrDefault
+import com.pwde.app.data.local.ProfileRepository
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -57,6 +59,7 @@ class VoiceViewModel(
     private val voiceCommandManager: VoiceCommandManager,
     private val controlsRepository: ControlsRepository,
     private val settingsRepository: SettingsRepository,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel(), VoiceController {
     override val state: StateFlow<VoiceState> = voiceCommandManager.state
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(1_000), voiceCommandManager.state.value)
@@ -111,7 +114,7 @@ class VoiceViewModel(
             else -> when (StandardCommands.shortcutOf(command)) {
                 VoiceShortcut.CURSOR_MODE -> switchInput(InputMode.HEAD_FACE, "Switched to cursor mode")
                 VoiceShortcut.JOYSTICK_MODE -> switchInput(InputMode.JOYSTICK, "Switched to joystick mode")
-                VoiceShortcut.SWITCH_PROFILE -> showNotice("No saved profiles to switch to yet")
+                VoiceShortcut.SWITCH_PROFILE -> switchCalibrationProfile()
                 null -> showNotice("\"${command.label}\" doesn't do anything on this screen")
             }
         }
@@ -120,6 +123,23 @@ class VoiceViewModel(
     private suspend fun switchInput(mode: InputMode, message: String) {
         if (settingsRepository.settings.first().inputMode != mode) settingsRepository.setInputMode(mode)
         showNotice(message)
+    }
+
+    private var lastSwitchedProfileId: Long? = null
+
+    /** Steps to the next saved calibration profile and makes it the working controls. */
+    private suspend fun switchCalibrationProfile() {
+        val profiles = profileRepository.calibrationProfiles.first()
+        if (profiles.isEmpty()) {
+            showNotice("No saved calibration profiles yet — make one with GabAI")
+            return
+        }
+        val index = profiles.indexOfFirst { it.id == lastSwitchedProfileId }
+        val next = profiles[(index + 1).mod(profiles.size)]
+        lastSwitchedProfileId = next.id
+        controlsRepository.applyCalibration(next)
+        settingsRepository.setInputMode(next.inputModeOrDefault)
+        showNotice("Switched to \"${next.name}\"")
     }
 
     private var noticeJob: Job? = null

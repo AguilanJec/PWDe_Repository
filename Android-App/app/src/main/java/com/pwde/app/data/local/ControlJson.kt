@@ -2,10 +2,13 @@ package com.pwde.app.data.local
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.pwde.app.data.model.ButtonTrigger
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.MAX_LEVEL
 import com.pwde.app.data.model.MIN_LEVEL
+import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.TriggerType
 import com.pwde.app.data.model.VoiceShortcut
 
 /** Serialises control mappings to the JSON strings stored in Room. Unknown names are dropped. */
@@ -41,6 +44,43 @@ object ControlJson {
         val stored = decodeStringMap(json)
         return VoiceShortcut.entries.associateWith { stored[it.name] ?: it.defaultPhrase }
     }
+
+    fun encodeButtons(buttons: List<MappedButton>): String = gson.toJson(buttons.map(ButtonJson::from))
+
+    /** Malformed JSON or unknown trigger types decode to an empty list / no trigger, never a crash. */
+    fun decodeButtons(json: String?): List<MappedButton> {
+        if (json.isNullOrBlank()) return emptyList()
+        val raw = runCatching { gson.fromJson<List<ButtonJson>>(json, buttonListType) }.getOrNull().orEmpty()
+        return raw.mapNotNull { it.toModel() }
+    }
+
+    /** Gson-friendly shape (all nullable) so partial or older JSON still loads. */
+    private data class ButtonJson(
+        val id: Int? = null,
+        val label: String? = null,
+        val x: Float? = null,
+        val y: Float? = null,
+        val triggerType: String? = null,
+        val triggerValue: String? = null,
+    ) {
+        fun toModel(): MappedButton? {
+            val trigger = TriggerType.entries.firstOrNull { it.name == triggerType }
+                ?.let { type -> triggerValue?.let { ButtonTrigger(type, it) } }
+            return MappedButton(
+                id = id ?: return null,
+                label = label.orEmpty(),
+                x = (x ?: 0.5f).coerceIn(0f, 1f),
+                y = (y ?: 0.5f).coerceIn(0f, 1f),
+                trigger = trigger,
+            )
+        }
+
+        companion object {
+            fun from(b: MappedButton) = ButtonJson(b.id, b.label, b.x, b.y, b.trigger?.type?.name, b.trigger?.value)
+        }
+    }
+
+    private val buttonListType = object : TypeToken<List<ButtonJson>>() {}.type
 
     private fun decodeStringMap(json: String?): Map<String, String> =
         if (json.isNullOrBlank()) emptyMap()

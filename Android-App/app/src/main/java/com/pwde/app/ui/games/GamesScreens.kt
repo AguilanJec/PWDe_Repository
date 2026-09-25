@@ -1,5 +1,6 @@
 package com.pwde.app.ui.games
 
+import com.pwde.app.data.local.GameProfile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -128,29 +129,66 @@ private fun GameArt(game: Game) {
     }
 }
 
-/** D3 Game detail: confirm the game before opening the (placeholder) play view. */
+/** A game's saved profiles, newest first. */
+class GameDetailViewModel(profileRepository: ProfileRepository, game: Game) : ViewModel() {
+    val profiles: StateFlow<List<GameProfile>> = profileRepository.gameProfilesFor(game.id)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+}
+
+/** D3 Game detail: play with a saved game profile (or without one), edit one, or make one with GabAI. */
 @Composable
-fun GameDetailScreen(game: Game, onBack: () -> Unit, onPlay: () -> Unit, onSetUpWithGabAi: () -> Unit) {
+fun GameDetailScreen(
+    game: Game,
+    viewModel: GameDetailViewModel,
+    onBack: () -> Unit,
+    onPlay: (profileId: Long?) -> Unit,
+    onEditProfile: (profileId: Long) -> Unit,
+    onSetUpWithGabAi: () -> Unit,
+) {
     val colors = PwdeTheme.colors
-    VoiceCommandsEffect(GAME_DETAIL_COMMANDS) { id -> if (id == "play") onPlay() else onSetUpWithGabAi() }
+    val profiles by viewModel.profiles.collectAsStateWithLifecycle()
+    val newest = profiles.firstOrNull()
+    VoiceCommandsEffect(GAME_DETAIL_COMMANDS) { id -> if (id == "play") onPlay(newest?.id) else onSetUpWithGabAi() }
     PwdeScreen(
         title = game.displayName,
         subtitle = game.genre,
         onBack = onBack,
-        voiceHint = "Say \"play\" or \"launch game\"",
-        footer = { PwdeButton("Play ${game.displayName} with PWDe", onPlay, icon = Icons.Outlined.SportsEsports, modifier = Modifier.fillMaxWidth()) },
+        voiceHint = "Say \"play\" or \"set up with GabAI\"",
+        footer = {
+            PwdeButton(
+                if (newest != null) "Play with \"${newest.profileName}\"" else "Play ${game.displayName} with PWDe",
+                { onPlay(newest?.id) },
+                icon = Icons.Outlined.SportsEsports,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
     ) {
         GameArt(game)
         Text(game.description, style = MaterialTheme.typography.bodyLarge, color = colors.text)
-        PlaceholderNotice(
-            "No game profile yet",
-            "GabAI will walk you through mapping this game's buttons to your head, face and voice.",
-            tag = "Coming in Prompt 3",
+        if (profiles.isEmpty()) {
+            InfoNote("No game profile yet. GabAI will walk you through mapping this game's buttons to your head, face and voice.")
+        } else {
+            SectionTitle("Your profiles for this game")
+            profiles.forEach { profile ->
+                GradientCard(Modifier.fillMaxWidth()) {
+                    Text(profile.profileName, style = MaterialTheme.typography.titleMedium, color = colors.text)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
+                        PwdeButton("Play", { onPlay(profile.id) }, icon = Icons.Outlined.SportsEsports, modifier = Modifier.weight(1f))
+                        PwdeButton("Edit", { onEditProfile(profile.id) }, style = ButtonStyle.SECONDARY, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        PwdeButton(
+            if (profiles.isEmpty()) "Set up with GabAI" else "New profile with GabAI",
+            onSetUpWithGabAi,
+            style = ButtonStyle.SECONDARY,
+            icon = Icons.Outlined.AutoAwesome,
+            modifier = Modifier.fillMaxWidth(),
         )
-        PwdeButton("Set up with GabAI", onSetUpWithGabAi, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome, modifier = Modifier.fillMaxWidth())
         InfoNote(
-            "Play opens PWDe's live overlay over a simulated game — your head, face and voice really drive it, " +
-                "but the real game isn't launched.",
+            "Play opens PWDe's live overlay over your game screenshot (or a simulated arena) — your head, face and " +
+                "voice really drive it, but the real game isn't launched.",
             icon = Icons.Outlined.Info,
         )
     }
@@ -184,7 +222,7 @@ private enum class GameFilter(val label: String, val matches: (Game, Set<String>
 
 private val GAME_DETAIL_COMMANDS = listOf(
     voiceCommand("play", "play", "launch game", "launch", "start"),
-    voiceCommand("gabai", "set up with gabai", "gabai", "gab ai"),
+    voiceCommand("gabai", "set up with gabai", "new profile", "gabai", "gab ai"),
 )
 
 /** Filter: narrow the game list by genre or setup status. */
@@ -211,7 +249,7 @@ fun FilterScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (Main
             }
         }
         SectionTitle("${results.size} ${if (results.size == 1) "game" else "games"}")
-        if (results.isEmpty()) InfoNote("No games match. Profiles are created with GabAI (coming in Prompt 3).")
+        if (results.isEmpty()) InfoNote("No games match. Game profiles are created with GabAI from the Play tab.")
         results.forEach { game -> GameCard(game, game.id in withProfiles) { onGame(game) } }
     }
 }

@@ -24,7 +24,6 @@ import com.pwde.app.ui.controls.ControlsDestination
 import com.pwde.app.ui.controls.ControlsHubScreen
 import com.pwde.app.ui.controls.CursorSpeedScreen
 import com.pwde.app.ui.controls.CursorSpeedViewModel
-import com.pwde.app.ui.controls.CustomButtonsScreen
 import com.pwde.app.ui.controls.GesturesScreen
 import com.pwde.app.ui.controls.GesturesViewModel
 import com.pwde.app.ui.controls.InputModeScreen
@@ -34,13 +33,14 @@ import com.pwde.app.ui.controls.JoystickViewModel
 import com.pwde.app.ui.dashboard.DashboardDestination
 import com.pwde.app.ui.dashboard.DashboardScreen
 import com.pwde.app.ui.dashboard.DashboardViewModel
-import com.pwde.app.ui.gabai.GabAiChoice
-import com.pwde.app.ui.gabai.GabAiComingScreen
-import com.pwde.app.ui.gabai.GabAiWelcomeScreen
+import com.pwde.app.ui.gabai.GabAiScreen
+import com.pwde.app.ui.gabai.GabAiStart
+import com.pwde.app.ui.gabai.GabAiViewModel
 import com.pwde.app.ui.gameplay.GameplayViewModel
 import com.pwde.app.ui.gameplay.PlayingScreen
 import com.pwde.app.ui.games.FilterScreen
 import com.pwde.app.ui.games.GameDetailScreen
+import com.pwde.app.ui.games.GameDetailViewModel
 import com.pwde.app.ui.games.GamesScreen
 import com.pwde.app.ui.games.GamesViewModel
 import com.pwde.app.ui.games.LeaderboardScreen
@@ -70,7 +70,9 @@ import com.pwde.app.ui.voicetutorial.VoiceTutorialViewModel
 fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
     val activity = LocalActivity.current
     val screenReader = pwdeViewModel { ScreenReaderViewModel(it.settingsRepository, it.speechOutput) }
-    val voice = pwdeViewModel { VoiceViewModel(it.voiceCommandManager, it.controlsRepository, it.settingsRepository) }
+    val voice = pwdeViewModel {
+        VoiceViewModel(it.voiceCommandManager, it.controlsRepository, it.settingsRepository, it.profileRepository)
+    }
     // Observing voice state here keeps the recognizer running on every screen while PWDe is visible.
     voice.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -188,15 +190,18 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         composable(Routes.DASHBOARD) {
             DashboardScreen(
                 viewModel = pwdeViewModel {
-                    DashboardViewModel(it.settingsRepository, it.authRepository, it.faceTrackingManager, it.voiceCommandManager)
+                    DashboardViewModel(
+                        it.settingsRepository, it.authRepository, it.faceTrackingManager, it.voiceCommandManager, it.gabAiRepository,
+                    )
                 },
                 onNavigate = { destination ->
                     when (destination) {
                         DashboardDestination.CONTROLS -> navController.navigate(Routes.CONTROLS)
                         DashboardDestination.VOICE -> navController.navigate(Routes.VOICE_CONFIG)
-                        DashboardDestination.TESTING_STATION -> navController.navigate(Routes.TESTING_STATION)
+                        // Release builds have no such destination at all (see src/release).
+                        DashboardDestination.TESTING_STATION -> if (TESTING_STATION_AVAILABLE) navController.navigate(Routes.TESTING_STATION)
                         DashboardDestination.WATCH_TUTORIAL -> navController.navigate(Routes.WATCH_TUTORIAL)
-                        DashboardDestination.GABAI -> navController.navigate(Routes.GABAI)
+                        DashboardDestination.GABAI -> navController.navigate(Routes.gabai())
                         DashboardDestination.START_PLAYING -> openTab(MainTab.GAMES)
                     }
                 },
@@ -217,17 +222,29 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             } else {
                 GameDetailScreen(
                     game = game,
+                    viewModel = pwdeViewModel(key = "game-${game.id}") { GameDetailViewModel(it.profileRepository, game) },
                     onBack = ::back,
-                    onPlay = { navController.navigate(Routes.playing(game.id)) },
-                    onSetUpWithGabAi = { navController.navigate(Routes.GABAI) },
+                    onPlay = { profileId -> navController.navigate(Routes.playing(game.id, profileId)) },
+                    onEditProfile = { navController.navigate(Routes.gabai(editProfileId = it)) },
+                    onSetUpWithGabAi = { navController.navigate(Routes.gabai(newGameProfile = true, gameId = game.id)) },
                 )
             }
         }
-        composable(Routes.PLAYING, arguments = listOf(navArgument("gameId") { type = NavType.StringType })) { entry ->
+        composable(
+            Routes.PLAYING,
+            arguments = listOf(
+                navArgument("gameId") { type = NavType.StringType },
+                navArgument("profile") { type = NavType.LongType; defaultValue = -1L },
+            ),
+        ) { entry ->
             val game = Game.byId(entry.arguments?.getString("gameId"))
+            val profileId = entry.arguments?.getLong("profile")?.takeIf { it >= 0 }
             PlayingScreen(
                 viewModel = pwdeViewModel {
-                    GameplayViewModel(it.faceTrackingManager, it.voiceCommandManager, it.controlsRepository, game)
+                    GameplayViewModel(
+                        it.faceTrackingManager, it.inGameVoiceEngine, it.controlsRepository, it.profileRepository,
+                        it.settingsRepository, it.gabAiRepository, game, profileId,
+                    )
                 },
                 onExit = ::back,
             )
@@ -251,7 +268,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                         ControlsDestination.CURSOR -> Routes.CONTROLS_CURSOR
                         ControlsDestination.JOYSTICK -> Routes.CONTROLS_JOYSTICK
                         ControlsDestination.VOICE -> Routes.VOICE_CONFIG
-                        ControlsDestination.CUSTOM_BUTTONS -> Routes.CUSTOM_BUTTONS
+                        ControlsDestination.CUSTOM_BUTTONS -> Routes.gabai(newGameProfile = true)
                     },
                 )
             }
@@ -285,7 +302,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         composable(Routes.CONTROLS_JOYSTICK) {
             JoystickScreen(pwdeViewModel { JoystickViewModel(it.controlsRepository, it.faceTrackingManager) }, onBack = ::back)
         }
-        composable(Routes.CUSTOM_BUTTONS) { CustomButtonsScreen(onBack = ::back) }
         composable(Routes.VOICE_CONFIG) {
             VoiceConfigScreen(pwdeViewModel { VoiceConfigViewModel(it.controlsRepository, it.voiceCommandManager) }, onBack = ::back)
         }
@@ -297,18 +313,48 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         }
 
         // G · GabAI
-        composable(Routes.GABAI) {
-            GabAiWelcomeScreen(onBack = ::back, onChoose = { navController.navigate(Routes.gabaiComing(it.id)) })
-        }
-        composable(Routes.GABAI_COMING, arguments = listOf(navArgument("choice") { type = NavType.StringType })) { entry ->
-            GabAiComingScreen(GabAiChoice.byId(entry.arguments?.getString("choice")), onBack = ::back)
+        composable(
+            Routes.GABAI,
+            arguments = listOf(
+                navArgument("start") { type = NavType.StringType; defaultValue = Routes.GABAI_START_WELCOME },
+                navArgument("game") { type = NavType.StringType; defaultValue = "" },
+                navArgument("edit") { type = NavType.LongType; defaultValue = -1L },
+            ),
+        ) { entry ->
+            val args = entry.arguments
+            val editId = args?.getLong("edit")?.takeIf { it >= 0 }
+            val start = when {
+                editId != null -> GabAiStart.EditGameProfile(editId)
+                args?.getString("start") == Routes.GABAI_START_GAME -> GabAiStart.NewGameProfile(args.getString("game")?.ifEmpty { null })
+                else -> GabAiStart.Welcome
+            }
+            GabAiScreen(
+                viewModel = pwdeViewModel(key = "gabai-$start") {
+                    GabAiViewModel(
+                        it.gabAiRepository, it.profileRepository, it.controlsRepository, it.settingsRepository,
+                        it.voiceCommandManager, it.faceTrackingManager, start,
+                    )
+                },
+                onExit = ::back,
+                onDashboard = { if (!navController.popBackStack(Routes.DASHBOARD, inclusive = false)) enterMainApp() },
+                onPlay = { gameId, profileId ->
+                    navController.navigate(Routes.playing(gameId, profileId)) {
+                        popUpTo(Routes.DASHBOARD) { inclusive = false }
+                    }
+                },
+            )
         }
 
         // H · Profile
         composable(Routes.PROFILE) {
             ProfileScreen(
-                viewModel = pwdeViewModel { ProfileViewModel(it.authRepository, it.syncRepository, it.profileRepository) },
+                viewModel = pwdeViewModel {
+                    ProfileViewModel(it.authRepository, it.syncRepository, it.profileRepository, it.controlsRepository, it.settingsRepository)
+                },
                 onSignIn = { navController.navigate(Routes.SIGN_IN) },
+                onEditGameProfile = { navController.navigate(Routes.gabai(editProfileId = it)) },
+                onPlayGameProfile = { gameId, profileId -> navController.navigate(Routes.playing(gameId, profileId)) },
+                onNewWithGabAi = { navController.navigate(Routes.gabai()) },
                 onEditAppearance = { navController.navigate(Routes.setup(appearanceOnly = true)) },
                 onControls = { navController.navigate(Routes.CONTROLS) },
                 onTab = ::openTab,

@@ -1,5 +1,12 @@
 package com.pwde.app.data
 
+import com.pwde.app.data.prefs.InputMode
+import com.pwde.app.data.model.TriggerType
+import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.ButtonTrigger
+import com.pwde.app.data.local.inputModeOrDefault
+import com.pwde.app.data.local.toCalibrationProfile
+import com.pwde.app.data.local.ControlJson
 import android.content.Context
 import androidx.room.Room
 import android.database.sqlite.SQLiteDatabase
@@ -68,6 +75,39 @@ class ControlsTuningTest {
     }
 
     @Test
+    fun calibrationProfileRoundTripsThroughTheWorkingControls() = runTest {
+        controls.setCursorTuning(CursorTuning(2, 3, 4, 5, 6))
+        controls.setJoystickTuning(JoystickTuning(size = 8, sensitivity = 2, deadZone = 4))
+        controls.setJoystickCenter(-7f, 2f)
+        controls.setGestureSensitivity(FacialGesture.WINK, 9)
+        val snapshot = controls.config.first().toCalibrationProfile("Mine", InputMode.JOYSTICK)
+
+        controls.setCursorTuning(CursorTuning())
+        controls.setJoystickTuning(JoystickTuning())
+        controls.applyCalibration(snapshot)
+        val restored = controls.config.first()
+        assertEquals(CursorTuning(2, 3, 4, 5, 6), restored.cursor)
+        assertEquals(JoystickTuning(8, 2, 4, -7f, 2f), restored.joystick)
+        assertEquals(9, restored.sensitivityOf(FacialGesture.WINK))
+        assertEquals(InputMode.JOYSTICK, snapshot.inputModeOrDefault)
+    }
+
+    @Test
+    fun buttonMappingsRoundTripAndTolerateBadJson() {
+        val buttons = listOf(
+            MappedButton(1, "Attack", 0.8f, 0.75f, ButtonTrigger(TriggerType.VOICE, "attack")),
+            MappedButton(2, "Move", 0.2f, 0.7f, ButtonTrigger(TriggerType.JOYSTICK, "UP")),
+            MappedButton(3, "Later", 0.5f, 0.5f),
+        )
+        assertEquals(buttons, ControlJson.decodeButtons(ControlJson.encodeButtons(buttons)))
+        assertEquals(emptyList<MappedButton>(), ControlJson.decodeButtons("{broken"))
+        assertEquals(emptyList<MappedButton>(), ControlJson.decodeButtons("[]"))
+        // Unknown trigger types load as "no trigger yet" rather than failing.
+        val odd = ControlJson.decodeButtons("""[{"id":1,"label":"X","x":2.0,"y":0.5,"triggerType":"TELEPATHY","triggerValue":"v"}]""")
+        assertEquals(MappedButton(1, "X", 1f, 0.5f, null), odd.single())
+    }
+
+    @Test
     fun tuningDoesNotDisturbVoiceSettings() = runTest {
         controls.setVoiceEnabled(false)
         controls.setCursorTuning(CursorTuning(speedUp = 7))
@@ -76,7 +116,7 @@ class ControlsTuningTest {
 }
 
 /**
- * v1 (Prompt 1) → v2 (Prompt 2) keeps existing rows and fills the new columns with defaults.
+ * v1 → v2 → v3 keeps existing rows and fills the new columns with defaults.
  * Builds a genuine v1 database from the exported 1.json, then lets Room open it and run the real
  * AutoMigration. (MigrationTestHelper's driver can't open files under Robolectric on Windows.)
  */
@@ -130,6 +170,9 @@ class MigrationTest {
             assertEquals(4, profile.cursorSpeedUp)
             assertEquals(7, profile.cursorSmoothing)
             assertEquals("{}", profile.gestureSensitivityJson)
+            // v3 columns and table.
+            assertEquals(0f, profile.joystickCenterPitch, 0f)
+            assertEquals(null, db.gabAiSessionDao().getUnfinished())
         } finally {
             db.close()
             context.deleteDatabase(DB)

@@ -58,3 +58,25 @@ interface ControlSettingsDao {
     @Upsert
     suspend fun upsert(entity: ControlSettingsEntity)
 }
+
+@Dao
+interface GabAiSessionDao {
+    /** The most recent session the user hasn't finished. */
+    @Query("SELECT * FROM gabai_sessions WHERE completed = 0 ORDER BY updatedAt DESC LIMIT 1")
+    fun observeUnfinished(): Flow<GabAiSessionEntity?>
+
+    @Query("SELECT * FROM gabai_sessions WHERE completed = 0 ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun getUnfinished(): GabAiSessionEntity?
+
+    @Query("SELECT * FROM gabai_sessions WHERE sessionId = :sessionId")
+    suspend fun get(sessionId: String): GabAiSessionEntity?
+
+    @Upsert
+    suspend fun upsert(session: GabAiSessionEntity)
+
+    @Query("UPDATE gabai_sessions SET completed = 1, updatedAt = :now WHERE sessionId = :sessionId")
+    suspend fun markCompleted(sessionId: String, now: Long)
+
+    @Query("DELETE FROM gabai_sessions WHERE completed = 1")
+    suspend fun deleteCompleted()
+}

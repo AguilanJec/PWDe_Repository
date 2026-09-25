@@ -45,6 +45,12 @@ class ControlsRepository(
         it.copy(joystick = it.joystick.copy(centerPitch = pitch, centerRoll = roll))
     }
 
+    /** Makes a saved calibration profile the working controls (voice shortcuts are kept). */
+    suspend fun applyCalibration(profile: CalibrationProfile) = edit { profile.toControlConfig(keepShortcutsFrom = it) }
+
+    /** Replaces the working controls wholesale, e.g. with GabAI's in-progress calibration. */
+    suspend fun replace(config: ControlConfig) = edit { config }
+
     suspend fun setVoiceEnabled(enabled: Boolean) = edit { it.copy(voiceEnabled = enabled) }
 
     suspend fun setVoiceMatchMode(mode: VoiceMatchMode) = edit { it.copy(voiceMatchMode = mode) }

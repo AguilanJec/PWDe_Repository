@@ -6,7 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/** A saved set of control tunings. Created by GabAI (Prompt 3) from [ControlSettingsEntity]. */
+/** A saved set of control tunings. Created by GabAI from the working controls ([ControlSettingsEntity]). */
 @Entity(tableName = "calibration_profiles")
 data class CalibrationProfile(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -20,6 +20,8 @@ data class CalibrationProfile(
     val joystickDeadZone: Int = 3,
     val joystickRadius: Int = 5,
     @ColumnInfo(defaultValue = "7") val cursorSmoothing: Int = 7,
+    @ColumnInfo(defaultValue = "0") val joystickCenterPitch: Float = 0f,
+    @ColumnInfo(defaultValue = "0") val joystickCenterRoll: Float = 0f,
     /** JSON map of GestureAction name -> FacialGesture name. */
     val gestureAssignmentsJson: String = "{}",
     /** JSON map of FacialGesture name -> sensitivity level 1–10. */
@@ -64,7 +66,7 @@ data class GameProfile(
 /**
  * The single working copy of the user's controls (gesture picks and sensitivities, voice options,
  * cursor and joystick tuning). This is the default / in-progress calibration that tracking reads
- * live; GabAI snapshots it into a [CalibrationProfile] in Prompt 3. Always row [SINGLETON_ID].
+ * live; GabAI snapshots it into a [CalibrationProfile]. Always row [SINGLETON_ID].
  */
 @Entity(tableName = "control_settings")
 data class ControlSettingsEntity(
@@ -91,3 +93,16 @@ data class ControlSettingsEntity(
         const val SINGLETON_ID = 0
     }
 }
+
+/**
+ * A GabAI conversation in progress, so leaving (or force-closing) resumes exactly where the user
+ * was. [stateJson] is the encoded GabAI state; [formJson] holds everything entered so far.
+ */
+@Entity(tableName = "gabai_sessions")
+data class GabAiSessionEntity(
+    @PrimaryKey val sessionId: String,
+    val stateJson: String,
+    val formJson: String,
+    val completed: Boolean,
+    val updatedAt: Long,
+)

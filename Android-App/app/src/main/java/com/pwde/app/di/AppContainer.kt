@@ -3,6 +3,7 @@ package com.pwde.app.di
 import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import androidx.datastore.preferences.preferencesDataStore
+import com.pwde.app.data.gabai.GabAiRepository
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
 import com.pwde.app.data.local.PwdeDatabase
@@ -16,6 +17,9 @@ import com.pwde.app.data.speech.SpeechOutput
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.MediaPipeFaceTrackingManager
 import com.pwde.app.sensors.voice.AndroidVoiceCommandManager
+import com.pwde.app.sensors.voice.InGameVoiceEngine
+import com.pwde.app.sensors.voice.MicArbiter
+import com.pwde.app.sensors.voice.SpeechRecognizerInGameVoiceEngine
 import com.pwde.app.sensors.voice.VoiceCommandManager
 
 private val Context.settingsDataStore by preferencesDataStore(name = "user_settings")
@@ -38,8 +42,20 @@ class AppContainer(private val context: Context) {
         MediaPipeFaceTrackingManager(context, controlsRepository, settingsRepository)
     }
 
-    /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). */
-    val voiceCommandManager: VoiceCommandManager by lazy { AndroidVoiceCommandManager(context, controlsRepository) }
+    /** Makes sure gameplay's voice engine and the app-wide one never listen at the same time. */
+    private val micArbiter by lazy { MicArbiter() }
+
+    /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). Used everywhere except gameplay. */
+    val voiceCommandManager: VoiceCommandManager by lazy { AndroidVoiceCommandManager(context, controlsRepository, micArbiter) }
+
+    /** Gameplay-time voice recognition, scoped to the active game profile's commands. */
+    val inGameVoiceEngine: InGameVoiceEngine by lazy {
+        // swap SpeechRecognizerInGameVoiceEngine for a dedicated low-latency engine here once one is chosen — GameplayViewModel and everything above it needs no changes
+        SpeechRecognizerInGameVoiceEngine(context, controlsRepository, micArbiter)
+    }
+
+    /** Resumable GabAI sessions and game screenshots. */
+    val gabAiRepository by lazy { GabAiRepository(context, database.gabAiSessionDao()) }
 
     fun newTutorialPlayer() = TutorialPlayer(context)
 

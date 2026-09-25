@@ -19,8 +19,10 @@ object Routes {
     const val GAMES = "games"
     const val GAME_DETAIL = "games/{gameId}"
     fun gameDetail(gameId: String) = "games/$gameId"
-    const val PLAYING = "playing/{gameId}"
-    fun playing(gameId: String) = "playing/$gameId"
+    const val PLAYING = "playing/{gameId}?profile={profile}"
+
+    /** [profileId] picks a game profile; without one, the game's most recent profile (if any) is used. */
+    fun playing(gameId: String, profileId: Long? = null) = "playing/$gameId?profile=${profileId ?: -1}"
     const val LEADERBOARD = "leaderboard"
     const val FILTER = "filter"
 
@@ -32,7 +34,6 @@ object Routes {
     fun chooseGesture(action: String) = "controls/gestures/$action"
     const val CONTROLS_CURSOR = "controls/cursor"
     const val CONTROLS_JOYSTICK = "controls/joystick"
-    const val CUSTOM_BUTTONS = "controls/custom_buttons"
     const val VOICE_CONFIG = "voice_config"
 
     // F · Testing, tutorial
@@ -40,9 +41,13 @@ object Routes {
     const val WATCH_TUTORIAL = "watch_tutorial"
 
     // G · GabAI
-    const val GABAI = "gabai"
-    const val GABAI_COMING = "gabai/{choice}"
-    fun gabaiComing(choice: String) = "gabai/$choice"
+    const val GABAI = "gabai?start={start}&game={game}&edit={edit}"
+    const val GABAI_START_WELCOME = "welcome"
+    const val GABAI_START_GAME = "game"
+
+    /** GabAI's Welcome, or straight into a new game profile (optionally for [gameId]), or editing one. */
+    fun gabai(newGameProfile: Boolean = false, gameId: String? = null, editProfileId: Long? = null) =
+        "gabai?start=${if (newGameProfile) GABAI_START_GAME else GABAI_START_WELCOME}&game=${gameId.orEmpty()}&edit=${editProfileId ?: -1}"
 
     // H · Profile
     const val PROFILE = "profile"
@@ -68,12 +73,10 @@ object Routes {
         CHOOSE_GESTURE -> "Choose a gesture"
         CONTROLS_CURSOR -> "Cursor speed"
         CONTROLS_JOYSTICK -> "Joystick"
-        CUSTOM_BUTTONS -> "Custom buttons"
         VOICE_CONFIG -> "Voice"
         TESTING_STATION -> "Testing station"
         WATCH_TUTORIAL -> "Tutorial video"
         GABAI -> "GabAI setup"
-        GABAI_COMING -> "GabAI"
         PROFILE -> "Profile"
         else -> null
     }

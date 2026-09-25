@@ -23,16 +23,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.MicOff
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -44,19 +52,23 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.MappedButton
+import com.pwde.app.sensors.voice.InGameVoiceState
 import com.pwde.app.sensors.face.FaceState
 import com.pwde.app.sensors.face.TrackingStatus
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.JoystickView
-import com.pwde.app.ui.components.ListeningIndicator
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.StatusPill
 import com.pwde.app.ui.components.rememberCameraPermissionRequest
@@ -64,23 +76,37 @@ import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 
 /**
- * D4/D5 Playing view: a simulated game background under a live PWDe overlay — listening state,
- * detected gesture, cursor or joystick, and what each gesture/voice command just did. Back (touch
- * or voice), "exit", or an Exit gesture returns to the menu. No real game is launched.
+ * D4/D5 Playing view: the game profile's screenshot (or a simulated arena) under a live PWDe
+ * overlay — in-game voice state, detected gesture, cursor or joystick, and which mapped button
+ * each voice command, gesture or joystick move just pressed. Back (touch or voice), "exit", or an
+ * Exit gesture returns to the menu. The real game isn't launched.
  */
 @Composable
 fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
     val face by viewModel.faceState.collectAsStateWithLifecycle()
     val voice by viewModel.voice.collectAsStateWithLifecycle()
+    val ui by viewModel.ui.collectAsStateWithLifecycle()
     val paused by viewModel.paused.collectAsStateWithLifecycle()
     val lastEvent by viewModel.lastEvent.collectAsStateWithLifecycle()
     val requestCamera = rememberCameraPermissionRequest { viewModel.onCameraPermissionResult() }
     val colors = PwdeTheme.colors
     BackHandler(onBack = onExit)
     LaunchedEffect(viewModel) { viewModel.exitRequests.collect { onExit() } }
+    // The in-game voice engine holds the mic only while this screen is visible.
+    LifecycleStartEffect(viewModel) {
+        viewModel.onScreenStarted()
+        onStopOrDispose { viewModel.onScreenStopped() }
+    }
+    LaunchedEffect(face.joystick.direction) { viewModel.onJoystickDirection(face.joystick.direction) }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF1B2A1E))) {
-        SimulatedBackground()
+        val shot = ui.screenshot
+        if (shot != null) {
+            Image(shot, contentDescription = "${viewModel.game?.displayName ?: "Game"} screenshot", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        } else {
+            SimulatedBackground()
+        }
+        ProfileButtons(ui.buttons, lastEvent)
         val active = face.hasFace && !paused
         val screenWidth = maxWidth
         if (face.outputMode == FaceOutputMode.JOYSTICK) {
@@ -95,11 +121,14 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatusPill(
-                    "SIMULATED GAME — ${viewModel.game?.displayName ?: "preview"}",
+                    "SIMULATED — ${viewModel.game?.displayName ?: "preview"}" + (ui.profile?.let { " · ${it.profileName}" } ?: ""),
                     color = colors.warning,
                     modifier = Modifier.weight(1f).background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill),
                 )
-                ListeningIndicator(voice)
+                GameVoiceIndicator(voice)
+            }
+            ui.calibrationName?.let {
+                StatusPill("Calibration: $it", modifier = Modifier.background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill))
             }
             DemoModeBanner(face, Modifier.background(colors.background.copy(alpha = 0.85f), PwdeShapes.button))
             if (face.isSimulated && viewModel.canRequestCamera) {
@@ -114,15 +143,113 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
                     )
                 }
             }
-            OverlayPanel(face, voiceLine(voice.lastTranscript, voice.lastCommand?.label), lastEvent, paused, viewModel::togglePause, onExit)
+            if (voice.usesTextFallback) GameCommandField(voice.availability.label, viewModel::submitText)
+            OverlayPanel(face, voiceLine(voice), lastEvent, paused, viewModel::togglePause, onExit)
         }
     }
 }
 
-private fun voiceLine(transcript: String?, command: String?): String = when {
-    command != null -> "Voice: \"$command\""
-    transcript != null -> "Heard: \"$transcript\""
-    else -> "Voice: say \"pause\", \"select\" or \"exit\""
+private fun voiceLine(voice: InGameVoiceState): String = when {
+    voice.lastText != null -> "Heard: \"${voice.lastText}\""
+    else -> "Voice: say \"pause\", \"select\", \"exit\" or a button's command"
+}
+
+/** In-game voice status (the app-wide voice bar is paused while the game has the mic). */
+@Composable
+private fun GameVoiceIndicator(state: InGameVoiceState) {
+    val colors = PwdeTheme.colors
+    val (text, color) = when {
+        state.usesTextFallback -> "Game voice: typing" to colors.warning
+        state.listening -> "Game voice: listening…" to colors.primary
+        state.running -> "Game voice: on" to colors.textMuted
+        else -> "Game voice: off" to colors.textMuted
+    }
+    StatusPill(
+        text,
+        modifier = Modifier
+            .background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        color = color,
+        icon = if (state.listening) Icons.Outlined.Mic else Icons.Outlined.MicOff,
+    )
+}
+
+/** Typed game commands when the mic can't be used — the same commands the voice engine knows. */
+@Composable
+private fun GameCommandField(reason: String, onSend: (String) -> Unit) {
+    val colors = PwdeTheme.colors
+    var text by rememberSaveable { mutableStateOf("") }
+    val send = {
+        if (text.isNotBlank()) {
+            onSend(text)
+            text = ""
+        }
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(PwdeShapes.button)
+            .background(colors.background.copy(alpha = 0.92f))
+            .border(1.5.dp, colors.warning, PwdeShapes.button)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("$reason — type a game command instead", style = MaterialTheme.typography.labelMedium, color = colors.warning)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = { Text("e.g. \"pause\" or a button's command", color = colors.textMuted) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { send() }),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = colors.text, unfocusedTextColor = colors.text),
+            )
+            PwdeButton("Send", { send() })
+        }
+    }
+}
+
+/** The game profile's mapped buttons; the one just pressed lights up. */
+@Composable
+private fun ProfileButtons(buttons: List<MappedButton>, lastEvent: OverlayEvent?) {
+    if (buttons.isEmpty()) return
+    val colors = PwdeTheme.colors
+    val flash = remember { Animatable(0f) }
+    val pressedId = lastEvent?.takeIf { it.kind == OverlayEvent.Kind.BUTTON }?.buttonId
+    LaunchedEffect(lastEvent?.id) {
+        if (pressedId != null) {
+            flash.snapTo(1f)
+            flash.animateTo(0f, tween(600))
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val diameter = 48.dp
+        buttons.forEach { button ->
+            val pressed = button.id == pressedId && flash.value > 0f
+            Column(
+                Modifier.offset(x = maxWidth * button.x - diameter / 2, y = maxHeight * button.y - diameter / 2),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    Modifier
+                        .size(diameter)
+                        .clip(CircleShape)
+                        .background(if (pressed) colors.primary.copy(alpha = 0.4f + 0.5f * flash.value) else colors.secondary.copy(alpha = 0.3f))
+                        .border(3.dp, if (pressed) colors.primary else Color.White.copy(alpha = 0.8f), CircleShape)
+                        .semantics { contentDescription = "${button.label}: ${button.trigger?.describe() ?: "no trigger"}" },
+                )
+                Text(
+                    button.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill).padding(horizontal = 6.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
