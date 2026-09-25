@@ -1,0 +1,9 @@
+ultralytics==8.2.103
+# ultralytics 8.2.x predates torch 2.6's torch.load(weights_only=True) default,
+# which breaks loading yolov8*.pt checkpoints — keep torch below 2.6.
+torch>=2.2.0,<2.6
+torchvision>=0.17.0,<0.21
+numpy<2
+imagehash==4.3.1
+# export_model.py — ONNX export for the Cloud Run backend
+onnx>=1.16,<1.18

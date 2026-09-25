@@ -1,0 +1,24 @@
+# YOLOv8 dataset config for Mobile Legends: Bang Bang HUD button detection.
+#
+# Paths are relative to this file's location. Populate images/{train,val,test}
+# and labels/{train,val,test} using prepare_dataset.py before training.
+#
+# Class order MUST match app/constants.py CLASS_NAMES in the backend —
+# if you change one, change both.
+
+path: ./mlbb_dataset
+train: images/train
+val: images/val
+test: images/test
+
+nc: 9
+names:
+  0: recall
+  1: regen
+  2: spell
+  3: buy_item
+  4: use_item
+  5: basic_attack
+  6: skill_button
+  7: skill_upgrade
+  8: joystick
