@@ -12,6 +12,18 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- The live session runs in a foreground service so the camera and mic keep working while the
+         game is on screen. Android 14+ also wants one permission per foreground-service type, and
+         the type has to be declared on the service itself as well. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- So the "PWDe is running" notification, with Pause / Recenter / Stop, shows on Android 13+.
+         Without it declared here, PlayService.permissionsToAsk() cannot actually request it. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <queries>
         <!-- Lets TextToSpeech find the installed engine on Android 11+. -->
         <intent>
@@ -21,6 +33,16 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!--
+          The games PWDe launches. Android 11+ hides other apps from this app unless they are named
+          here, and PackageManager.getLaunchIntentForPackage then returns null for a game that IS
+          installed. That reads as "isn't installed", aborts startPlaying() before PlayService runs,
+          and so the overlay, bubble and voice commands never come up either.
+          Keep this in step with Games.kt: every Game.packageName needs an entry here or it cannot
+          be launched.
+        -->
+        <package android:name="com.mobile.legends" />
+        <package android:name="com.supercell.clashroyale" />
     </queries>
 
     <application
@@ -59,6 +81,15 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/pwde_accessibility_service" />
         </service>
+
+        <!-- Hosts the live session (face tracking, in-game voice, the movement stick) while a game is
+             on screen. It must be declared or startForegroundService finds no component and the game
+             opens with no overlay, no bubble and no commands at all. The camera|microphone types are
+             what keep tracking and the mic alive once the game takes the screen. -->
+        <service
+            android:name=".play.PlayService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
     </application>
 
 </manifest>
