@@ -71,12 +71,13 @@ import com.pwde.app.ui.components.OptionKind
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.SectionTitle
+import com.pwde.app.ui.components.StatusPill
 import com.pwde.app.ui.components.StepProgress
+import com.pwde.app.ui.components.SwitchRow
 import com.pwde.app.ui.components.VoiceCommandsEffect
 import com.pwde.app.ui.components.rememberCameraPermissionRequest
 import com.pwde.app.ui.components.rememberMicPermissionRequest
 import com.pwde.app.ui.components.voiceCommand
-import com.pwde.app.ui.voice.LocalVoiceController
 import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
@@ -97,6 +98,10 @@ private val PERMISSION_COMMANDS = listOf(
     voiceCommand("accessibility", "allow accessibility service", "accessibility service", "accessibility"),
     voiceCommand("overlay", "allow display over apps", "display over apps", "display"),
     voiceCommand("app_settings", "open app settings"),
+)
+
+private val TURN_ON_COMMANDS = listOf(
+    voiceCommand("open_settings", "open settings", "use pwde"),
 )
 @Composable
 fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () -> Unit) {
@@ -127,9 +132,14 @@ fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () ->
                 "Say an option's name to tick it",
             )
             SetupStep.PERMISSIONS -> Triple(
-                "Allow PWDe to help",
-                "PWDe needs these to see, hear and press buttons for you.",
-                "Say \"allow\" to open the next one",
+                "Allow camera and microphone",
+                "PWDe uses them to follow your head, face and voice. Everything stays on this phone.",
+                "Say \"allow camera\" or \"allow microphone\"",
+            )
+            SetupStep.TURN_ON -> Triple(
+                "Turn on PWDe in Settings",
+                "Android needs you to switch PWDe on once so its controls work while you play.",
+                "Say \"open settings\"",
             )
         }
         PwdeScreen(
@@ -151,9 +161,10 @@ fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () ->
                 StepProgress(step = state.stepIndex + 1, total = state.steps.size, label = state.step.label)
             }
             when (state.step) {
-                SetupStep.APPEARANCE -> AppearanceStep(state, viewModel)
+                SetupStep.TURN_ON -> TurnOnStep()
                 SetupStep.NEEDS -> NeedsStep(state.needs, viewModel::toggleNeed)
                 SetupStep.PERMISSIONS -> PermissionsStep()
+                SetupStep.APPEARANCE -> AppearanceStep(state, viewModel)
             }
         }
     }
@@ -271,16 +282,12 @@ private fun ColorSchemeTile(option: ColorSchemeOption, selected: Boolean, onClic
 }
 
 /**
- * B5 · Permissions. Camera and microphone are runtime permissions PWDe can request directly;
- * accessibility service and display-over-apps can only be switched on by the user in Android
- * Settings, so those cards open the relevant settings screen instead. All four are re-checked
- * on resume so changes made in Settings show up, and all four stay optional — PWDe falls back
- * to a demo mode and typed commands when one is missing.
+ * B5 · Permissions. Each card asks Android for one permission; a tick means it's granted.
+ * Re-checked on resume so changes made in Android Settings show up. Both stay optional.
  */
 @Composable
 private fun PermissionsStep() {
     val context = LocalContext.current
-    val voiceController = LocalVoiceController.current
     var camera by remember { mutableStateOf(context.isGranted(Manifest.permission.CAMERA)) }
     var mic by remember { mutableStateOf(context.isGranted(Manifest.permission.RECORD_AUDIO)) }
     var accessibility by remember { mutableStateOf(PwdeAccessibilityService.isEnabled(context)) }
@@ -289,7 +296,6 @@ private fun PermissionsStep() {
     LifecycleResumeEffect(Unit) {
         camera = context.isGranted(Manifest.permission.CAMERA)
         mic = context.isGranted(Manifest.permission.RECORD_AUDIO)
-        voiceController?.onMicPermissionResult()
         accessibility = PwdeAccessibilityService.isEnabled(context)
         overlay = Settings.canDrawOverlays(context)
         onPauseOrDispose { }
@@ -300,7 +306,7 @@ private fun PermissionsStep() {
     }
     val requestMic = rememberMicPermissionRequest { granted ->
         mic = granted
-        if (granted) voiceController?.setVoiceEnabled(true) else denied = true
+        if (!granted) denied = true
     }
     val openAccessibilitySettings = { context.startActivity(PwdeAccessibilityService.settingsIntent()) }
     val openOverlaySettings = {
@@ -338,14 +344,14 @@ private fun PermissionsStep() {
 
     OptionCard(
         title = "Camera",
-        description = if (camera) "Allowed" else "Tracks your head, face and eyes",
+        description = if (camera) "Allowed" else "Follows your head and face. Video never leaves this phone.",
         selected = camera,
         onClick = { if (!camera) requestCamera() },
         icon = Icons.Outlined.PhotoCamera,
     )
     OptionCard(
         title = "Microphone",
-        description = if (mic) "Allowed" else "Hears your voice commands",
+        description = if (mic) "Allowed" else "Hears voice commands like \"next\" or \"pause\".",
         selected = mic,
         onClick = { if (!mic) requestMic() },
         icon = Icons.Outlined.Mic,
@@ -366,9 +372,56 @@ private fun PermissionsStep() {
     )
     InfoNote("Your face never leaves this phone. Nothing is recorded or uploaded.", icon = Icons.Outlined.Shield)
     if (denied && !(camera && mic)) {
+        InfoNote("Android didn't allow one of these. You can turn it on in app settings, or skip — PWDe falls back to a demo mode and typed commands.")
         PwdeButton("Open app settings", openAppSettings, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Settings, modifier = Modifier.fillMaxWidth())
+    } else if (!(camera && mic)) {
+        InfoNote("Tap a card to allow it. Both are optional and you can change them later.")
     }
 }
 
 private fun Context.isGranted(permission: String): Boolean =
     ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+/**
+ * B6 · Turn on PWDe in Settings. Android only lets the user flip "Use PWDe" themselves, so the
+ * switch opens Accessibility settings and mirrors the real state when they come back.
+ */
+@Composable
+private fun TurnOnStep() {
+    val context = LocalContext.current
+    val colors = PwdeTheme.colors
+    var enabled by remember { mutableStateOf(PwdeAccessibilityService.isEnabled(context)) }
+    LifecycleResumeEffect(Unit) {
+        enabled = PwdeAccessibilityService.isEnabled(context)
+        onPauseOrDispose { }
+    }
+    val openSettings = { context.startActivity(PwdeAccessibilityService.settingsIntent()) }
+    VoiceCommandsEffect(TURN_ON_COMMANDS) { openSettings() }
+
+    SwitchRow(
+        title = "Use PWDe",
+        description = if (enabled) "On — you're all set" else "Off — opens Android Settings to turn it on",
+        checked = enabled,
+        onCheckedChange = { openSettings() },
+        icon = Icons.Outlined.Settings,
+    )
+    if (enabled) {
+        StatusPill("PWDe is on", color = colors.success, icon = Icons.Outlined.Check)
+        return
+    }
+    SectionTitle("How to turn it on")
+    GradientCard(Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                "Tap \"Open settings\" below.",
+                "Find PWDe under Installed apps (or Downloaded apps).",
+                "Turn on \"Use PWDe\", then tap Allow.",
+                "Come back here — this screen updates by itself.",
+            ).forEachIndexed { i, line ->
+                Text("${i + 1}. $line", style = MaterialTheme.typography.bodyLarge, color = colors.text)
+            }
+        }
+    }
+    PwdeButton("Open settings", openSettings, icon = Icons.Outlined.Settings, modifier = Modifier.fillMaxWidth())
+    InfoNote("If Android says the setting is restricted, open PWDe's app info, tap ⋮ and choose \"Allow restricted settings\".")
+}

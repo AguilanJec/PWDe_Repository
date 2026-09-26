@@ -53,7 +53,6 @@
             </intent-filter>
         </activity>
 
-        <!-- "Use PWDe" in Settings → Accessibility; Setup step B6 asks the user to turn it on. -->
         <service
             android:name=".accessibility.PwdeAccessibilityService"
             android:exported="false"
