@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,10 +29,12 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.Hearing
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -89,6 +93,7 @@ import com.pwde.app.ui.components.JoystickView
 import com.pwde.app.ui.components.LevelSlider
 import com.pwde.app.ui.components.SwitchRow
 import com.pwde.app.ui.components.PwdeButton
+import com.pwde.app.ui.components.PwdeDialog
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeTextField
 import com.pwde.app.ui.components.StatusPill
@@ -392,6 +397,7 @@ private fun VoicePanel(voice: VoiceState, lastResult: VoiceResult?) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WakeWordPanel(
     viewModel: TestingStationViewModel,
@@ -443,31 +449,21 @@ private fun WakeWordPanel(
             icon = Icons.Outlined.Add,
             modifier = Modifier.fillMaxWidth(),
         )
-        Text("Listening for", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
-        selectedWakeWords.forEach { phrase ->
-            // A phrase starts on a preset; opening Tune exposes the by-hand numbers behind it.
+        Text("Listening for · tap a phrase to tune it", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
+        // The phrase whose tuning pop-up is open, if any.
+        var tuningPhrase by rememberSaveable { mutableStateOf<String?>(null) }
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            selectedWakeWords.forEach { phrase -> PhraseChip(phrase, onClick = { tuningPhrase = phrase }) }
+        }
+        tuningPhrase?.takeIf { it in selectedWakeWords }?.let { phrase ->
+            // A phrase starts on a preset; the steppers expose the by-hand numbers behind it.
             val tuning = wakeTuning[WakeWordTuningStore.key(phrase)] ?: WakeWordTuningStore.DEFAULT_PHRASE_TUNING
-            var tuningOpen by rememberSaveable(phrase) { mutableStateOf(false) }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { tuningOpen = !tuningOpen },
-            ) {
-                Text(
-                    phrase,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.text,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    if (tuningOpen) "Hide" else "Tune",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.primary,
-                )
-                IconButton(onClick = { viewModel.removeWakeWord(phrase) }) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Stop listening for $phrase")
-                }
-            }
-            if (tuningOpen) {
+            PwdeDialog(title = "\"$phrase\"", onDismiss = { tuningPhrase = null }) {
+                Text("Sensitivity", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
                 SegmentedToggle(
                     WakeWordSensitivity.entries,
                     WakeWordSensitivity.presetFor(tuning),
@@ -479,6 +475,21 @@ private fun WakeWordPanel(
                     threshold = tuning.threshold,
                     inherited = spotterTuning,
                     onTuning = { viewModel.setTuning(phrase, it) },
+                )
+                Text(
+                    "Hand-edited numbers take effect with Apply & restart.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textMuted,
+                )
+                PwdeButton(
+                    "Stop listening for this phrase",
+                    {
+                        viewModel.removeWakeWord(phrase)
+                        tuningPhrase = null
+                    },
+                    style = ButtonStyle.DESTRUCTIVE,
+                    icon = Icons.Outlined.Close,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -506,6 +517,7 @@ private fun WakeWordPanel(
             },
             canDecrease = spotterTuning.trailingBlanks > WakeWordSpotterTuning.TRAILING_BLANKS_RANGE.start,
             canIncrease = spotterTuning.trailingBlanks < WakeWordSpotterTuning.TRAILING_BLANKS_RANGE.endInclusive,
+            definition = TRAILING_BLANKS_DEFINITION,
         )
         ValueStepper(
             "Active paths",
@@ -517,6 +529,7 @@ private fun WakeWordPanel(
             },
             canDecrease = spotterTuning.activePaths > WakeWordSpotterTuning.ACTIVE_PATHS_RANGE.start,
             canIncrease = spotterTuning.activePaths < WakeWordSpotterTuning.ACTIVE_PATHS_RANGE.endInclusive,
+            definition = ACTIVE_PATHS_DEFINITION,
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PwdeButton("Apply & restart", viewModel::applyWakeWordTuning, modifier = Modifier.weight(1f))
@@ -527,11 +540,18 @@ private fun WakeWordPanel(
                 modifier = Modifier.weight(1f),
             )
         }
-        ExpandableSection("How tuning works") {
-            Reading("Easier to hit", "Higher boost keeps a keyword alive through beam search; lower threshold fires on weaker evidence. Both raise the false-alarm rate, so they are set per phrase — Normal / High / Max in one tap, or open Tune to step the numbers by hand.")
-            Reading("Tuning", "A phrase's Tune numbers are written into its own keyword line; Spotter defaults are what an untuned phrase uses (score, threshold, trailing blanks and active paths are exactly sherpa-onnx's keywordsScore, keywordsThreshold, numTrailingBlanks and maxActivePaths). Values are clamped to what the model accepts, and both halves are pushed to the engine by Apply & restart.")
-            Reading("Gameplay", "Mapped buttons are pressed by voice with this same spotter, and it uses the tuning set here. Tune a button's exact voice trigger by adding it as a phrase. App navigation still uses Google speech.")
-            Reading("Heads up", "While this listens, PWDe's app-wide voice commands stand down.")
+        // Each fact opens on its own, so reading one doesn't unfold the rest.
+        ExpandableSection("Easier to hit") {
+            Definition("Higher boost keeps a keyword alive through beam search; lower threshold fires on weaker evidence. Both raise the false-alarm rate, so they are set per phrase — Normal / High / Max in one tap, or tap a phrase to step the numbers by hand.")
+        }
+        ExpandableSection("Tuning") {
+            Definition("A phrase's own numbers are written into its keyword line; Spotter defaults are what an untuned phrase uses (score, threshold, trailing blanks and active paths are exactly sherpa-onnx's keywordsScore, keywordsThreshold, numTrailingBlanks and maxActivePaths). Values are clamped to what the model accepts, and both halves are pushed to the engine by Apply & restart.")
+        }
+        ExpandableSection("Gameplay") {
+            Definition("Mapped buttons are pressed by voice with this same spotter, and it uses the tuning set here. Tune a button's exact voice trigger by adding it as a phrase. App navigation still uses Google speech.")
+        }
+        ExpandableSection("Heads up") {
+            Definition("While this listens, PWDe's app-wide voice commands stand down.")
         }
         if (wakeWord.running) {
             PwdeButton(
@@ -687,7 +707,12 @@ private fun FacePanel(face: FaceState) {
 @Composable
 private fun Panel(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
     GradientCard(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Bottom padding separates the icon + title header from the panel's first reading or control.
+        Row(
+            Modifier.padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             IconBadge(icon)
             Text(title, style = MaterialTheme.typography.titleMedium, color = PwdeTheme.colors.text)
         }
@@ -714,6 +739,46 @@ private fun ExpandableSection(title: String, content: @Composable () -> Unit) {
     }
     if (open) content()
 }
+
+/**
+ * One wake phrase as a pill. Always in the selected style of [SegmentedToggle] (primary fill,
+ * onAccent text), since every chip is a phrase being listened for. Tapping opens its tuning.
+ */
+@Composable
+private fun PhraseChip(phrase: String, onClick: () -> Unit) {
+    val colors = PwdeTheme.colors
+    Row(
+        Modifier
+            .heightIn(min = MinTouchTarget)
+            .clip(PwdeShapes.pill)
+            .background(colors.primary)
+            .clickable(role = Role.Button, onClickLabel = "Tune", onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(phrase, style = MaterialTheme.typography.labelLarge, color = colors.onAccent)
+        Icon(Icons.Outlined.Tune, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(16.dp))
+    }
+}
+
+/** The body text of an expanded definition. */
+@Composable
+private fun Definition(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = PwdeTheme.colors.text)
+}
+
+/** One size for every definition's info icon. */
+private val InfoIconSize = 20.dp
+
+private const val BOOST_DEFINITION =
+    "How strongly the spotter favours this phrase while decoding (sherpa-onnx keywordsScore). Higher keeps a half-heard phrase alive, so it fires more easily — and more often by mistake."
+private const val THRESHOLD_DEFINITION =
+    "How sure the spotter must be before it fires, from 0 to 1 (keywordsThreshold). Lower fires on weaker evidence."
+private const val TRAILING_BLANKS_DEFINITION =
+    "How many blank frames must follow a phrase before it counts (numTrailingBlanks). More waits for the phrase to end, so it fires later but mixes up overlapping phrases less."
+private const val ACTIVE_PATHS_DEFINITION =
+    "How many candidate decodings the spotter keeps at once (maxActivePaths). More catches more ways of saying a phrase, at more CPU."
 
 @Composable
 private fun Reading(label: String, value: String) {
@@ -760,6 +825,7 @@ private fun TuningSteppers(
         },
         canDecrease = boostValue > WakeWordSpotterTuning.SCORE_RANGE.start,
         canIncrease = boostValue < WakeWordSpotterTuning.SCORE_RANGE.endInclusive,
+        definition = BOOST_DEFINITION,
     )
     ValueStepper(
         label = "Threshold",
@@ -774,10 +840,14 @@ private fun TuningSteppers(
         },
         canDecrease = thresholdValue > WakeWordSpotterTuning.THRESHOLD_RANGE.start,
         canIncrease = thresholdValue < WakeWordSpotterTuning.THRESHOLD_RANGE.endInclusive,
+        definition = THRESHOLD_DEFINITION,
     )
 }
 
-/** −  value  +  row for one hand-editable number. */
+/**
+ * −  value  +  row for one hand-editable number. With a [definition], tapping the label (marked
+ * with an info icon) shows or hides it below the row, like [ExpandableSection]; it starts collapsed.
+ */
 @Composable
 private fun ValueStepper(
     label: String,
@@ -785,14 +855,44 @@ private fun ValueStepper(
     onStep: (Int) -> Unit,
     canDecrease: Boolean,
     canIncrease: Boolean,
+    definition: String? = null,
 ) {
     val colors = PwdeTheme.colors
+    var defined by rememberSaveable(label) { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.text, modifier = Modifier.weight(1f))
+        if (definition == null) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.text, modifier = Modifier.weight(1f))
+        } else {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = MinTouchTarget)
+                    .clip(PwdeShapes.button)
+                    .clickable(role = Role.Button, onClickLabel = if (defined) "Hide definition" else "Show definition") { defined = !defined }
+                    .semantics { stateDescription = if (defined) "Definition shown" else "Definition hidden" },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // weight(fill = false) measures the icon first, so it is always its full size and a
+                // long label ("Trailing blanks") wraps beside it instead of squeezing it out.
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.text,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Icon(
+                    if (defined) Icons.Outlined.ExpandLess else Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(InfoIconSize),
+                )
+            }
+        }
         IconButton(onClick = { onStep(-1) }, enabled = canDecrease, modifier = Modifier.size(MinTouchTarget)) {
             Icon(Icons.Filled.Remove, contentDescription = "Lower $label", tint = colors.primary)
         }
@@ -807,4 +907,5 @@ private fun ValueStepper(
             Icon(Icons.Filled.Add, contentDescription = "Raise $label", tint = colors.primary)
         }
     }
+    if (definition != null && defined) Definition(definition)
 }
