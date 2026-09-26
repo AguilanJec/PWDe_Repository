@@ -56,7 +56,7 @@ private class FakeFaceTracking : FaceTrackingManager {
     override val hasCameraPermission = false
     override fun refreshPermissions() = Unit
     override fun recenterCursor() = Unit
-    override suspend fun captureJoystickCenter() = false
+    override suspend fun captureJoystickCenter(persistToActiveProfile: Boolean) = false
 }
 
 private class FakeVoice : VoiceCommandManager {

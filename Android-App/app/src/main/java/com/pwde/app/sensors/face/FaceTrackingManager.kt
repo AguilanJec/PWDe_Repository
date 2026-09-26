@@ -86,7 +86,7 @@ interface FaceTrackingManager {
     fun recenterCursor()
 
     /** Saves the current head pose as the joystick's (and tilt/nod's) neutral. False if no head is seen. */
-    suspend fun captureJoystickCenter(): Boolean
+    suspend fun captureJoystickCenter(persistToActiveProfile: Boolean = false): Boolean
 }
 
 /*
@@ -167,7 +167,7 @@ class MediaPipeFaceTrackingManager(
         activeProcessor?.recenterCursor()
     }
 
-    override suspend fun captureJoystickCenter(): Boolean {
+    override suspend fun captureJoystickCenter(persistToActiveProfile: Boolean): Boolean {
         // Gyro keeps no saved center: its neutral is how the phone is being held, so "center here"
         // re-baselines the sensor instead. A head angle and a phone angle must never share one
         // field, or switching sources would silently offset the stick.
@@ -177,7 +177,7 @@ class MediaPipeFaceTrackingManager(
             return true
         }
         val pose = state.value.pose ?: return false
-        controlsRepository.setJoystickCenter(pose.pitch, pose.roll)
+        controlsRepository.setJoystickCenter(pose.pitch, pose.roll, persistToActiveProfile)
         return true
     }
 

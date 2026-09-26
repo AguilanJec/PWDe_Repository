@@ -42,7 +42,7 @@ class AppContainer(private val context: Context) {
     val profileRepository by lazy {
         ProfileRepository(database.calibrationProfileDao(), database.gameProfileDao())
     }
-    val controlsRepository by lazy { ControlsRepository(database.controlSettingsDao()) }
+    val controlsRepository by lazy { ControlsRepository(database.controlSettingsDao(), profileRepository = profileRepository) }
     val authRepository: AuthRepository by lazy { AuthRepository.create(context) }
     val syncRepository: SyncRepository by lazy { NoOpSyncRepository(authRepository) }
     val speechOutput by lazy { SpeechOutput(context) }

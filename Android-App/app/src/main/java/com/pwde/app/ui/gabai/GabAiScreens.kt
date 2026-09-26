@@ -1,7 +1,6 @@
 package com.pwde.app.ui.gabai
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -40,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -57,6 +54,7 @@ import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.sensors.face.GestureThresholds
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.CameraFeed
+import com.pwde.app.ui.components.CursorCalibrationOverlay
 import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
@@ -316,7 +314,7 @@ private fun CursorAxisStep(viewModel: GabAiViewModel, ui: GabAiUiState, axis: Ax
             modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(),
             feedAspectRatio = 16f / 10f,
             overlay = {
-                CursorCalibrationOverlay(face.cursor.x, face.cursor.y, face.hasFace, axis)
+                CursorCalibrationOverlay(face.cursor.x, face.cursor.y, face.hasFace, targetFor(axis))
             },
         )
         PwdeButton("Recenter pointer", viewModel::recenterCursor, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
@@ -331,32 +329,6 @@ private fun targetFor(axis: Axis): Offset = when (axis) {
     Axis.LEFT -> Offset(0.1f, 0.5f)
     Axis.RIGHT -> Offset(0.9f, 0.5f)
     Axis.DIAGONAL -> Offset(0.9f, 0.1f)
-}
-
-@Composable
-private fun BoxScope.CursorCalibrationOverlay(x: Float, y: Float, active: Boolean, axis: Axis) {
-    val colors = PwdeTheme.colors
-    val target = targetFor(axis)
-    val onTarget = kotlin.math.hypot(x - target.x, y - target.y) < 0.1f
-    Canvas(
-        Modifier
-            .fillMaxSize()
-            .semantics {
-                contentDescription = if (onTarget) "Pointer is on the target" else "Pointer at ${(x * 100).toInt()}% across, ${(y * 100).toInt()}% down"
-            },
-    ) {
-        val t = Offset(target.x * size.width, target.y * size.height)
-        drawCircle(colors.primary.copy(alpha = if (onTarget) 0.5f else 0.2f), radius = 26.dp.toPx(), center = t)
-        drawCircle(colors.primary, radius = 26.dp.toPx(), center = t, style = Stroke(3.dp.toPx()))
-        drawCircle(if (active) colors.secondary else colors.textMuted, radius = 12.dp.toPx(), center = Offset(x * size.width, y * size.height))
-    }
-    if (onTarget) {
-        StatusPill(
-            "On target!",
-            icon = Icons.Outlined.CheckCircle,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
-        )
-    }
 }
 
 private fun joystickStepCommands(parameter: JoystickParameter) = when (parameter) {

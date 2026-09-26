@@ -103,17 +103,17 @@ class VoiceConfigViewModel(
     }
 
     fun setVoiceEnabled(enabled: Boolean) {
-        launch { controlsRepository.setVoiceEnabled(enabled) }
+        launch { controlsRepository.setVoiceEnabled(enabled, persistToActiveProfile = true) }
         voiceCommandManager.refreshPermissions()
     }
 
-    fun setMatchMode(mode: VoiceMatchMode) = launch { controlsRepository.setVoiceMatchMode(mode) }
-    fun setActivationMode(mode: VoiceActivationMode) = launch { controlsRepository.setVoiceActivationMode(mode) }
+    fun setMatchMode(mode: VoiceMatchMode) = launch { controlsRepository.setVoiceMatchMode(mode, persistToActiveProfile = true) }
+    fun setActivationMode(mode: VoiceActivationMode) = launch { controlsRepository.setVoiceActivationMode(mode, persistToActiveProfile = true) }
     fun onMicPermissionResult() = voiceCommandManager.refreshPermissions()
 
     fun setPhrase(shortcut: VoiceShortcut, phrase: String) {
         _phrases.update { it.orEmpty() + (shortcut to phrase) }
-        launch { controlsRepository.setVoiceShortcut(shortcut, phrase) }
+        launch { controlsRepository.setVoiceShortcut(shortcut, phrase, persistToActiveProfile = true) }
     }
 
     private fun launch(block: suspend () -> Unit) {

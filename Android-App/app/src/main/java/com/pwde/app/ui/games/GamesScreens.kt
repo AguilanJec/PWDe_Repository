@@ -64,6 +64,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Color
+import com.pwde.app.R
 
 /** Which games already have a saved game profile (from Room). */
 class GamesViewModel(profileRepository: ProfileRepository) : ViewModel() {
@@ -103,23 +108,66 @@ fun GameCard(game: Game, hasProfile: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Stand-in artwork (no copyrighted game images are bundled). */
+/** Returns the drawable resource for a game's artwork, or null if none is bundled. */
+private fun gameArtRes(game: Game): Int? = when (game) {
+    Game.MOBILE_LEGENDS -> R.drawable.mobile_legends
+    Game.CLASH_ROYALE -> R.drawable.clash_royale
+    else -> null
+}
+
+/** Game artwork with a scrim so the title/status text stays readable. Falls back to a gradient + icon. */
 @Composable
 private fun GameArt(game: Game) {
     val colors = PwdeTheme.colors
-    val icon: ImageVector = if (game == Game.CLASH_ROYALE) Icons.Outlined.Style else Icons.Outlined.SportsEsports
+    val res = gameArtRes(game)
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(2.4f)
             .clip(PwdeShapes.button)
-            .background(Brush.linearGradient(listOf(colors.secondary.copy(alpha = 0.6f), colors.primary.copy(alpha = 0.35f)))),
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        colors.secondary.copy(alpha = 0.6f),
+                        colors.primary.copy(alpha = 0.35f),
+                    )
+                )
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = colors.text, modifier = Modifier.size(56.dp))
+        if (res != null) {
+            Image(
+                painter = painterResource(id = res),
+                contentDescription = "${game.displayName} artwork",
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+            // Dark scrim so text/icons drawn on top remain legible.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.55f),
+                            )
+                        )
+                    )
+            )
+        } else {
+            val icon: ImageVector =
+                if (game == Game.CLASH_ROYALE) Icons.Outlined.Style
+                else Icons.Outlined.SportsEsports
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = colors.text,
+                modifier = Modifier.size(56.dp),
+            )
+        }
     }
 }
-
 /** A game's saved profiles, newest first. */
 class GameDetailViewModel(profileRepository: ProfileRepository, game: Game) : ViewModel() {
     val profiles: StateFlow<List<GameProfile>> = profileRepository.gameProfilesFor(game.id)

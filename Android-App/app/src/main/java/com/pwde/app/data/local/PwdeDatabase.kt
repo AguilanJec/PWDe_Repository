@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CalibrationProfile::class, GameProfile::class, ControlSettingsEntity::class, GabAiSessionEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [
         // v2 (Prompt 2): cursor/joystick tuning and per-gesture sensitivity.
@@ -47,9 +47,17 @@ abstract class PwdeDatabase : RoomDatabase() {
             }
         }
 
+        /** v6: remembers which calibration profile the working Controls are editing. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `control_settings` ADD COLUMN `activeCalibrationProfileId` INTEGER DEFAULT NULL")
+            }
+        }
+
         fun create(context: Context): PwdeDatabase =
             Room.databaseBuilder(context, PwdeDatabase::class.java, "pwde.db")
                 .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_5_6)
                 .build()
     }
 }
