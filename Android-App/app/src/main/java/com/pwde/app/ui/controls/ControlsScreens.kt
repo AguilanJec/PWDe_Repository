@@ -225,7 +225,7 @@ fun GesturesScreen(viewModel: GesturesViewModel, onBack: () -> Unit, onChoose: (
     }
 }
 
-/** Which part of the catalog is shown: curated gestures, or all 52 raw MediaPipe blendshapes. */
+/** Which part of the catalog is shown: curated gestures, or the raw MediaPipe blendshapes. */
 enum class GestureCatalog(val label: String, val gestures: List<FacialGesture>) {
     GESTURES("Gestures (${FacialGesture.selectable.size})", FacialGesture.selectable),
     MEDIAPIPE("MediaPipe (${FacialGesture.raw.size})", FacialGesture.raw),
@@ -235,8 +235,7 @@ private fun gesturePickCommands(catalog: GestureCatalog) = catalog.gestures.map 
     val extra = when (gesture) {
         FacialGesture.EYEBROW_RAISE -> listOf("eyebrows", "raise eyebrows")
         FacialGesture.OPEN_MOUTH -> listOf("mouth")
-        FacialGesture.CHEEK_PUFF -> listOf("cheek puff", "puff")
-        FacialGesture.CLOSE_EYES -> listOf("close eyes")
+        FacialGesture.CLOSE_EYES -> listOf("close eyes", "blink")
         FacialGesture.SHAKE -> listOf("shake")
         else -> emptyList()
     }
@@ -280,7 +279,7 @@ fun ChooseGestureScreen(viewModel: ChooseGestureViewModel, onBack: () -> Unit) {
     ) {
         SegmentedToggle(GestureCatalog.entries, catalog, { it.label }, { catalog = it })
         if (catalog == GestureCatalog.MEDIAPIPE) {
-            InfoNote("Each of MediaPipe's 52 face scores on its own, named as MediaPipe names them. Say a name like \"brow down left\".")
+            InfoNote("Each MediaPipe face score on its own, named as MediaPipe names them. Say a name like \"brow inner up\".")
         }
         catalog.gestures.chunked(2).forEach { row ->
             Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {

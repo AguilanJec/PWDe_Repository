@@ -43,7 +43,7 @@ class ControlJsonTest {
         assertNull(ControlJson.encodeGestureSet(null))
         assertNull(ControlJson.decodeGestureSet(null))
         assertNull(ControlJson.decodeGestureSet("not json"))
-        assertEquals(setOf(FacialGesture.WINK), ControlJson.decodeGestureSet("""["WINK","NOT_A_GESTURE"]"""))
+        assertEquals(setOf(FacialGesture.NOD), ControlJson.decodeGestureSet("""["NOD","FROWN","NOT_A_GESTURE"]"""))
     }
 
     @Test
@@ -60,12 +60,12 @@ class ControlJsonTest {
     fun conflictsFor_listsOtherActionsUsingTheSameGesture() {
         val config = ControlConfig(
             gestureAssignments = mapOf(
-                GestureAction.RECENTER to FacialGesture.WINK,
-                GestureAction.TOUCH_HOLD to FacialGesture.WINK,
+                GestureAction.RECENTER to FacialGesture.PUCKER,
+                GestureAction.TOUCH_HOLD to FacialGesture.PUCKER,
                 GestureAction.SELECT to FacialGesture.SMILE,
             ),
         )
-        assertEquals(listOf(GestureAction.TOUCH_HOLD), config.conflictsFor(GestureAction.RECENTER, FacialGesture.WINK))
+        assertEquals(listOf(GestureAction.TOUCH_HOLD), config.conflictsFor(GestureAction.RECENTER, FacialGesture.PUCKER))
         assertTrue(config.conflictsFor(GestureAction.SELECT, FacialGesture.SMILE).isEmpty())
     }
 }

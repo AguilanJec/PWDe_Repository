@@ -62,7 +62,7 @@ class DetectedButtonsTest {
             firstId = 1,
         )
         assertEquals(
-            listOf("Basic attack", "Skill button 1", "Skill upgrade 1", "Skill button 2", "Skill upgrade 2", "Skill button 3", "Skill upgrade 3"),
+            listOf("auto", "first", "upgrade first", "second", "upgrade second", "third", "upgrade third"),
             buttons.map { it.label },
         )
         assertEquals(listOf(0.72f, 0.80f, 0.88f), buttons.filter { it.label.startsWith("Skill button") }.map { it.x })

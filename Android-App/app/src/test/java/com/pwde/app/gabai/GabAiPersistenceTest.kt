@@ -190,7 +190,7 @@ class GabAiPersistenceTest {
 
     @Test
     fun onlyPerformedGesturesAreEnabledInTheSavedCalibration() {
-        runBlocking { controls.setGesture(GestureAction.SELECT, FacialGesture.FROWN) }
+        runBlocking { controls.setGesture(GestureAction.SELECT, FacialGesture.NOD) }
         val vm = newViewModel()
         vm.startCalibration()
         settle()
@@ -229,7 +229,7 @@ class GabAiPersistenceTest {
         assertEquals(setOf(first), saved.enabledGestures)
         val working = runBlocking { controls.config.first() }
         assertEquals(setOf(first), working.enabledGestures)
-        // Frown wasn't performed, so the action mapped to it was unmapped.
+        // Nod wasn't performed, so the action mapped to it was unmapped.
         assertNull(working.gestureAssignments[GestureAction.SELECT])
     }
 

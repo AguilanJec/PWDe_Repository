@@ -69,6 +69,8 @@ object Blendshapes {
     const val BROW_OUTER_UP_RIGHT = "browOuterUpRight"
     const val BROW_INNER_UP = "browInnerUp"
     const val JAW_OPEN = "jawOpen"
+    const val EYE_BLINK_LEFT = "eyeBlinkLeft"
+    const val EYE_BLINK_RIGHT = "eyeBlinkRight"
     const val MOUTH_LEFT = "mouthLeft"
     const val MOUTH_RIGHT = "mouthRight"
     const val MOUTH_PUCKER = "mouthPucker"
@@ -76,8 +78,8 @@ object Blendshapes {
 
     /**
      * Whether MediaPipe's "Left"/"Right" categories name the opposite side of the user's face on
-     * our mirrored (selfie) input. Check "Wink left" in Testing Station — if closing your left eye
-     * shows "Wink right", flip this and nothing else.
+     * our mirrored (selfie) input. Check "Raise left eyebrow" in Testing Station — if raising your
+     * left eyebrow shows "Raise right eyebrow", flip this and nothing else.
      */
     const val SIDES_SWAPPED = false
 
@@ -118,8 +120,6 @@ class GestureClassifier(
             measures[FacialGesture.SMILE] = GestureMeasure(
                 avg(b(Blendshapes.MOUTH_SMILE_LEFT), b(Blendshapes.MOUTH_SMILE_RIGHT)), threshold(FacialGesture.SMILE),
             )
-            // Frown alone is weak in MediaPipe's model, so lowered brows reinforce it.
-            FROWN_BROW_WEIGHT * avg(b(Blendshapes.BROW_DOWN_LEFT), b(Blendshapes.BROW_DOWN_RIGHT))
             measures[FacialGesture.EYEBROW_RAISE] = GestureMeasure(
                 avg(b(Blendshapes.BROW_OUTER_UP_LEFT), b(Blendshapes.BROW_OUTER_UP_RIGHT), b(Blendshapes.BROW_INNER_UP)),
                 threshold(FacialGesture.EYEBROW_RAISE),
@@ -131,7 +131,7 @@ class GestureClassifier(
                 measures[g] = GestureMeasure(score, threshold(g))
             }
 
-            // Mouth and jaw (GameFace's mouth-left/right and roll-lower-lip, plus pucker, cheek puff, jaw slides).
+            // Mouth (GameFace's mouth-left/right and roll-lower-lip, plus pucker).
             put(FacialGesture.MOUTH_LEFT, userSide(Blendshapes.MOUTH_LEFT, Blendshapes.MOUTH_RIGHT, true))
             put(FacialGesture.MOUTH_RIGHT, userSide(Blendshapes.MOUTH_LEFT, Blendshapes.MOUTH_RIGHT, false))
             put(FacialGesture.PUCKER, b(Blendshapes.MOUTH_PUCKER))
@@ -140,9 +140,13 @@ class GestureClassifier(
             // One eyebrow at a time.
             put(FacialGesture.RAISE_LEFT_EYEBROW, userSide(Blendshapes.BROW_OUTER_UP_LEFT, Blendshapes.BROW_OUTER_UP_RIGHT, true))
             put(FacialGesture.RAISE_RIGHT_EYEBROW, userSide(Blendshapes.BROW_OUTER_UP_LEFT, Blendshapes.BROW_OUTER_UP_RIGHT, false))
-            put(FacialGesture.LOWER_LEFT_EYEBROW, userSide(Blendshapes.BROW_DOWN_LEFT, Blendshapes.BROW_DOWN_RIGHT, true))
-            put(FacialGesture.LOWER_RIGHT_EYEBROW, userSide(Blendshapes.BROW_DOWN_LEFT, Blendshapes.BROW_DOWN_RIGHT, false))
-            // All 52 MediaPipe blendshapes, each usable on its own, scored exactly as the model reports.
+
+            // Closing both eyes needs both eyes closed; it's held longer than a blink (see [holdFramesFor]).
+            val userLeftEye = userSide(Blendshapes.EYE_BLINK_LEFT, Blendshapes.EYE_BLINK_RIGHT, true)
+            val userRightEye = userSide(Blendshapes.EYE_BLINK_LEFT, Blendshapes.EYE_BLINK_RIGHT, false)
+            put(FacialGesture.CLOSE_EYES, minOf(userLeftEye, userRightEye))
+
+            // Every remaining MediaPipe blendshape, each usable on its own, scored exactly as the model reports.
             for (gesture in FacialGesture.raw) put(gesture, b(gesture.blendshape!!))
         }
 
@@ -197,9 +201,6 @@ class GestureClassifier(
     private fun avg(vararg values: Float) = values.sum() / values.size
 
     companion object {
-        const val FROWN_MOUTH_WEIGHT = 0.6f
-        const val FROWN_BROW_WEIGHT = 0.4f
-        const val WINK_OPEN_EYE_FRACTION = 0.5f
         const val RELEASE_FRACTION = 0.8f
         const val CLOSE_EYES_HOLD_MULTIPLIER = 3
 

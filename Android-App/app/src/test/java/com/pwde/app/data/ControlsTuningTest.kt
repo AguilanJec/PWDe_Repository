@@ -66,10 +66,10 @@ class ControlsTuningTest {
 
     @Test
     fun gestureSensitivityIsPerGesture() = runTest {
-        controls.setGestureSensitivity(FacialGesture.WINK, 9)
+        controls.setGestureSensitivity(FacialGesture.PUCKER, 9)
         controls.setGestureSensitivity(FacialGesture.NOD, 42)
         val config = controls.config.first()
-        assertEquals(9, config.sensitivityOf(FacialGesture.WINK))
+        assertEquals(9, config.sensitivityOf(FacialGesture.PUCKER))
         assertEquals(10, config.sensitivityOf(FacialGesture.NOD))
         assertEquals(5, config.sensitivityOf(FacialGesture.SMILE))
     }
@@ -79,7 +79,7 @@ class ControlsTuningTest {
         controls.setCursorTuning(CursorTuning(2, 3, 4, 5, 6))
         controls.setJoystickTuning(JoystickTuning(size = 8, sensitivity = 2, deadZone = 4))
         controls.setJoystickCenter(-7f, 2f)
-        controls.setGestureSensitivity(FacialGesture.WINK, 9)
+        controls.setGestureSensitivity(FacialGesture.PUCKER, 9)
         val snapshot = controls.config.first().toCalibrationProfile("Mine", InputMode.JOYSTICK)
 
         controls.setCursorTuning(CursorTuning())
@@ -88,7 +88,7 @@ class ControlsTuningTest {
         val restored = controls.config.first()
         assertEquals(CursorTuning(2, 3, 4, 5, 6), restored.cursor)
         assertEquals(JoystickTuning(8, 2, 4, -7f, 2f), restored.joystick)
-        assertEquals(9, restored.sensitivityOf(FacialGesture.WINK))
+        assertEquals(9, restored.sensitivityOf(FacialGesture.PUCKER))
         assertEquals(InputMode.JOYSTICK, snapshot.inputModeOrDefault)
     }
 

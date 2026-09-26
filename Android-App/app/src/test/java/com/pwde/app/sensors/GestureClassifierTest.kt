@@ -48,9 +48,22 @@ class GestureClassifierTest {
     fun openMouth() = assertDetects(FacialGesture.OPEN_MOUTH, mapOf(Blendshapes.JAW_OPEN to 0.7f))
 
     @Test
-    fun blinkIsNotAWink() {
-        val reading = GestureClassifier().feed(mapOf("eyeBlinkLeft" to 0.9f, "eyeBlinkRight" to 0.9f))
-        assertFalse(FacialGesture.WINK in reading.active)
+    fun closingBothEyesIsDetected() {
+        val closed = mapOf(Blendshapes.EYE_BLINK_LEFT to 0.9f, Blendshapes.EYE_BLINK_RIGHT to 0.9f)
+        // Held for three times the usual debounce, so an ordinary blink doesn't count.
+        assertTrue(FacialGesture.CLOSE_EYES in GestureClassifier().feed(closed, frames = 12).active)
+    }
+
+    @Test
+    fun aBlinkIsTooShortToCloseBothEyes() {
+        val closed = mapOf(Blendshapes.EYE_BLINK_LEFT to 0.9f, Blendshapes.EYE_BLINK_RIGHT to 0.9f)
+        assertFalse(FacialGesture.CLOSE_EYES in GestureClassifier().feed(closed, frames = 3).active)
+    }
+
+    @Test
+    fun oneEyeClosedIsNotBothEyesClosed() {
+        val leftOnly = mapOf(Blendshapes.EYE_BLINK_LEFT to 0.9f, Blendshapes.EYE_BLINK_RIGHT to 0f)
+        assertFalse(FacialGesture.CLOSE_EYES in GestureClassifier().feed(leftOnly, frames = 12).active)
     }
 
     @Test
@@ -134,22 +147,34 @@ class GestureClassifierTest {
     }
 
     @Test
-    fun everySupportedGestureIsMeasuredWithAFaceInView() {
+    fun everyGestureIsMeasuredWithAFaceInView() {
         val reading = GestureClassifier().feed(mapOf(Blendshapes.JAW_OPEN to 0f), HeadPose.NEUTRAL)
-        val unsupported = setOf(
-            FacialGesture.FROWN, FacialGesture.WINK, FacialGesture.CHEEK_PUFF,
-            FacialGesture.JAW_LEFT, FacialGesture.JAW_RIGHT, FacialGesture.WINK_LEFT, FacialGesture.WINK_RIGHT,
-            FacialGesture.CLOSE_EYES, FacialGesture.LOOK_UP, FacialGesture.LOOK_DOWN,
-        )
-        assertEquals(FacialGesture.entries.toSet() - unsupported, reading.measures.keys)
+        assertEquals(FacialGesture.entries.toSet(), reading.measures.keys)
     }
 
     @Test
-    fun catalogHasAll52MediaPipeBlendshapes() {
+    fun catalogDropsTheRemovedGestures() {
+        // These can't be mapped to a button, so they're gone from the catalog entirely.
+        val removed = listOf(
+            "FROWN", "WINK", "WINK_LEFT", "WINK_RIGHT", "CHEEK_PUFF", "JAW_LEFT", "JAW_RIGHT",
+            "LOWER_LEFT_EYEBROW", "LOWER_RIGHT_EYEBROW", "LOOK_UP", "LOOK_DOWN",
+            "MP_CHEEK_PUFF", "MP_JAW_LEFT", "MP_JAW_RIGHT", "MP_BROW_DOWN_LEFT", "MP_BROW_DOWN_RIGHT",
+            "MP_EYE_BLINK_LEFT", "MP_EYE_BLINK_RIGHT", "MP_MOUTH_FROWN_LEFT", "MP_MOUTH_FROWN_RIGHT",
+            "MP_EYE_LOOK_UP_LEFT", "MP_EYE_LOOK_UP_RIGHT", "MP_EYE_LOOK_DOWN_LEFT", "MP_EYE_LOOK_DOWN_RIGHT",
+            "MP_EYE_LOOK_IN_LEFT", "MP_EYE_LOOK_IN_RIGHT", "MP_EYE_LOOK_OUT_LEFT", "MP_EYE_LOOK_OUT_RIGHT",
+        )
+        val names = FacialGesture.entries.map { it.name }
+        assertEquals(emptyList<String>(), removed.filter { it in names })
+        // Close both eyes stays: it was unreadable before and is measured again.
+        assertTrue(FacialGesture.CLOSE_EYES in FacialGesture.curated)
+    }
+
+    @Test
+    fun catalogHasTheRemainingMediaPipeBlendshapes() {
         val names = FacialGesture.raw.map { it.blendshape }
-        assertEquals(52, names.size)
-        assertEquals(52, names.toSet().size)
-        assertTrue("_neutral" in names && "noseSneerRight" in names && "eyeLookInLeft" in names)
+        assertEquals(35, names.size)
+        assertEquals(35, names.toSet().size)
+        assertTrue("_neutral" in names && "noseSneerRight" in names && "mouthUpperUpLeft" in names)
         assertEquals(FacialGesture.entries.size, FacialGesture.curated.size + FacialGesture.raw.size)
     }
 
@@ -164,7 +189,7 @@ class GestureClassifierTest {
 
     @Test
     fun rawBlendshapesHaveSpeakableNames() {
-        assertEquals("brow down left", FacialGesture.MP_BROW_DOWN_LEFT.spokenName)
+        assertEquals("brow inner up", FacialGesture.MP_BROW_INNER_UP.spokenName)
         assertEquals("neutral", FacialGesture.MP_NEUTRAL.spokenName)
         assertEquals("smile", FacialGesture.SMILE.spokenName)
     }
@@ -180,17 +205,17 @@ class GestureClassifierTest {
     @Test
     fun singleEyebrowGestures() {
         val leftUp = Blendshapes.side(Blendshapes.BROW_OUTER_UP_LEFT, Blendshapes.BROW_OUTER_UP_RIGHT, true)
-        val rightDown = Blendshapes.side(Blendshapes.BROW_DOWN_LEFT, Blendshapes.BROW_DOWN_RIGHT, false)
+        val rightUp = Blendshapes.side(Blendshapes.BROW_OUTER_UP_LEFT, Blendshapes.BROW_OUTER_UP_RIGHT, false)
         val raised = GestureClassifier().feed(mapOf(leftUp to 0.8f))
         assertTrue(FacialGesture.RAISE_LEFT_EYEBROW in raised.active)
         assertFalse(FacialGesture.RAISE_RIGHT_EYEBROW in raised.active)
-        assertDetects(FacialGesture.LOWER_RIGHT_EYEBROW, mapOf(rightDown to 0.8f))
+        assertDetects(FacialGesture.RAISE_RIGHT_EYEBROW, mapOf(rightUp to 0.8f))
     }
 
     @Test
-    fun eyeGaze() {
-        assertDetects(FacialGesture.MP_EYE_LOOK_UP_LEFT, mapOf("eyeLookUpLeft" to 0.8f))
-        assertDetects(FacialGesture.MP_EYE_LOOK_DOWN_RIGHT, mapOf("eyeLookDownRight" to 0.8f))
+    fun eyeSquintAndWideBlendshapesStillFireOnTheirOwn() {
+        assertDetects(FacialGesture.MP_EYE_SQUINT_LEFT, mapOf("eyeSquintLeft" to 0.8f))
+        assertDetects(FacialGesture.MP_EYE_WIDE_RIGHT, mapOf("eyeWideRight" to 0.8f))
     }
 
     @Test
