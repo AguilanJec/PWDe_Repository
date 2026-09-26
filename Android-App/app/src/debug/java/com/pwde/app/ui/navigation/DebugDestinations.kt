@@ -21,6 +21,7 @@ fun NavGraphBuilder.debugDestinations(onBack: () -> Unit) {
                     it.voiceCommandManager,
                     it.wakeWordEngine,
                     it.wakeWordTuningStore,
+                    it.buttonOverlayPrefs,
                 )
             },
             onBack = onBack,

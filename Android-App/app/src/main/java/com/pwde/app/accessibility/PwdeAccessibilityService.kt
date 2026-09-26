@@ -19,6 +19,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.pwde.app.PwdeApplication
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.prefs.ButtonOverlay
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.LivePlay
@@ -30,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -48,6 +50,7 @@ class PwdeAccessibilityService : AccessibilityService() {
     private var captionView: SpeechCaptionView? = null
     private var captionParams: WindowManager.LayoutParams? = null
     private var drag: ContinuousStroke? = null
+    private var markersView: ButtonMarkersView? = null
 
     /** The finger holding the game's movement joystick, while the head joystick is deflected. */
     private var stick: ContinuousStroke? = null
@@ -62,6 +65,8 @@ class PwdeAccessibilityService : AccessibilityService() {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { s ->
             s.launch { livePlay.actions.collect { perform(it, livePlay) } }
             s.launch { livePlay.state.collect { render(it, livePlay) } }
+            val overlayPrefs = (application as PwdeApplication).container.buttonOverlayPrefs
+            s.launch { combine(livePlay.state, overlayPrefs.overlay, ::Pair).collect { (state, overlay) -> renderMarkers(state, overlay) } }
         }
     }
 
@@ -120,6 +125,25 @@ class PwdeAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** The mapped buttons where PWDe taps them, while the Testing Station's switch is on. */
+    private fun renderMarkers(state: LivePlayState, overlay: ButtonOverlay) {
+        if (!state.active || !overlay.shown || state.buttons.isEmpty()) {
+            removeView(markersView)
+            markersView = null
+            return
+        }
+        val view = markersView ?: ButtonMarkersView(this).takeIf { addOverlay(it, cursorParams()) }?.also { markersView = it }
+        val (width, height) = displaySize()
+        val reach = MovementStick.REACH * minOf(width, height)
+        view?.update(
+            state.buttons.map { b ->
+                val p = toScreen(b.x, b.y)
+                ButtonMarkersView.Marker(b.id, b.label, p.x, p.y, reach.takeIf { b.trigger?.type == TriggerType.MOVEMENT })
+            },
+            overlay.opacity,
+        )
+    }
+
     private fun createBubble(livePlay: LivePlay): ModeBubbleView? {
         val params = bubbleParams ?: bubbleLayoutParams().also { bubbleParams = it }
         val view = ModeBubbleView(
@@ -171,6 +195,8 @@ class PwdeAccessibilityService : AccessibilityService() {
     }
 
     private fun removeOverlays() {
+        removeView(markersView)
+        markersView = null
         removeView(cursorView)
         removeView(bubbleView)
         removeView(captionView)
@@ -264,7 +290,9 @@ class PwdeAccessibilityService : AccessibilityService() {
         Log.i(TAG, "Perform $command")
         when (command) {
             // Button positions are fractions of a full-screen screenshot from this phone.
-            is GameCommand.Press -> tap(toScreen(command.button.x, command.button.y), TAP_MS)
+            is GameCommand.Press -> tap(toScreen(command.button.x, command.button.y), TAP_MS) { outcome ->
+                markersView?.flash(command.button.id, outcome)
+            }
             GameCommand.Select -> {
                 tap(pointer, TAP_MS)
                 cursorView?.flash()
@@ -295,12 +323,14 @@ class PwdeAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun tap(point: PointF, durationMs: Long) {
+    /** [onResult] says whether Android completed the tap (for the button markers). */
+    private fun tap(point: PointF, durationMs: Long, onResult: (ButtonMarkersView.Outcome) -> Unit = {}) {
         // A new gesture would lift a held finger, so taps ride along with it instead.
         val held = stick?.takeIf { it.isHeld } ?: drag?.takeIf { it.isHeld }
         if (held != null) {
             Log.d(TAG, "Tap at $point rides on the held ${if (held === stick) "joystick" else "drag"}")
-            return held.tap(point, durationMs)
+            held.tap(point, durationMs)
+            return onResult(ButtonMarkersView.Outcome.WITH_JOYSTICK)
         }
         // Pressing the movement stick now would cancel this tap, so it waits until the tap is done.
         stickHoldOffUntil = SystemClock.uptimeMillis() + durationMs + TAP_SETTLE_MS
@@ -308,16 +338,21 @@ class PwdeAccessibilityService : AccessibilityService() {
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
-        val callback = object : GestureResultCallback() {
+        val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 Log.i(TAG, "Tap at $point completed")
+                onResult(ButtonMarkersView.Outcome.TAPPED)
             }
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 Log.w(TAG, "Tap at $point was cancelled")
+                onResult(ButtonMarkersView.Outcome.FAILED)
             }
+        }, null)
+        if (!accepted) {
+            Log.w(TAG, "Tap at $point was rejected")
+            onResult(ButtonMarkersView.Outcome.FAILED)
         }
-        if (!dispatchGesture(gesture, callback, null)) Log.w(TAG, "Tap at $point was rejected")
     }
 
     /** Moves the content under the pointer so it scrolls the way [direction] reads. */

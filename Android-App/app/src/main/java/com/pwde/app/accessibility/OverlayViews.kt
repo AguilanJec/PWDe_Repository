@@ -239,3 +239,93 @@ class SpeechCaptionView(context: Context) : TextView(context) {
         const val HIGHLIGHT_MS = 800L
     }
 }
+
+/**
+ * Debug layer over the real game: every mapped button drawn where PWDe taps it (circle, crosshair
+ * on the exact tap point, label), and the movement joystick as a ring at its drag reach. A press
+ * flashes its marker so offsets and dropped taps are visible. Never takes touches.
+ */
+class ButtonMarkersView(context: Context) : View(context) {
+    /** One marker, in display pixels. [reach] is set for the movement joystick. */
+    data class Marker(val id: Int, val label: String, val x: Float, val y: Float, val reach: Float? = null)
+
+    enum class Outcome(val color: Int) { TAPPED(PRIMARY), WITH_JOYSTICK(WARNING), FAILED(0xFFFF5A5F.toInt()) }
+
+    private val density = resources.displayMetrics.density
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * density }
+    private val cross = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.5f * density }
+    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, resources.displayMetrics)
+        isFakeBoldText = true
+    }
+    private val labelBackground = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val location = IntArray(2)
+    private var markers: List<Marker> = emptyList()
+    private var opacity = 0.6f
+
+    /** Button id → (outcome, when it was pressed). */
+    private val flashes = mutableMapOf<Int, Pair<Outcome, Long>>()
+
+    init {
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    fun update(markers: List<Marker>, opacity: Float) {
+        if (this.markers == markers && this.opacity == opacity) return
+        this.markers = markers
+        this.opacity = opacity
+        invalidate()
+    }
+
+    fun flash(buttonId: Int, outcome: Outcome) {
+        flashes[buttonId] = outcome to SystemClock.uptimeMillis()
+        postInvalidateOnAnimation()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        getLocationOnScreen(location)
+        val now = SystemClock.uptimeMillis()
+        val alpha = (opacity * 255).toInt()
+        val radius = 26f * density
+        for (m in markers) {
+            val cx = m.x - location[0]
+            val cy = m.y - location[1]
+            // A press shows at full strength whatever the opacity, fading out over FLASH_MS.
+            val flash = flashes[m.id]?.takeIf { now - it.second < FLASH_MS }
+            val flashAlpha = flash?.let { 1f - (now - it.second).toFloat() / FLASH_MS } ?: 0f
+            val color = flash?.first?.color ?: Color.WHITE
+            m.reach?.let { reach ->
+                stroke.color = PRIMARY
+                stroke.alpha = alpha
+                canvas.drawCircle(cx, cy, reach, stroke)
+            }
+            fill.color = flash?.first?.color ?: PRIMARY
+            fill.alpha = (alpha * 0.35f + 255 * 0.5f * flashAlpha).toInt().coerceAtMost(255)
+            canvas.drawCircle(cx, cy, radius, fill)
+            stroke.color = color
+            stroke.alpha = maxOf(alpha, (255 * flashAlpha).toInt())
+            canvas.drawCircle(cx, cy, radius, stroke)
+            cross.color = Color.WHITE
+            cross.alpha = maxOf(alpha, (255 * flashAlpha).toInt())
+            val arm = 8f * density
+            canvas.drawLine(cx - arm, cy, cx + arm, cy, cross)
+            canvas.drawLine(cx, cy - arm, cx, cy + arm, cross)
+            val baseline = cy + radius + label.textSize + 2 * density
+            val width = label.measureText(m.label) / 2 + 4 * density
+            labelBackground.color = Color.BLACK
+            labelBackground.alpha = (alpha * 0.6f).toInt()
+            canvas.drawRect(cx - width, baseline - label.textSize, cx + width, baseline + 4 * density, labelBackground)
+            label.color = Color.WHITE
+            label.alpha = maxOf(alpha, (255 * flashAlpha).toInt())
+            canvas.drawText(m.label, cx, baseline, label)
+        }
+        flashes.entries.removeAll { now - it.value.second >= FLASH_MS }
+        if (flashes.isNotEmpty()) postInvalidateOnAnimation()
+    }
+
+    private companion object {
+        const val FLASH_MS = 700L
+    }
+}

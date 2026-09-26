@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.pwde.app.data.model.FacialGesture
+import com.pwde.app.data.prefs.ButtonOverlay
+import com.pwde.app.data.prefs.ButtonOverlayPrefs
 import com.pwde.app.sensors.face.FaceState
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.TrackingStatus
@@ -71,6 +73,8 @@ import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.IconBadge
 import com.pwde.app.ui.components.JoystickView
+import com.pwde.app.ui.components.LevelSlider
+import com.pwde.app.ui.components.SwitchRow
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeTextField
@@ -87,6 +91,7 @@ import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -98,7 +103,15 @@ class TestingStationViewModel(
     voiceCommandManager: VoiceCommandManager,
     private val wakeWordEngine: WakeWordEngine,
     private val tuningStore: WakeWordTuningStore,
+    private val buttonOverlayPrefs: ButtonOverlayPrefs,
 ) : FaceTrackingViewModel(faceTracking) {
+    /** The mapped-button overlay PWDe draws over the real game. */
+    val buttonOverlay: StateFlow<ButtonOverlay> = buttonOverlayPrefs.overlay
+
+    fun setButtonOverlayShown(shown: Boolean) = buttonOverlayPrefs.setShown(shown)
+
+    fun setButtonOverlayOpacity(opacity: Float) = buttonOverlayPrefs.setOpacity(opacity)
+
     val voice: StateFlow<VoiceState> = voiceCommandManager.state
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), voiceCommandManager.state.value)
 
@@ -235,6 +248,7 @@ fun TestingStationScreen(viewModel: TestingStationViewModel, onBack: () -> Unit)
     val wakeTuning by viewModel.wakeTuning.collectAsStateWithLifecycle()
     val spotterTuning by viewModel.spotterTuning.collectAsStateWithLifecycle()
     val newWakeWord by viewModel.newWakeWord.collectAsStateWithLifecycle()
+    val buttonOverlay by viewModel.buttonOverlay.collectAsStateWithLifecycle()
     val hitTime = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val colors = PwdeTheme.colors
     PwdeScreen(
@@ -252,6 +266,23 @@ fun TestingStationScreen(viewModel: TestingStationViewModel, onBack: () -> Unit)
             showLandmarks = true,
         )
         GesturesPanel(face)
+        Panel("Mapped buttons in game", Icons.Outlined.TouchApp) {
+            SwitchRow(
+                "Show mapped buttons",
+                buttonOverlay.shown,
+                viewModel::setButtonOverlayShown,
+                description = "While playing, draws each button where PWDe taps it. A press flashes green when " +
+                    "Android made the tap, amber when it went with the held joystick, red when it failed.",
+            )
+            val level = (buttonOverlay.opacity * 10).roundToInt().coerceIn(1, 10)
+            LevelSlider(
+                "Overlay opacity",
+                level,
+                { viewModel.setButtonOverlayOpacity(it / 10f) },
+                valueLabel = "${level * 10}%",
+                enabled = buttonOverlay.shown,
+            )
+        }
         FacePanel(face)
         Panel("Voice", Icons.Outlined.Mic) {
             Reading("State", when {
