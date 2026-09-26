@@ -2,6 +2,7 @@ package com.pwde.app.data.local
 
 import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.CursorTuning
+import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
@@ -25,6 +26,7 @@ fun ControlConfig.toCalibrationProfile(name: String, inputMode: InputMode, id: L
         joystickCenterRoll = joystick.centerRoll,
         gestureAssignmentsJson = ControlJson.encodeGestures(gestureAssignments),
         gestureSensitivityJson = ControlJson.encodeSensitivity(gestureSensitivity),
+        enabledGesturesJson = ControlJson.encodeGestureSet(enabledGestures),
         voiceEnabled = voiceEnabled,
         voiceMatchMode = voiceMatchMode.name,
         voiceActivationMode = voiceActivationMode.name,
@@ -41,7 +43,12 @@ fun CalibrationProfile.toControlConfig(keepShortcutsFrom: ControlConfig): Contro
     voiceActivationMode = VoiceActivationMode.entries.firstOrNull { it.name == voiceActivationMode } ?: VoiceActivationMode.IMMEDIATE,
     cursor = CursorTuning(cursorSpeedUp, cursorSpeedDown, cursorSpeedLeft, cursorSpeedRight, cursorSmoothing),
     joystick = JoystickTuning(joystickRadius, joystickSensitivity, joystickDeadZone, joystickCenterPitch, joystickCenterRoll),
+    enabledGestures = ControlJson.decodeGestureSet(enabledGesturesJson),
 )
 
 val CalibrationProfile.inputModeOrDefault: InputMode
     get() = InputMode.entries.firstOrNull { it.name == inputMode } ?: InputMode.HEAD_FACE
+
+/** The gestures this profile's gesture test enabled; null if it was never tested (all on). */
+val CalibrationProfile.enabledGestures: Set<FacialGesture>?
+    get() = ControlJson.decodeGestureSet(enabledGesturesJson)

@@ -8,6 +8,7 @@ import com.pwde.app.data.gabai.GabAiState
 import com.pwde.app.data.model.ButtonTrigger
 import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.data.model.TriggerType
@@ -40,6 +41,34 @@ class GabAiFlowTest {
     fun joystickCalibrationGoesStraightToVoice() {
         assertEquals(GabAiState.CalibrateJoystick, GabAiFlow.modeChosen(FaceOutputMode.JOYSTICK))
         assertEquals(GabAiState.CalibrationVoiceSetup, GabAiFlow.joystickDone())
+    }
+
+    @Test
+    fun gestureTestVisitsEveryGestureThenTheResults() {
+        val form = GabAiForm()
+        var state = GabAiFlow.voiceDone(form)
+        val seen = mutableListOf<GabAiState>()
+        while (state is GabAiState.CalibrationGestureTest) {
+            seen += state
+            state = GabAiFlow.gestureTested(state, form)
+        }
+        assertEquals(GabAiState.GESTURE_TEST.indices.map { GabAiState.CalibrationGestureTest(it) }, seen)
+        assertEquals(GabAiState.CalibrationGestureReview, state)
+        assertEquals(GabAiState.CalibrationGestureReview, GabAiFlow.gestureTestEnded())
+    }
+
+    @Test
+    fun retryingVisitsOnlyTheMissedGestures() {
+        val tests = GabAiState.GESTURE_TEST
+        val missed = setOf(tests[1], tests[4])
+        val form = GabAiForm(passedGestures = tests.toSet() - missed)
+        val first = GabAiFlow.retryMissedGestures(form)
+        assertEquals(GabAiState.CalibrationGestureTest(1), first)
+        val second = GabAiFlow.gestureTested(first as GabAiState.CalibrationGestureTest, form)
+        assertEquals(GabAiState.CalibrationGestureTest(4), second)
+        assertEquals(GabAiState.CalibrationGestureReview, GabAiFlow.gestureTested(second as GabAiState.CalibrationGestureTest, form))
+        // Every gesture done: nothing to retry.
+        assertEquals(GabAiState.CalibrationGestureReview, GabAiFlow.voiceDone(GabAiForm(passedGestures = tests.toSet())))
     }
 
     @Test
@@ -87,6 +116,12 @@ class GabAiFlowTest {
         assertEquals(GabAiState.CalibrateCursorAxis(Axis.LEFT), GabAiFlow.back(GabAiState.CalibrateCursorAxis(Axis.RIGHT), cursor))
         assertEquals(GabAiState.CalibrateCursorAxis(Axis.DIAGONAL), GabAiFlow.back(GabAiState.CalibrationVoiceSetup, cursor))
         assertEquals(GabAiState.CalibrateJoystick, GabAiFlow.back(GabAiState.CalibrationVoiceSetup, joystick))
+        assertEquals(GabAiState.CalibrationVoiceSetup, GabAiFlow.back(GabAiState.CalibrationGestureTest(0), cursor))
+        assertEquals(GabAiState.CalibrationGestureTest(2), GabAiFlow.back(GabAiState.CalibrationGestureTest(3), cursor))
+        assertEquals(
+            GabAiState.CalibrationGestureTest(GabAiState.GESTURE_TEST.lastIndex),
+            GabAiFlow.back(GabAiState.CalibrationGestureReview, cursor),
+        )
         assertEquals(GabAiState.ChooseGame, GabAiFlow.back(GabAiState.ConfirmCalibrationProfile, cursor))
         assertEquals(GabAiState.ButtonMapping(3), GabAiFlow.back(GabAiState.TriggerAssignment(0, 3), threeButtons))
         assertEquals(GabAiState.TriggerAssignment(1, 3), GabAiFlow.back(GabAiState.TriggerAssignment(2, 3), threeButtons))
@@ -106,6 +141,7 @@ class GabAiCodecTest {
         GabAiState.CalibrationVoiceSetup, GabAiState.CalibrationSaved, GabAiState.ChooseGame,
         GabAiState.ConfirmCalibrationProfile, GabAiState.UploadScreenshot, GabAiState.NameAndSaveProfile,
         GabAiState.ProfileSaved, GabAiState.ButtonMapping(4), GabAiState.TriggerAssignment(2, 5),
+        GabAiState.CalibrationGestureTest(3), GabAiState.CalibrationGestureReview,
     ) + Axis.entries.map { GabAiState.CalibrateCursorAxis(it) }
 
     @Test
@@ -120,6 +156,7 @@ class GabAiCodecTest {
         assertEquals(GabAiState.ChooseCalibrationMode, GabAiCodec.decodeState("CalibrateCursorAxis:SIDEWAYS"))
         // An out-of-range button index can't be resumed as-is; go back to mapping.
         assertEquals(GabAiState.ButtonMapping(0), GabAiCodec.decodeState("TriggerAssignment:7:3"))
+        assertEquals(GabAiState.CalibrationGestureTest(0), GabAiCodec.decodeState("CalibrationGestureTest:999"))
     }
 
     @Test
@@ -131,6 +168,7 @@ class GabAiCodecTest {
             voiceEnabled = false,
             matchMode = VoiceMatchMode.EXACT,
             activationMode = VoiceActivationMode.AFTER_FINISH,
+            passedGestures = setOf(FacialGesture.SMILE, FacialGesture.NOD),
             calibrationName = "Evening",
             savedCalibrationId = 7,
             continueToGame = true,

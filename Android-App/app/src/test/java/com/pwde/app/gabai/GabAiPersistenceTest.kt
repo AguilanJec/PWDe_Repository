@@ -12,6 +12,7 @@ import com.pwde.app.data.gabai.GabAiState
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
+import com.pwde.app.data.local.enabledGestures
 import com.pwde.app.data.local.PwdeDatabase
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
@@ -19,7 +20,9 @@ import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.data.model.ButtonTrigger
 import com.pwde.app.data.prefs.InputMode
+import com.pwde.app.data.model.GestureAction
 import com.pwde.app.sensors.face.FaceState
+import com.pwde.app.sensors.face.GestureReading
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.voice.VoiceCommand
 import com.pwde.app.sensors.voice.VoiceCommandManager
@@ -94,8 +97,14 @@ class GabAiPersistenceTest {
     @After
     fun tearDown() = db.close()
 
+    private val face = FakeFaceTracking()
+
     private fun newViewModel(start: GabAiStart = GabAiStart.Welcome) =
-        GabAiViewModel(gabAi, profiles, controls, settings, FakeVoice(), FakeFaceTracking(), start)
+        GabAiViewModel(gabAi, profiles, controls, settings, FakeVoice(), face, start)
+
+    private fun showFace(vararg active: FacialGesture) {
+        face.state.value = FaceState(gesture = GestureReading(active = active.toSet()))
+    }
 
     /** Lets anything still in flight (e.g. flows collecting on Room's invalidation thread) land. */
     private fun settle() = Thread.sleep(50)
@@ -167,6 +176,50 @@ class GabAiPersistenceTest {
         assertEquals(listOf("attack", "LEFT"), buttons.map { it.trigger?.value })
         // Saved means finished: nothing left to "continue".
         assertNull(runBlocking { gabAi.unfinishedSession() })
+    }
+
+    @Test
+    fun onlyPerformedGesturesAreEnabledInTheSavedCalibration() {
+        runBlocking { controls.setGesture(GestureAction.SELECT, FacialGesture.FROWN) }
+        val vm = newViewModel()
+        vm.startCalibration()
+        settle()
+        vm.chooseMode(FaceOutputMode.JOYSTICK)
+        vm.joystickDone()
+        val first = GabAiState.GESTURE_TEST[0]
+        // Already held when the step opens: doesn't count until released and done again.
+        showFace(first)
+        vm.voiceDone()
+        assertEquals(GabAiState.CalibrationGestureTest(0), vm.ui.value.state)
+        settle()
+        assertEquals(emptySet<FacialGesture>(), vm.ui.value.form.passedGestures)
+        showFace()
+        showFace(first)
+        settle()
+        assertEquals(setOf(first), vm.ui.value.form.passedGestures)
+        // Moves on by itself after a short pause.
+        mainRule.dispatcher.scheduler.advanceTimeBy(2_000)
+        mainRule.dispatcher.scheduler.runCurrent()
+        assertEquals(GabAiState.CalibrationGestureTest(1), vm.ui.value.state)
+
+        // Skipping leaves the rest off.
+        vm.nextGesture()
+        assertEquals(GabAiState.CalibrationGestureTest(2), vm.ui.value.state)
+        vm.skipRemainingGestures()
+        assertEquals(GabAiState.CalibrationGestureReview, vm.ui.value.state)
+        vm.retryMissedGestures()
+        assertEquals(GabAiState.CalibrationGestureTest(1), vm.ui.value.state)
+        vm.skipRemainingGestures()
+        vm.saveCalibration()
+        settle()
+
+        assertEquals(GabAiState.CalibrationSaved, vm.ui.value.state)
+        val saved = runBlocking { profiles.calibrationProfiles.first().single() }
+        assertEquals(setOf(first), saved.enabledGestures)
+        val working = runBlocking { controls.config.first() }
+        assertEquals(setOf(first), working.enabledGestures)
+        // Frown wasn't performed, so the action mapped to it was unmapped.
+        assertNull(working.gestureAssignments[GestureAction.SELECT])
     }
 
     @Test

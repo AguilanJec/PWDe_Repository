@@ -115,6 +115,10 @@ enum class FacialGesture(val label: String, val description: String, val blendsh
     }
 }
 
+/** As [ControlConfig.enabledGestures]: untested (null) enables everything; raw blendshapes are never tested. */
+fun FacialGesture.isEnabledBy(enabledGestures: Set<FacialGesture>?): Boolean =
+    enabledGestures == null || isRaw || this in enabledGestures
+
 /** Things a user can trigger with a gesture. */
 enum class GestureAction(val label: String) {
     SELECT("Select"),
@@ -184,8 +188,16 @@ data class ControlConfig(
     val voiceShortcuts: Map<VoiceShortcut, String> = VoiceShortcut.entries.associateWith { it.defaultPhrase },
     val cursor: CursorTuning = CursorTuning(),
     val joystick: JoystickTuning = JoystickTuning(),
+    /**
+     * Curated gestures the user performed in GabAI's gesture test; only these fire. Null means the
+     * test was never run (e.g. a profile from before it existed), so every gesture is on. Raw
+     * MediaPipe blendshapes aren't part of the test and are always on.
+     */
+    val enabledGestures: Set<FacialGesture>? = null,
 ) {
     fun sensitivityOf(gesture: FacialGesture): Int = gestureSensitivity[gesture] ?: DEFAULT_LEVEL
+
+    fun isGestureEnabled(gesture: FacialGesture): Boolean = gesture.isEnabledBy(enabledGestures)
 
     /** The action mapped to [gesture], if any. */
     fun actionFor(gesture: FacialGesture): GestureAction? =

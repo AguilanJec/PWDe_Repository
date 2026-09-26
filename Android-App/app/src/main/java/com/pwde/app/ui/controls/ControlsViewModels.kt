@@ -11,6 +11,7 @@ import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.MAX_LEVEL
 import com.pwde.app.data.model.MIN_LEVEL
+import com.pwde.app.data.model.isEnabledBy
 import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
@@ -46,8 +47,12 @@ data class ChooseGestureUiState(
     /** Gesture → other actions already using it. */
     val usedBy: Map<FacialGesture, List<GestureAction>> = emptyMap(),
     val sensitivity: Map<FacialGesture, Int> = emptyMap(),
+    /** As [ControlConfig.enabledGestures]: null when the calibration never ran the gesture test. */
+    val enabledGestures: Set<FacialGesture>? = null,
 ) {
     fun sensitivityOf(gesture: FacialGesture) = sensitivity[gesture] ?: DEFAULT_LEVEL
+
+    fun isEnabled(gesture: FacialGesture) = gesture.isEnabledBy(enabledGestures)
 }
 
 /** E4/E5 Choose a gesture for one action, tune its sensitivity and try it live. */
@@ -64,6 +69,7 @@ class ChooseGestureViewModel(
                 usedBy = FacialGesture.entries.associateWith { config.conflictsFor(action, it) }
                     .filterValues { it.isNotEmpty() },
                 sensitivity = config.gestureSensitivity,
+                enabledGestures = config.enabledGestures,
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChooseGestureUiState(action))

@@ -26,6 +26,8 @@ data class CalibrationProfile(
     val gestureAssignmentsJson: String = "{}",
     /** JSON map of FacialGesture name -> sensitivity level 1–10. */
     @ColumnInfo(defaultValue = "{}") val gestureSensitivityJson: String = "{}",
+    /** JSON list of FacialGesture names the user performed in the gesture test; null = never tested (all on). */
+    val enabledGesturesJson: String? = null,
     val voiceEnabled: Boolean = true,
     val voiceMatchMode: String,
     val voiceActivationMode: String,
@@ -90,6 +92,8 @@ data class ControlSettingsEntity(
     @ColumnInfo(defaultValue = "3") val joystickDeadZone: Int = 3,
     @ColumnInfo(defaultValue = "0") val joystickCenterPitch: Float = 0f,
     @ColumnInfo(defaultValue = "0") val joystickCenterRoll: Float = 0f,
+    /** As [CalibrationProfile.enabledGesturesJson]. */
+    val enabledGesturesJson: String? = null,
 ) {
     companion object {
         const val SINGLETON_ID = 0

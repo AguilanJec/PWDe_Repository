@@ -20,7 +20,9 @@ import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Tune
@@ -40,14 +42,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.data.gabai.Axis
 import com.pwde.app.data.gabai.GabAiState
+import com.pwde.app.data.model.DEFAULT_LEVEL
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.MAX_LEVEL
 import com.pwde.app.data.model.MIN_LEVEL
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
+import com.pwde.app.sensors.face.GestureThresholds
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.CameraFeed
 import com.pwde.app.ui.components.DemoModeBanner
+import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.IconBadge
 import com.pwde.app.ui.components.InfoNote
@@ -64,6 +70,8 @@ import com.pwde.app.ui.components.StatusPill
 import com.pwde.app.ui.components.StepProgress
 import com.pwde.app.ui.components.SwitchRow
 import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.fmt
+import com.pwde.app.ui.components.levelWord
 import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
@@ -97,6 +105,8 @@ fun GabAiScreen(
         is GabAiState.CalibrateCursorAxis -> CursorAxisStep(viewModel, ui, state.axis)
         GabAiState.CalibrateJoystick -> JoystickStep(viewModel, ui)
         GabAiState.CalibrationVoiceSetup -> VoiceStep(viewModel, ui)
+        is GabAiState.CalibrationGestureTest -> GestureTestStep(viewModel, ui, state)
+        GabAiState.CalibrationGestureReview -> GestureReviewStep(viewModel, ui)
         GabAiState.CalibrationSaved -> CalibrationSavedStep(viewModel, ui)
         GabAiState.ChooseGame -> ChooseGameStep(viewModel, ui)
         GabAiState.ConfirmCalibrationProfile -> ConfirmCalibrationStep(viewModel, ui)
@@ -345,7 +355,7 @@ private fun JoystickStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
 }
 
 private val VOICE_STEP_COMMANDS = listOf(
-    voiceCommand("save", "save", "save profile"),
+    voiceCommand("next", "next", "looks good", "done"),
     voiceCommand("exact", "exact phrase", "exact"),
     voiceCommand("anywhere", "word anywhere", "anywhere"),
     voiceCommand("immediate", "right away"),
@@ -357,7 +367,7 @@ private fun VoiceStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     val form = ui.form
     VoiceCommandsEffect(VOICE_STEP_COMMANDS) { id ->
         when (id) {
-            "save" -> viewModel.saveCalibration()
+            "next" -> viewModel.voiceDone()
             "exact" -> viewModel.setVoice(match = VoiceMatchMode.EXACT)
             "anywhere" -> viewModel.setVoice(match = VoiceMatchMode.WORD_ANYWHERE)
             "immediate" -> viewModel.setVoice(activation = VoiceActivationMode.IMMEDIATE)
@@ -367,9 +377,9 @@ private fun VoiceStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     GabAiStep(
         viewModel, ui,
         title = "Calibration: Voice",
-        says = "Last, voice. Choose how strictly I match your words and when I act on them — then give this profile a name.",
-        voiceHint = "Say \"word anywhere\", \"right away\" or \"save\"",
-        footer = { PwdeButton("Save calibration profile", viewModel::saveCalibration, icon = Icons.Outlined.Save, modifier = Modifier.fillMaxWidth()) },
+        says = "Now, voice. Choose how strictly I match your words and when I act on them. Then we'll try some face gestures.",
+        voiceHint = "Say \"word anywhere\", \"right away\" or \"next\"",
+        footer = { PwdeButton("Next", viewModel::voiceDone, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth()) },
     ) {
         SwitchRow("Voice control", form.voiceEnabled, { viewModel.setVoice(enabled = it) }, icon = Icons.Outlined.Mic)
         SectionTitle("How words are matched")
@@ -389,6 +399,110 @@ private fun VoiceStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
                     icon = Icons.Outlined.Timer, kind = OptionKind.RADIO,
                 )
             }
+        }
+    }
+}
+
+private val GESTURE_TEST_COMMANDS = listOf(
+    voiceCommand("next", "skip", "next", "can't do it"),
+    voiceCommand("finish", "skip the rest", "finish gestures"),
+)
+
+/** One gesture at a time: doing it turns it on (and moves on by itself); skipping leaves it off. */
+@Composable
+private fun GestureTestStep(viewModel: GabAiViewModel, ui: GabAiUiState, test: GabAiState.CalibrationGestureTest) {
+    val face by viewModel.faceState.collectAsStateWithLifecycle()
+    val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
+    val sensitivity by viewModel.gestureSensitivity.collectAsStateWithLifecycle()
+    val colors = PwdeTheme.colors
+    val gesture = GabAiState.GESTURE_TEST[test.index]
+    val passed = gesture in ui.form.passedGestures
+    val level = sensitivity[gesture] ?: DEFAULT_LEVEL
+    val measure = face.gesture.measures[gesture]
+    VoiceCommandsEffect(GESTURE_TEST_COMMANDS) { id -> if (id == "next") viewModel.nextGesture() else viewModel.skipRemainingGestures() }
+    GabAiStep(
+        viewModel, ui,
+        title = "Gesture: ${gesture.label}",
+        says = if (passed) "Got it! ${gesture.label} is on."
+        else "${gesture.description}. Can't do it comfortably? Skip it — I'll only turn on the gestures you can do.",
+        voiceHint = "Say \"skip\" to move on, or \"skip the rest\" to finish",
+        footer = {
+            PwdeButton(
+                if (passed) "Next" else "Skip",
+                viewModel::nextGesture,
+                style = if (passed) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY,
+                icon = Icons.AutoMirrored.Outlined.ArrowForward,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+    ) {
+        StepProgress(test.index + 1, GabAiState.GESTURE_TEST.size, gesture.label)
+        DemoModeBanner(face)
+        GradientCard(Modifier.fillMaxWidth()) {
+            GestureMeter(gesture, measure, active = passed || gesture in face.gesture.active)
+            Text(
+                when {
+                    passed -> "Detected! This gesture is on."
+                    face.isSimulated && measure == null -> "Demo mode can only simulate tilt, nod and shake — skip this one."
+                    !face.hasFace -> "Face the camera to try it."
+                    else -> "Do the move — the bar passes the white tick when PWDe sees it. Too hard? Raise the sensitivity."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (passed) colors.primary else colors.textMuted,
+            )
+        }
+        CameraFeed(
+            faceState = face,
+            surfaceRequest = surface,
+            canRequestCamera = viewModel.canRequestCamera,
+            onCameraPermissionResult = viewModel::onCameraPermissionResult,
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.45f),
+        )
+        LevelSlider(
+            label = "Sensitivity",
+            level = level,
+            onLevelChange = { viewModel.setGestureSensitivity(gesture, it) },
+            valueLabel = "${levelWord(level)} · fires at ${fmt(GestureThresholds.forGesture(gesture, level))}${gesture.unit()}",
+        )
+        PwdeButton("Skip the rest", viewModel::skipRemainingGestures, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.SkipNext, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+private fun FacialGesture.unit() = when (this) {
+    FacialGesture.TILT_LEFT, FacialGesture.TILT_RIGHT, FacialGesture.NOD, FacialGesture.SHAKE -> "°"
+    else -> ""
+}
+
+private val GESTURE_REVIEW_COMMANDS = listOf(
+    voiceCommand("save", "save", "save profile"),
+    voiceCommand("retry", "try again", "retry"),
+)
+
+@Composable
+private fun GestureReviewStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
+    val colors = PwdeTheme.colors
+    val form = ui.form
+    val tests = GabAiState.GESTURE_TEST
+    val on = tests.filter { it in form.passedGestures }
+    val missed = tests.filterNot { it in form.passedGestures }
+    VoiceCommandsEffect(GESTURE_REVIEW_COMMANDS) { id -> if (id == "save") viewModel.saveCalibration() else viewModel.retryMissedGestures() }
+    GabAiStep(
+        viewModel, ui,
+        title = "Calibration: Gestures",
+        says = when {
+            on.isEmpty() -> "No gestures are on this time, and that's fine — everything else still works. "
+            missed.isEmpty() -> "You did every gesture, so they're all on! "
+            else -> "You did ${on.size} of ${tests.size} gestures. Only those are on, so the others can't fire by accident. "
+        } + "Give this profile a name and save it.",
+        voiceHint = if (missed.isEmpty()) "Say \"save\"" else "Say \"try again\" or \"save\"",
+        footer = { PwdeButton("Save calibration profile", viewModel::saveCalibration, icon = Icons.Outlined.Save, modifier = Modifier.fillMaxWidth()) },
+    ) {
+        SectionTitle("On (${on.size})")
+        Text(on.joinToString { it.label }.ifEmpty { "None" }, style = MaterialTheme.typography.bodyLarge, color = colors.text)
+        if (missed.isNotEmpty()) {
+            SectionTitle("Off (${missed.size})")
+            Text(missed.joinToString { it.label }, style = MaterialTheme.typography.bodyLarge, color = colors.textMuted)
+            PwdeButton("Try the missed ones again", viewModel::retryMissedGestures, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Replay, modifier = Modifier.fillMaxWidth())
         }
         PwdeTextField("Profile name (optional)", form.calibrationName, viewModel::setCalibrationName)
     }

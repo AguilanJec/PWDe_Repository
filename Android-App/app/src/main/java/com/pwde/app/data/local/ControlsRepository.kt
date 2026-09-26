@@ -83,6 +83,7 @@ private fun ControlSettingsEntity.toConfig() = ControlConfig(
     voiceShortcuts = ControlJson.decodeShortcuts(voiceShortcutsJson),
     cursor = CursorTuning(cursorSpeedUp, cursorSpeedDown, cursorSpeedLeft, cursorSpeedRight, cursorSmoothing).clamped(),
     joystick = JoystickTuning(joystickSize, joystickSensitivity, joystickDeadZone, joystickCenterPitch, joystickCenterRoll).clamped(),
+    enabledGestures = ControlJson.decodeGestureSet(enabledGesturesJson),
 )
 
 private fun ControlConfig.toEntity(now: Long) = ControlSettingsEntity(
@@ -103,4 +104,5 @@ private fun ControlConfig.toEntity(now: Long) = ControlSettingsEntity(
     joystickDeadZone = joystick.deadZone,
     joystickCenterPitch = joystick.centerPitch,
     joystickCenterRoll = joystick.centerRoll,
+    enabledGesturesJson = ControlJson.encodeGestureSet(enabledGestures),
 )

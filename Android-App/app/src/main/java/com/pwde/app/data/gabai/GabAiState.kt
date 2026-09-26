@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.data.model.VoiceActivationMode
@@ -26,6 +27,8 @@ sealed class GabAiState {
     data class CalibrateCursorAxis(val axis: Axis) : GabAiState() // repeats per direction
     object CalibrateJoystick : GabAiState() // sensitivity, dead zone, center, radius
     object CalibrationVoiceSetup : GabAiState() // voice on/off, matching mode, activation mode
+    data class CalibrationGestureTest(val index: Int) : GabAiState() // perform GESTURE_TEST[index], or skip it
+    object CalibrationGestureReview : GabAiState() // which gestures are on, retry missed ones, name and save
     object CalibrationSaved : GabAiState() // Done, or continue into the game-profile branch
 
     // --- Game-profile branch ---
@@ -37,6 +40,11 @@ sealed class GabAiState {
     object NameAndSaveProfile : GabAiState()
     object ProfileSaved : GabAiState() // Dashboard, or Create Another
 
+    companion object {
+        /** The gestures the calibration's gesture test asks for, in order. Raw blendshapes aren't tested. */
+        val GESTURE_TEST: List<FacialGesture> = FacialGesture.curated
+    }
+
     /** Short description for "Continue where you left off". */
     val summary: String
         get() = when (this) {
@@ -45,6 +53,8 @@ sealed class GabAiState {
             is CalibrateCursorAxis -> "Calibration: cursor ${axis.label.lowercase()}"
             CalibrateJoystick -> "Calibration: joystick"
             CalibrationVoiceSetup -> "Calibration: voice"
+            is CalibrationGestureTest -> "Calibration: gesture ${index + 1} of ${GESTURE_TEST.size}"
+            CalibrationGestureReview -> "Calibration: gesture results"
             CalibrationSaved -> "Calibration saved"
             ChooseGame -> "Game profile: choose a game"
             ConfirmCalibrationProfile -> "Game profile: pick a calibration"
@@ -64,6 +74,8 @@ data class GabAiForm(
     val voiceEnabled: Boolean = true,
     val matchMode: VoiceMatchMode = VoiceMatchMode.WORD_ANYWHERE,
     val activationMode: VoiceActivationMode = VoiceActivationMode.IMMEDIATE,
+    /** Gestures performed in the gesture test so far; only these are enabled in the saved calibration. */
+    val passedGestures: Set<FacialGesture> = emptySet(),
     val calibrationName: String = "",
     /** The calibration profile saved in this session, if any. */
     val savedCalibrationId: Long? = null,
@@ -85,6 +97,7 @@ object GabAiCodec {
 
     fun encodeState(state: GabAiState): String = when (state) {
         is GabAiState.CalibrateCursorAxis -> "CalibrateCursorAxis:${state.axis.name}"
+        is GabAiState.CalibrationGestureTest -> "CalibrationGestureTest:${state.index}"
         is GabAiState.ButtonMapping -> "ButtonMapping:${state.buttonsPlaced}"
         is GabAiState.TriggerAssignment -> "TriggerAssignment:${state.buttonIndex}:${state.totalButtons}"
         // Spelled out rather than taken from class names, which minification would rename.
@@ -92,6 +105,7 @@ object GabAiCodec {
         GabAiState.ChooseCalibrationMode -> "ChooseCalibrationMode"
         GabAiState.CalibrateJoystick -> "CalibrateJoystick"
         GabAiState.CalibrationVoiceSetup -> "CalibrationVoiceSetup"
+        GabAiState.CalibrationGestureReview -> "CalibrationGestureReview"
         GabAiState.CalibrationSaved -> "CalibrationSaved"
         GabAiState.ChooseGame -> "ChooseGame"
         GabAiState.ConfirmCalibrationProfile -> "ConfirmCalibrationProfile"
@@ -109,6 +123,9 @@ object GabAiCodec {
                 ?.let { GabAiState.CalibrateCursorAxis(it) } ?: GabAiState.ChooseCalibrationMode
             "CalibrateJoystick" -> GabAiState.CalibrateJoystick
             "CalibrationVoiceSetup" -> GabAiState.CalibrationVoiceSetup
+            "CalibrationGestureTest" -> parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in GabAiState.GESTURE_TEST.indices }
+                ?.let { GabAiState.CalibrationGestureTest(it) } ?: GabAiState.CalibrationGestureTest(0)
+            "CalibrationGestureReview" -> GabAiState.CalibrationGestureReview
             "CalibrationSaved" -> GabAiState.CalibrationSaved
             "ChooseGame" -> GabAiState.ChooseGame
             "ConfirmCalibrationProfile" -> GabAiState.ConfirmCalibrationProfile
@@ -139,6 +156,7 @@ object GabAiCodec {
         val joystickSize: Int? = null, val joystickSensitivity: Int? = null, val joystickDeadZone: Int? = null,
         val joystickCenterPitch: Float? = null, val joystickCenterRoll: Float? = null,
         val voiceEnabled: Boolean? = null, val matchMode: String? = null, val activationMode: String? = null,
+        val passedGestures: List<String>? = null,
         val calibrationName: String? = null, val savedCalibrationId: Long? = null, val continueToGame: Boolean? = null,
         val gameId: String? = null, val calibrationProfileId: Long? = null, val screenshotPath: String? = null,
         val buttonsJson: String? = null, val profileName: String? = null,
@@ -159,6 +177,7 @@ object GabAiCodec {
                 voiceEnabled = voiceEnabled ?: d.voiceEnabled,
                 matchMode = VoiceMatchMode.entries.firstOrNull { it.name == matchMode } ?: d.matchMode,
                 activationMode = VoiceActivationMode.entries.firstOrNull { it.name == activationMode } ?: d.activationMode,
+                passedGestures = passedGestures.orEmpty().mapNotNull { name -> FacialGesture.entries.firstOrNull { it.name == name } }.toSet(),
                 calibrationName = calibrationName.orEmpty(),
                 savedCalibrationId = savedCalibrationId,
                 continueToGame = continueToGame ?: false,
@@ -180,6 +199,7 @@ object GabAiCodec {
                 joystickSize = f.joystick.size, joystickSensitivity = f.joystick.sensitivity, joystickDeadZone = f.joystick.deadZone,
                 joystickCenterPitch = f.joystick.centerPitch, joystickCenterRoll = f.joystick.centerRoll,
                 voiceEnabled = f.voiceEnabled, matchMode = f.matchMode.name, activationMode = f.activationMode.name,
+                passedGestures = f.passedGestures.map { it.name },
                 calibrationName = f.calibrationName, savedCalibrationId = f.savedCalibrationId, continueToGame = f.continueToGame,
                 gameId = f.gameId, calibrationProfileId = f.calibrationProfileId, screenshotPath = f.screenshotPath,
                 buttonsJson = ControlJson.encodeButtons(f.buttons), profileName = f.profileName,

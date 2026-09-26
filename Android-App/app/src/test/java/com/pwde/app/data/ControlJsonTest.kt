@@ -6,6 +6,8 @@ import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.VoiceShortcut
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -31,6 +33,27 @@ class ControlJsonTest {
         val decoded = ControlJson.decodeShortcuts("""{"CURSOR_MODE":"pointer please"}""")
         assertEquals("pointer please", decoded[VoiceShortcut.CURSOR_MODE])
         assertEquals(VoiceShortcut.SWITCH_PROFILE.defaultPhrase, decoded[VoiceShortcut.SWITCH_PROFILE])
+    }
+
+    @Test
+    fun gestureSet_roundTripsAndKeepsNullDistinctFromEmpty() {
+        val set = setOf(FacialGesture.SMILE, FacialGesture.NOD)
+        assertEquals(set, ControlJson.decodeGestureSet(ControlJson.encodeGestureSet(set)))
+        assertEquals(emptySet<FacialGesture>(), ControlJson.decodeGestureSet(ControlJson.encodeGestureSet(emptySet())))
+        assertNull(ControlJson.encodeGestureSet(null))
+        assertNull(ControlJson.decodeGestureSet(null))
+        assertNull(ControlJson.decodeGestureSet("not json"))
+        assertEquals(setOf(FacialGesture.WINK), ControlJson.decodeGestureSet("""["WINK","NOT_A_GESTURE"]"""))
+    }
+
+    @Test
+    fun isGestureEnabled_onlyTestedCuratedGesturesWhenTested() {
+        assertTrue(ControlConfig().isGestureEnabled(FacialGesture.SMILE))
+        val tested = ControlConfig(enabledGestures = setOf(FacialGesture.NOD))
+        assertTrue(tested.isGestureEnabled(FacialGesture.NOD))
+        assertFalse(tested.isGestureEnabled(FacialGesture.SMILE))
+        // Raw blendshapes aren't part of the test.
+        assertTrue(tested.isGestureEnabled(FacialGesture.MP_JAW_OPEN))
     }
 
     @Test

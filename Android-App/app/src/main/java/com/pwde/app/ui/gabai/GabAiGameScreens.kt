@@ -408,6 +408,7 @@ private val TRIGGER_COMMANDS = listOf(
     voiceCommand("type:VOICE", "voice", "voice command"),
     voiceCommand("type:GESTURE", "gesture", "head gesture"),
     voiceCommand("type:JOYSTICK", "joystick", "joystick action"),
+    voiceCommand("type:MOVEMENT", "movement", "movement joystick"),
     voiceCommand("next", "next", "done"),
 ) + FacialGesture.curated.map { voiceCommand("gesture:${it.name}", it.spokenName) } +
         JoystickDirection.entries.filter { it != JoystickDirection.CENTER }.map { voiceCommand("dir:${it.name}", "stick ${it.label.lowercase()}") }
@@ -418,6 +419,9 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
     val button = buttons.getOrNull(state.buttonIndex) ?: return
     var type by rememberSaveable(button.id) { mutableStateOf(button.trigger?.type ?: TriggerType.VOICE) }
     val trigger = button.trigger
+    // Only gestures the chosen calibration's gesture test turned on.
+    val gestures by viewModel.triggerGestures.collectAsStateWithLifecycle()
+    val gestureOff = trigger?.gesture?.let { it !in gestures } == true
     // "assign <words>" sets a voice trigger from anywhere on this step; show the matching tab.
     LaunchedEffect(trigger?.type) { trigger?.type?.let { type = it } }
     val conflicts = trigger?.let { t -> buttons.filter { it.id != button.id && it.trigger == t }.map { it.label } }.orEmpty()
@@ -425,7 +429,11 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
     VoiceCommandsEffect(TRIGGER_COMMANDS) { id ->
         when {
             id.startsWith("type:") -> type = TriggerType.valueOf(id.removePrefix("type:"))
-            id.startsWith("gesture:") -> set(ButtonTrigger(TriggerType.GESTURE, id.removePrefix("gesture:"))).also { type = TriggerType.GESTURE }
+            id.startsWith("gesture:") -> {
+                type = TriggerType.GESTURE
+                val gesture = FacialGesture.valueOf(id.removePrefix("gesture:"))
+                if (gesture in gestures) set(ButtonTrigger(TriggerType.GESTURE, gesture.name))
+            }
             id.startsWith("dir:") -> set(ButtonTrigger(TriggerType.JOYSTICK, id.removePrefix("dir:"))).also { type = TriggerType.JOYSTICK }
             id == "next" -> viewModel.triggerDone()
         }
@@ -461,12 +469,33 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
                     )
                 }
             }
-            TriggerType.GESTURE -> ChipGrid(
-                items = FacialGesture.curated,
-                label = { it.label },
-                selected = { trigger?.type == TriggerType.GESTURE && trigger.value == it.name },
-                onPick = { set(ButtonTrigger(TriggerType.GESTURE, it.name)) },
-            )
+            TriggerType.GESTURE -> {
+                if (gestures.size < FacialGesture.curated.size) {
+                    InfoNote(
+                        if (gestures.isEmpty()) "This calibration has no gestures turned on. Use voice or the joystick, or make a new calibration."
+                        else "Showing the ${gestures.size} gestures you did in this calibration's gesture test.",
+                    )
+                }
+                ChipGrid(
+                    items = gestures,
+                    label = { it.label },
+                    selected = { trigger?.type == TriggerType.GESTURE && trigger.value == it.name },
+                    onPick = { set(ButtonTrigger(TriggerType.GESTURE, it.name)) },
+                )
+            }
+            TriggerType.MOVEMENT -> {
+                InfoNote(
+                    "Pick this for the game's own movement joystick (the one you drag to walk). In joystick mode PWDe " +
+                        "holds it and drags it the way you tilt your head, and lets go when you look straight ahead.",
+                )
+                PwdeButton(
+                    if (trigger?.type == TriggerType.MOVEMENT) "This is the movement joystick" else "Use as the movement joystick",
+                    { set(ButtonTrigger.MOVEMENT) },
+                    style = if (trigger?.type == TriggerType.MOVEMENT) ButtonStyle.SECONDARY else ButtonStyle.PRIMARY,
+                    icon = Icons.Outlined.CheckCircle,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             TriggerType.JOYSTICK -> ChipGrid(
                 items = JoystickDirection.entries.filter { it != JoystickDirection.CENTER },
                 label = { it.label },
@@ -475,6 +504,9 @@ internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: Gab
             )
         }
         trigger?.let { StatusPill("Pressed by: ${it.describe()}", icon = Icons.Outlined.CheckCircle) }
+        if (gestureOff) {
+            StatusPill("That gesture is off in this calibration — pick another", color = PwdeTheme.colors.warning, icon = Icons.Outlined.WarningAmber)
+        }
         if (conflicts.isNotEmpty()) {
             StatusPill("Also used by ${conflicts.joinToString()}", color = PwdeTheme.colors.warning, icon = Icons.Outlined.WarningAmber)
         }

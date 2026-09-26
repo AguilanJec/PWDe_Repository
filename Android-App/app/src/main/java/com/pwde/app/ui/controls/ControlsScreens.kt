@@ -260,9 +260,11 @@ fun ChooseGestureScreen(viewModel: ChooseGestureViewModel, onBack: () -> Unit) {
             id == "clear" -> viewModel.clear()
             id == "done" -> onBack()
             id.startsWith("tab:") -> catalog = GestureCatalog.valueOf(id.removePrefix("tab:"))
-            else -> viewModel.select(FacialGesture.valueOf(id))
+            else -> FacialGesture.valueOf(id).takeIf(state::isEnabled)?.let(viewModel::select)
         }
     }
+    // Gestures the calibration's gesture test left off can't fire, so they aren't offered.
+    val gestures = catalog.gestures.filter(state::isEnabled)
     PwdeScreen(
         title = "Gesture for \"${state.action.label}\"",
         subtitle = "Pick one. Moves already in use are marked.",
@@ -279,7 +281,11 @@ fun ChooseGestureScreen(viewModel: ChooseGestureViewModel, onBack: () -> Unit) {
         if (catalog == GestureCatalog.MEDIAPIPE) {
             InfoNote("Each of MediaPipe's 52 face scores on its own, named as MediaPipe names them. Say a name like \"brow down left\".")
         }
-        catalog.gestures.chunked(2).forEach { row ->
+        val off = catalog.gestures.size - gestures.size
+        if (off > 0) {
+            InfoNote("$off gesture${if (off == 1) " is" else "s are"} off because you didn't do ${if (off == 1) "it" else "them"} in your calibration's gesture test. Make a new calibration to try again.")
+        }
+        gestures.chunked(2).forEach { row ->
             Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
                 row.forEach { gesture ->
                     GestureTile(

@@ -157,7 +157,7 @@ class MigrationTest {
     fun migrate1To2() = runTest {
         createVersion1(DB)
         val db = Room.databaseBuilder(context, PwdeDatabase::class.java, DB)
-            .addMigrations(PwdeDatabase.MIGRATION_3_4)
+            .addMigrations(PwdeDatabase.MIGRATION_3_4, PwdeDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         try {
@@ -176,6 +176,9 @@ class MigrationTest {
             // v3 columns and table.
             assertEquals(0f, profile.joystickCenterPitch, 0f)
             assertEquals(null, db.gabAiSessionDao().getUnfinished())
+            // v5: never gesture-tested, so every gesture stays on.
+            assertEquals(null, profile.enabledGesturesJson)
+            assertEquals(null, controls.enabledGestures)
         } finally {
             db.close()
             context.deleteDatabase(DB)

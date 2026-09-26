@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CalibrationProfile::class, GameProfile::class, ControlSettingsEntity::class, GabAiSessionEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
     autoMigrations = [
         // v2 (Prompt 2): cursor/joystick tuning and per-gesture sensitivity.
@@ -26,11 +26,6 @@ abstract class PwdeDatabase : RoomDatabase() {
     abstract fun gabAiSessionDao(): GabAiSessionDao
 
     companion object {
-        fun create(context: Context): PwdeDatabase =
-            Room.databaseBuilder(context, PwdeDatabase::class.java, "pwde.db")
-                .addMigrations(MIGRATION_3_4)
-                .build()
-
         /**
          * v4: lastPlayedAt on game profiles, for "play <game>" by voice. Written by hand because an
          * AutoMigration needs 4.json, which only a successful build can export.
@@ -40,5 +35,21 @@ abstract class PwdeDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `game_profiles` ADD COLUMN `lastPlayedAt` INTEGER")
             }
         }
+
+        /**
+         * v5: the gestures a calibration's gesture test enabled. Written by hand because v4's schema
+         * was never exported, which an AutoMigration needs. Existing rows stay null: never tested, all on.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `calibration_profiles` ADD COLUMN `enabledGesturesJson` TEXT")
+                db.execSQL("ALTER TABLE `control_settings` ADD COLUMN `enabledGesturesJson` TEXT")
+            }
+        }
+
+        fun create(context: Context): PwdeDatabase =
+            Room.databaseBuilder(context, PwdeDatabase::class.java, "pwde.db")
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                .build()
     }
 }
