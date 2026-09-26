@@ -14,7 +14,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.PwdeDatabase
 import com.pwde.app.data.model.CursorTuning
+import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FacialGesture
+import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.JoystickTuning
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -90,6 +92,29 @@ class ControlsTuningTest {
         assertEquals(JoystickTuning(8, 2, 4, -7f, 2f), restored.joystick)
         assertEquals(9, restored.sensitivityOf(FacialGesture.PUCKER))
         assertEquals(InputMode.JOYSTICK, snapshot.inputModeOrDefault)
+    }
+
+    @Test
+    fun applyingGameCalibrationCanKeepCurrentGestureSettings() = runTest {
+        controls.replace(
+            ControlConfig(
+                gestureAssignments = mapOf(GestureAction.SELECT to FacialGesture.SMILE),
+                gestureSensitivity = mapOf(FacialGesture.SMILE to 8),
+                enabledGestures = setOf(FacialGesture.SMILE),
+            ),
+        )
+        val snapshot = ControlConfig(
+            joystick = JoystickTuning(size = 8),
+            enabledGestures = emptySet(),
+        ).toCalibrationProfile("Older", InputMode.HEAD_FACE)
+
+        controls.applyCalibration(snapshot, keepGestureSettings = true)
+
+        val applied = controls.config.first()
+        assertEquals(mapOf(GestureAction.SELECT to FacialGesture.SMILE), applied.gestureAssignments)
+        assertEquals(mapOf(FacialGesture.SMILE to 8), applied.gestureSensitivity)
+        assertEquals(setOf(FacialGesture.SMILE), applied.enabledGestures)
+        assertEquals(8, applied.joystick.size)
     }
 
     @Test

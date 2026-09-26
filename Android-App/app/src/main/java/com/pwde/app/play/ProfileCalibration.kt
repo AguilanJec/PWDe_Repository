@@ -8,7 +8,7 @@ import com.pwde.app.data.local.inputModeOrDefault
 import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.flow.first
 
-/** Play with the calibration [profile] was made with: applies it and its input mode. Null if it has none. */
+/** Play with the calibration [profile] was made with, retaining current gesture controls. Null if it has none. */
 suspend fun applyProfileCalibration(
     profile: GameProfile,
     profileRepository: ProfileRepository,
@@ -16,7 +16,7 @@ suspend fun applyProfileCalibration(
     settingsRepository: SettingsRepository,
 ): CalibrationProfile? {
     val calibration = profile.calibrationProfileId?.let { profileRepository.getCalibrationProfile(it) } ?: return null
-    controlsRepository.applyCalibration(calibration)
+    controlsRepository.applyCalibration(calibration, keepGestureSettings = true)
     if (settingsRepository.settings.first().inputMode != calibration.inputModeOrDefault) {
         settingsRepository.setInputMode(calibration.inputModeOrDefault)
     }

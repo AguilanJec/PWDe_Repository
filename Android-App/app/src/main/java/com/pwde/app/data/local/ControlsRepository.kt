@@ -46,7 +46,18 @@ class ControlsRepository(
     }
 
     /** Makes a saved calibration profile the working controls (voice shortcuts are kept). */
-    suspend fun applyCalibration(profile: CalibrationProfile) = edit { profile.toControlConfig(keepShortcutsFrom = it) }
+    suspend fun applyCalibration(profile: CalibrationProfile, keepGestureSettings: Boolean = false) = edit { current ->
+        val calibrated = profile.toControlConfig(keepShortcutsFrom = current)
+        if (keepGestureSettings) {
+            calibrated.copy(
+                gestureAssignments = current.gestureAssignments,
+                gestureSensitivity = current.gestureSensitivity,
+                enabledGestures = current.enabledGestures,
+            )
+        } else {
+            calibrated
+        }
+    }
 
     /** Replaces the working controls wholesale, e.g. with GabAI's in-progress calibration. */
     suspend fun replace(config: ControlConfig) = edit { config }
