@@ -33,6 +33,9 @@ sealed interface GameCommand {
     object Exit : GameCommand
     object HideOverlay : GameCommand
     object ShowOverlay : GameCommand
+    /** List every mapped button with what presses it, over the game. */
+    object ShowControls : GameCommand
+    object HideControls : GameCommand
 
     /** Nothing to do; [reason] is shown to the user. */
     data class Ignored(val reason: String) : GameCommand
@@ -54,6 +57,8 @@ object GameInput {
     const val RECENTER = "game_recenter"
     const val HIDE_OVERLAY = "game_hide_overlay"
     const val SHOW_OVERLAY = "game_show_overlay"
+    const val SHOW_CONTROLS = "game_show_controls"
+    const val HIDE_CONTROLS = "game_hide_controls"
     const val HOME = "game_home"
     const val RECENTS = "game_recents"
     const val NOTIFICATIONS = "game_notifications"
@@ -65,6 +70,10 @@ object GameInput {
     private const val SCROLL = "game_scroll:"
 
     fun buttonCommandId(buttonId: Int) = "button:$buttonId"
+
+    /** Also used by GabAI's mapping and test steps, so the phrase works the same everywhere. */
+    val SHOW_CONTROLS_PHRASES = listOf("show controls", "show buttons", "list controls")
+    val HIDE_CONTROLS_PHRASES = listOf("hide controls", "hide buttons")
 
     /** Always available in game, on top of the profile's own voice commands. */
     val STANDARD_BINDINGS = listOf(
@@ -80,6 +89,8 @@ object GameInput {
         VoiceCommandBinding(RECENTER, listOf("recenter", "center", "recenter joystick", "center joystick")),
         VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel")),
         VoiceCommandBinding(SHOW_OVERLAY, listOf("show overlay", "show panel")),
+        VoiceCommandBinding(SHOW_CONTROLS, SHOW_CONTROLS_PHRASES),
+        VoiceCommandBinding(HIDE_CONTROLS, HIDE_CONTROLS_PHRASES),
         VoiceCommandBinding(HOME, listOf("go home", "home screen")),
         VoiceCommandBinding(RECENTS, listOf("recent apps", "recents")),
         VoiceCommandBinding(NOTIFICATIONS, listOf("notifications", "open notifications")),
@@ -91,10 +102,12 @@ object GameInput {
     ) + ScrollDirection.entries.map { VoiceCommandBinding(SCROLL + it.name, listOf("scroll ${it.name.lowercase()}")) }
 
     /** The standard commands plus each button's own voice trigger. */
-    fun bindings(buttons: List<MappedButton>): List<VoiceCommandBinding> =
-        STANDARD_BINDINGS + buttons.mapNotNull { b ->
-            b.trigger?.takeIf { it.type == TriggerType.VOICE }?.let { VoiceCommandBinding(buttonCommandId(b.id), listOf(it.value)) }
-        }
+    fun bindings(buttons: List<MappedButton>): List<VoiceCommandBinding> = STANDARD_BINDINGS + buttonBindings(buttons)
+
+    /** Just each button's own voice trigger. */
+    fun buttonBindings(buttons: List<MappedButton>): List<VoiceCommandBinding> = buttons.mapNotNull { b ->
+        b.trigger?.takeIf { it.type == TriggerType.VOICE }?.let { VoiceCommandBinding(buttonCommandId(b.id), listOf(it.value)) }
+    }
 
     fun fromVoice(commandId: String?, rawText: String?, buttons: List<MappedButton>): GameCommand? = when (commandId) {
         null -> rawText?.let { GameCommand.Ignored("Heard \"$it\" — not a command in this game") }
@@ -106,6 +119,8 @@ object GameInput {
         RECENTER -> GameCommand.Recenter
         HIDE_OVERLAY -> GameCommand.HideOverlay
         SHOW_OVERLAY -> GameCommand.ShowOverlay
+        SHOW_CONTROLS -> GameCommand.ShowControls
+        HIDE_CONTROLS -> GameCommand.HideControls
         HOME -> GameCommand.Home
         RECENTS -> GameCommand.Recents
         NOTIFICATIONS -> GameCommand.Notifications
@@ -141,7 +156,7 @@ object GameInput {
     /** While paused only commands that control PWDe itself still work. */
     fun worksWhilePaused(command: GameCommand): Boolean = when (command) {
         GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause, GameCommand.Recenter, GameCommand.Exit,
-        GameCommand.HideOverlay, GameCommand.ShowOverlay, GameCommand.CursorMode, GameCommand.JoystickMode,
+        GameCommand.HideOverlay, GameCommand.ShowOverlay, GameCommand.ShowControls, GameCommand.HideControls, GameCommand.CursorMode, GameCommand.JoystickMode,
         GameCommand.Drop, is GameCommand.Ignored -> true
         else -> false
     }

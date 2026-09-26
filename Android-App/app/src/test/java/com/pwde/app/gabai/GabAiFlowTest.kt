@@ -78,20 +78,18 @@ class GabAiFlowTest {
     }
 
     @Test
-    fun gameProfileBranchLoopsTriggersOncePerButton() {
+    fun gameProfileBranchAssignsAllButtonsOnOneScreenThenTestsThem() {
         assertEquals(GabAiState.ChooseGame, GabAiFlow.newGameProfile(GabAiForm()))
         assertEquals(GabAiState.ConfirmCalibrationProfile, GabAiFlow.gameChosen())
         assertEquals(GabAiState.UploadScreenshot, GabAiFlow.calibrationConfirmed())
         assertEquals(GabAiState.ButtonMapping(3), GabAiFlow.screenshotDone(threeButtons))
 
-        var state = GabAiFlow.buttonsDone(threeButtons)
-        val seen = mutableListOf<GabAiState>()
-        while (state is GabAiState.TriggerAssignment) {
-            seen += state
-            state = GabAiFlow.triggerDone(state)
-        }
-        assertEquals((0..2).map { GabAiState.TriggerAssignment(it, 3) }, seen)
-        assertEquals(GabAiState.NameAndSaveProfile, state)
+        assertEquals(GabAiState.AssignTriggers, GabAiFlow.buttonsDone(threeButtons))
+        // Not every button has a trigger yet: stay on the trigger screen.
+        assertEquals(GabAiState.AssignTriggers, GabAiFlow.triggersDone(threeButtons))
+        val mapped = threeButtons.copy(buttons = threeButtons.buttons.map { it.copy(trigger = ButtonTrigger(TriggerType.VOICE, it.label)) })
+        assertEquals(GabAiState.TestControls, GabAiFlow.triggersDone(mapped))
+        assertEquals(GabAiState.NameAndSaveProfile, GabAiFlow.testingDone())
         assertEquals(GabAiState.ProfileSaved, GabAiFlow.profileSaved())
         assertEquals(GabAiState.ChooseGame, GabAiFlow.createAnother())
     }
@@ -123,9 +121,9 @@ class GabAiFlowTest {
             GabAiFlow.back(GabAiState.CalibrationGestureReview, cursor),
         )
         assertEquals(GabAiState.ChooseGame, GabAiFlow.back(GabAiState.ConfirmCalibrationProfile, cursor))
-        assertEquals(GabAiState.ButtonMapping(3), GabAiFlow.back(GabAiState.TriggerAssignment(0, 3), threeButtons))
-        assertEquals(GabAiState.TriggerAssignment(1, 3), GabAiFlow.back(GabAiState.TriggerAssignment(2, 3), threeButtons))
-        assertEquals(GabAiState.TriggerAssignment(2, 3), GabAiFlow.back(GabAiState.NameAndSaveProfile, threeButtons))
+        assertEquals(GabAiState.ButtonMapping(3), GabAiFlow.back(GabAiState.AssignTriggers, threeButtons))
+        assertEquals(GabAiState.AssignTriggers, GabAiFlow.back(GabAiState.TestControls, threeButtons))
+        assertEquals(GabAiState.TestControls, GabAiFlow.back(GabAiState.NameAndSaveProfile, threeButtons))
     }
 
     @Test
@@ -140,7 +138,7 @@ class GabAiCodecTest {
         GabAiState.Welcome, GabAiState.ChooseCalibrationMode, GabAiState.CalibrateJoystick,
         GabAiState.CalibrationVoiceSetup, GabAiState.CalibrationSaved, GabAiState.ChooseGame,
         GabAiState.ConfirmCalibrationProfile, GabAiState.UploadScreenshot, GabAiState.NameAndSaveProfile,
-        GabAiState.ProfileSaved, GabAiState.ButtonMapping(4), GabAiState.TriggerAssignment(2, 5),
+        GabAiState.ProfileSaved, GabAiState.ButtonMapping(4), GabAiState.AssignTriggers, GabAiState.TestControls,
         GabAiState.CalibrationGestureTest(3), GabAiState.CalibrationGestureReview,
     ) + Axis.entries.map { GabAiState.CalibrateCursorAxis(it) }
 
@@ -154,8 +152,8 @@ class GabAiCodecTest {
         assertEquals(GabAiState.Welcome, GabAiCodec.decodeState(null))
         assertEquals(GabAiState.Welcome, GabAiCodec.decodeState("SomethingNew"))
         assertEquals(GabAiState.ChooseCalibrationMode, GabAiCodec.decodeState("CalibrateCursorAxis:SIDEWAYS"))
-        // An out-of-range button index can't be resumed as-is; go back to mapping.
-        assertEquals(GabAiState.ButtonMapping(0), GabAiCodec.decodeState("TriggerAssignment:7:3"))
+        // Sessions saved mid one-button-at-a-time assignment resume on the all-buttons screen.
+        assertEquals(GabAiState.AssignTriggers, GabAiCodec.decodeState("TriggerAssignment:1:3"))
         assertEquals(GabAiState.CalibrationGestureTest(0), GabAiCodec.decodeState("CalibrationGestureTest:999"))
     }
 

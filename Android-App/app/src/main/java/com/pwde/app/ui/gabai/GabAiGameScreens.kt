@@ -12,18 +12,30 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -37,6 +49,8 @@ import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,16 +63,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.data.gabai.GabAiState
 import com.pwde.app.data.model.ButtonTrigger
@@ -67,8 +87,12 @@ import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.data.prefs.InputMode
-import com.pwde.app.sensors.face.JoystickDirection
+import com.pwde.app.play.GameInput
+import com.pwde.app.play.PlayService
 import com.pwde.app.ui.components.ButtonStyle
+import com.pwde.app.ui.components.CameraFeed
+import com.pwde.app.ui.components.ControlsList
+import com.pwde.app.ui.components.FooterActions
 import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.InfoNote
@@ -113,13 +137,23 @@ private val CONFIRM_COMMANDS = listOf(
 internal fun ConfirmCalibrationStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     val profiles by viewModel.calibrationProfiles.collectAsStateWithLifecycle()
     val selected = ui.form.calibrationProfileId
-    VoiceCommandsEffect(CONFIRM_COMMANDS) { id -> if (id == "use") viewModel.confirmCalibration() else viewModel.calibrateForThisGame() }
+    // Saying a profile's name selects it.
+    val commands = remember(profiles.map { it.id to it.name }) {
+        CONFIRM_COMMANDS + profiles.map { voiceCommand("profile:${it.id}", it.name.lowercase()) }
+    }
+    VoiceCommandsEffect(commands) { id ->
+        when {
+            id.startsWith("profile:") -> viewModel.chooseCalibration(id.removePrefix("profile:").toLong())
+            id == "use" -> viewModel.confirmCalibration()
+            else -> viewModel.calibrateForThisGame()
+        }
+    }
     GabAiStep(
         viewModel, ui,
         title = "Calibration for ${Game.byId(ui.form.gameId)?.displayName ?: "this game"}",
         says = if (profiles.isEmpty()) "This game needs a calibration profile first. Let's make one — it only takes a minute."
         else "Which calibration should this game use? Keep the one I picked, or switch.",
-        voiceHint = if (profiles.isEmpty()) "Say \"new calibration\"" else "Say \"use this one\" or \"new calibration\"",
+        voiceHint = if (profiles.isEmpty()) "Say \"new calibration\"" else "Say a profile's name, \"use this one\" or \"new calibration\"",
         footer = if (profiles.isEmpty()) null else {
             { PwdeButton("Use this one", viewModel::confirmCalibration, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth()) }
         },
@@ -230,14 +264,14 @@ internal fun ButtonMappingStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
             "done" -> viewModel.buttonsDone()
         }
     }
-    GabAiStep(
+    GabAiStageStep(
         viewModel, ui,
         title = "Mark the buttons",
-        says = "Tap each on-screen button in the game — or point with your head and say \"place\". Then give each one a name.",
+        says = "Tap each game button, or point and say \"place\". Then name it.",
         voiceHint = if (selected != null) "Say \"assign\" + a name, \"retry\", \"move left\" or \"done\""
         else "Say \"place\", \"next button\" or \"done\"",
         footer = {
-            PwdeButton(
+            SideButton(
                 "Done — ${buttons.size} ${if (buttons.size == 1) "button" else "buttons"}",
                 viewModel::buttonsDone,
                 enabled = buttons.isNotEmpty(),
@@ -245,19 +279,22 @@ internal fun ButtonMappingStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
                 modifier = Modifier.fillMaxWidth(),
             )
         },
+        stage = {
+            ButtonCanvas(
+                screenshot = ui.screenshot,
+                buttons = buttons,
+                selectedId = ui.selectedButtonId,
+                pointer = if (face.hasFace) Offset(face.cursor.x, face.cursor.y) else null,
+                fit = true,
+                onTapEmpty = viewModel::addButton,
+                onTapButton = { viewModel.selectButton(it) },
+                onDrag = viewModel::moveButton,
+            )
+        },
     ) {
         DemoModeBanner(face)
-        ButtonCanvas(
-            screenshot = ui.screenshot,
-            buttons = buttons,
-            selectedId = ui.selectedButtonId,
-            pointer = if (face.hasFace) Offset(face.cursor.x, face.cursor.y) else null,
-            onTapEmpty = viewModel::addButton,
-            onTapButton = { viewModel.selectButton(it) },
-            onDrag = viewModel::moveButton,
-        )
         if (selected == null) {
-            InfoNote(if (buttons.isEmpty()) "No buttons yet. Tap the game where a button is." else "Tap a button to rename, move or delete it.")
+            Text(if (buttons.isEmpty()) "No buttons yet — tap one on the game." else "Tap a button to edit it.", style = MaterialTheme.typography.bodySmall, color = PwdeTheme.colors.textMuted)
         } else {
             SelectedButtonEditor(viewModel, selected, ui.capturingLabel)
         }
@@ -267,23 +304,23 @@ internal fun ButtonMappingStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
 @Composable
 private fun SelectedButtonEditor(viewModel: GabAiViewModel, button: MappedButton, capturing: Boolean) {
     val colors = PwdeTheme.colors
-    GradientCard(Modifier.fillMaxWidth()) {
+    GradientCard(Modifier.fillMaxWidth(), contentPadding = 10.dp) {
         PwdeTextField("Button name", button.label, { viewModel.renameButton(button.id, it) })
-        PwdeButton(
-            if (capturing) "Listening — say \"assign\" and the name…" else "Say its name",
+        SideButton(
+            if (capturing) "Say \"assign\" + name…" else "Say its name",
             viewModel::captureLabelByVoice,
             style = ButtonStyle.SECONDARY,
             icon = Icons.Outlined.Mic,
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             NudgeButton(Icons.AutoMirrored.Outlined.ArrowBack, "Move left") { viewModel.nudgeSelected(-NUDGE, 0f) }
             NudgeButton(Icons.Outlined.ArrowUpward, "Move up") { viewModel.nudgeSelected(0f, -NUDGE) }
             NudgeButton(Icons.Outlined.ArrowDownward, "Move down") { viewModel.nudgeSelected(0f, NUDGE) }
             NudgeButton(Icons.AutoMirrored.Outlined.ArrowForward, "Move right") { viewModel.nudgeSelected(NUDGE, 0f) }
         }
-        PwdeButton("Delete button", viewModel::deleteSelected, style = ButtonStyle.DESTRUCTIVE, icon = Icons.Outlined.Delete, modifier = Modifier.fillMaxWidth())
-        Text("Tip: drag the circle to move it.", style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+        SideButton("Delete", viewModel::deleteSelected, style = ButtonStyle.DESTRUCTIVE, icon = Icons.Outlined.Delete, modifier = Modifier.fillMaxWidth())
+        Text("Or drag it.", style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
     }
 }
 
@@ -304,6 +341,15 @@ internal fun ButtonCanvas(
     selectedId: Int?,
     pointer: Offset? = null,
     highlightId: Int? = null,
+    /** Label each button with what presses it too; unmapped buttons are outlined in warning. */
+    showTriggers: Boolean = false,
+    /** A button just pressed on the test step, lit at [pressedLevel] (1 → 0 as it fades). */
+    pressedId: Int? = null,
+    pressedLevel: Float = 0f,
+    /** Fit inside the space given (full-screen stage) instead of filling the width. */
+    fit: Boolean = false,
+    /** While a button is selected, every other one is dimmed and can't be tapped, so it's clear which one is being mapped. */
+    focusSelected: Boolean = false,
     onTapEmpty: ((Float, Float) -> Unit)? = null,
     onTapButton: ((Int) -> Unit)? = null,
     onDrag: ((Int, Float, Float) -> Unit)? = null,
@@ -313,14 +359,20 @@ internal fun ButtonCanvas(
     val aspect = screenshot?.let { it.width.toFloat() / it.height } ?: (16f / 9f)
     val latestButtons by rememberUpdatedState(buttons)
     val latestSelected by rememberUpdatedState(selectedId)
+    val latestFocus by rememberUpdatedState(focusSelected)
     BoxWithConstraints(
         modifier
-            .fillMaxWidth()
+            .then(if (fit) Modifier else Modifier.fillMaxWidth())
             .aspectRatio(aspect)
-            .clip(PwdeShapes.card)
+            .then(if (fit) Modifier else Modifier.clip(PwdeShapes.card).border(2.dp, colors.borderBrush, PwdeShapes.card))
             .background(Color(0xFF1B2A1E))
-            .border(2.dp, colors.borderBrush, PwdeShapes.card)
-            .semantics { contentDescription = "Game screen with ${buttons.size} marked buttons" }
+            .semantics {
+                contentDescription = if (showTriggers) {
+                    buttons.joinToString(prefix = "Game screen. ") { "${it.label}: ${it.trigger?.describe() ?: "not mapped"}" }
+                } else {
+                    "Game screen with ${buttons.size} marked buttons"
+                }
+            }
             .then(
                 if (onTapEmpty == null && onTapButton == null) Modifier
                 else Modifier.pointerInput(Unit) {
@@ -329,6 +381,8 @@ internal fun ButtonCanvas(
                         val y = tap.y / size.height
                         val hit = latestButtons.minByOrNull { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) }
                             ?.takeIf { kotlin.math.hypot((it.x - x) * size.width, (it.y - y) * size.height) < HIT_RADIUS_DP * density }
+                        val locked = latestFocus && latestSelected != null && hit?.id != latestSelected
+                        if (locked) return@detectTapGestures
                         if (hit != null) onTapButton?.invoke(hit.id) else onTapEmpty?.invoke(x, y)
                     }
                 },
@@ -357,33 +411,76 @@ internal fun ButtonCanvas(
         val diameter = 44.dp
         buttons.forEach { button ->
             val isSelected = button.id == selectedId || button.id == highlightId
+            val pressed = button.id == pressedId
+            val unmapped = showTriggers && button.trigger == null
+            val dimmed = focusSelected && selectedId != null && !isSelected
+            val ring = when {
+                isSelected -> SELECTED_COLOR
+                pressed -> colors.primary
+                unmapped -> colors.warning
+                else -> Color.White
+            }
             Box(
                 Modifier
                     .offset(
                     x = maxWidth * button.x - diameter / 2,
                     y = maxHeight * button.y - diameter / 2,
                     )
-                    .size(diameter),
+                    .size(diameter)
+                    .alpha(if (dimmed) 0.3f else 1f),
                 contentAlignment = Alignment.TopCenter,
             ) {
+                if (isSelected) {
+                    // A halo past the circle, so the selected button stands out on any screenshot.
+                    Box(
+                        Modifier
+                            .requiredSize(diameter + 18.dp)
+                            .align(Alignment.Center)
+                            .border(3.dp, SELECTED_COLOR.copy(alpha = 0.6f), CircleShape),
+                    )
+                }
                 Box(
                     Modifier
                         .size(diameter)
                         .clip(CircleShape)
-                        .background(if (isSelected) colors.primary.copy(alpha = 0.55f) else colors.secondary.copy(alpha = 0.4f))
-                        .border(3.dp, if (isSelected) colors.primary else Color.White, CircleShape),
+                        .background(
+                            when {
+                                pressed -> colors.primary.copy(alpha = 0.4f + 0.5f * pressedLevel)
+                                isSelected -> SELECTED_COLOR.copy(alpha = 0.5f)
+                                else -> colors.secondary.copy(alpha = 0.4f)
+                            },
+                        )
+                        .border(if (pressed || isSelected) 5.dp else 3.dp, ring, CircleShape),
                 )
-                Text(
-                    button.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    modifier = Modifier
+                Column(
+                    Modifier
                         .offset(y = diameter)
-                        .background(Color.Black.copy(alpha = 0.6f), PwdeShapes.pill)
+                        .wrapContentWidth(unbounded = true)
+                        .background(if (isSelected) SELECTED_COLOR else Color.Black.copy(alpha = 0.7f), PwdeShapes.pill)
                         .padding(horizontal = 6.dp),
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        button.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) Color.Black else Color.White,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                    )
+                    if (showTriggers) {
+                        Text(
+                            button.trigger?.shortLabel() ?: "Tap to map",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when {
+                                isSelected -> Color.Black
+                                unmapped -> colors.warning
+                                else -> colors.primary
+                            },
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
         }
         if (pointer != null) {
@@ -402,113 +499,182 @@ internal fun ButtonCanvas(
 
 private const val HIT_RADIUS_DP = 32f
 
+/** The button being worked on: bright yellow reads on any game art, and isn't a status color here. */
+private val SELECTED_COLOR = Color(0xFFFFE600)
+
 // ---------------- Trigger assignment ----------------
 
-private val TRIGGER_COMMANDS = listOf(
+/** Internal so the Voice screen can list it. Button names and gestures are added per screen. */
+internal val ASSIGN_COMMANDS = listOf(
     voiceCommand("type:VOICE", "voice", "voice command"),
-    voiceCommand("type:GESTURE", "gesture", "head gesture"),
-    voiceCommand("type:JOYSTICK", "joystick", "joystick action"),
-    voiceCommand("type:MOVEMENT", "movement", "movement joystick"),
-    voiceCommand("next", "next", "done"),
-) + FacialGesture.curated.map { voiceCommand("gesture:${it.name}", it.spokenName) } +
-        JoystickDirection.entries.filter { it != JoystickDirection.CENTER }.map { voiceCommand("dir:${it.name}", "stick ${it.label.lowercase()}") }
+    voiceCommand("type:GESTURE", "head", "gesture", "head gesture"),
+    voiceCommand("next_button", "next button", "next"),
+    voiceCommand("close", "close", "cancel"),
+    voiceCommand("show_controls", *GameInput.SHOW_CONTROLS_PHRASES.toTypedArray()),
+    voiceCommand("hide_controls", *GameInput.HIDE_CONTROLS_PHRASES.toTypedArray()),
+    voiceCommand("hide_panel", *PANEL_PHRASES_HIDE),
+    voiceCommand("show_panel", *PANEL_PHRASES_SHOW),
+    voiceCommand("done", "done", "confirm", "finished"),
+)
 
+/** The two ways a button can be pressed from here; a joystick only ever moves (see [TriggerType.MOVEMENT]). */
+private val CHOOSER_TYPES = listOf(TriggerType.VOICE, TriggerType.GESTURE)
+
+/**
+ * Every button on the screenshot at once, each labelled with what presses it. Picking one opens a
+ * small chooser in the middle: voice or head. Done checks they're all mapped, then goes to testing.
+ */
 @Composable
-internal fun TriggerStep(viewModel: GabAiViewModel, ui: GabAiUiState, state: GabAiState.TriggerAssignment) {
+internal fun AssignTriggersStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     val buttons = ui.form.buttons
-    val button = buttons.getOrNull(state.buttonIndex) ?: return
-    var type by rememberSaveable(button.id) { mutableStateOf(button.trigger?.type ?: TriggerType.VOICE) }
-    val trigger = button.trigger
+    val selected = buttons.firstOrNull { it.id == ui.selectedButtonId }
+    val mapped = buttons.count { it.trigger != null }
     // Only gestures the chosen calibration's gesture test turned on.
     val gestures by viewModel.triggerGestures.collectAsStateWithLifecycle()
-    val gestureOff = trigger?.gesture?.let { it !in gestures } == true
-    // "assign <words>" sets a voice trigger from anywhere on this step; show the matching tab.
-    LaunchedEffect(trigger?.type) { trigger?.type?.let { type = it } }
-    val conflicts = trigger?.let { t -> buttons.filter { it.id != button.id && it.trigger == t }.map { it.label } }.orEmpty()
-    fun set(t: ButtonTrigger?) = viewModel.setTrigger(state.buttonIndex, t)
-    VoiceCommandsEffect(TRIGGER_COMMANDS) { id ->
+    var type by rememberSaveable(selected?.id) {
+        mutableStateOf(if (selected?.trigger?.type == TriggerType.GESTURE) TriggerType.GESTURE else TriggerType.VOICE)
+    }
+    // "assign <words>" sets a voice trigger from anywhere; show the matching tab.
+    LaunchedEffect(selected?.trigger?.type) { if (selected?.trigger?.type == TriggerType.VOICE) type = TriggerType.VOICE }
+    val commands = remember(buttons.map { it.id to it.label }, gestures) {
+        ASSIGN_COMMANDS +
+            buttons.map { voiceCommand("button:${it.id}", it.label.lowercase()) } +
+            gestures.map { voiceCommand("gesture:${it.name}", it.spokenName) }
+    }
+    VoiceCommandsEffect(commands) { id ->
         when {
-            id.startsWith("type:") -> type = TriggerType.valueOf(id.removePrefix("type:"))
-            id.startsWith("gesture:") -> {
-                type = TriggerType.GESTURE
-                val gesture = FacialGesture.valueOf(id.removePrefix("gesture:"))
-                if (gesture in gestures) set(ButtonTrigger(TriggerType.GESTURE, gesture.name))
-            }
-            id.startsWith("dir:") -> set(ButtonTrigger(TriggerType.JOYSTICK, id.removePrefix("dir:"))).also { type = TriggerType.JOYSTICK }
-            id == "next" -> viewModel.triggerDone()
+            id.startsWith("button:") -> viewModel.openTriggerChooser(id.removePrefix("button:").toInt())
+            id.startsWith("type:") -> if (selected != null) type = TriggerType.valueOf(id.removePrefix("type:"))
+            id.startsWith("gesture:") -> selected?.let { viewModel.pickGesture(it.id, FacialGesture.valueOf(id.removePrefix("gesture:"))) }
+            id == "next_button" -> viewModel.nextButtonToAssign()
+            id == "close" -> viewModel.openTriggerChooser(null)
+            id == "show_controls" -> viewModel.setControlsShown(true)
+            id == "hide_controls" -> viewModel.setControlsShown(false)
+            id == "hide_panel" -> viewModel.setSidebarOpen(false)
+            id == "show_panel" -> viewModel.setSidebarOpen(true)
+            id == "done" -> if (selected != null) viewModel.openTriggerChooser(null) else viewModel.triggersDone()
         }
     }
-    GabAiStep(
+    GabAiStageStep(
         viewModel, ui,
-        title = "Button ${state.buttonIndex + 1} of ${state.totalButtons}",
-        says = "How do you want to press \"${button.label}\"?",
-        voiceHint = "Say \"assign\" + words to press it by voice, or \"gesture\" / \"joystick\"; \"retry\" to redo, then \"next\"",
+        title = "Choose how to press each button",
+        says = if (selected != null) "How to press ${selected.label}?"
+        else "Tap a button or say its name, then pick voice or head.",
+        voiceHint = if (selected != null) "Say \"assign\" + words, a gesture's name, \"retry\" or \"next button\""
+        else "Say a button's name, \"next button\", \"show controls\", \"hide panel\" or \"done\"",
         footer = {
-            PwdeButton(
-                if (state.buttonIndex + 1 < state.totalButtons) "Next button" else "Next",
-                viewModel::triggerDone,
-                enabled = trigger != null,
-                icon = Icons.AutoMirrored.Outlined.ArrowForward,
+            SideButton(
+                if (mapped == buttons.size) "Test controls" else "Done · $mapped/${buttons.size}",
+                viewModel::triggersDone,
+                icon = Icons.Outlined.CheckCircle,
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-    ) {
-        ButtonCanvas(ui.screenshot, buttons, selectedId = null, highlightId = button.id, modifier = Modifier.fillMaxWidth(0.7f).align(Alignment.CenterHorizontally))
-        SegmentedToggle(TriggerType.entries, type, { it.label.substringBefore(' ') }, { type = it })
-        when (type) {
-            TriggerType.VOICE -> {
-                val phrase = if (trigger?.type == TriggerType.VOICE) trigger.value else ""
-                PwdeTextField("What will you say?", phrase, { set(if (it.isBlank()) null else ButtonTrigger(TriggerType.VOICE, it)) })
-                InfoNote("Or say \"assign\" and the words, like \"assign ${button.label.lowercase()}\". Say \"retry\" to redo it.")
-                if (phrase.isEmpty()) {
-                    PwdeButton(
-                        "Use \"${button.label.lowercase()}\"",
-                        { set(ButtonTrigger(TriggerType.VOICE, button.label.lowercase())) },
-                        style = ButtonStyle.SECONDARY,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-            TriggerType.GESTURE -> {
-                if (gestures.size < FacialGesture.curated.size) {
-                    InfoNote(
-                        if (gestures.isEmpty()) "This calibration has no gestures turned on. Use voice or the joystick, or make a new calibration."
-                        else "Showing the ${gestures.size} gestures you did in this calibration's gesture test.",
-                    )
-                }
-                ChipGrid(
-                    items = gestures,
-                    label = { it.label },
-                    selected = { trigger?.type == TriggerType.GESTURE && trigger.value == it.name },
-                    onPick = { set(ButtonTrigger(TriggerType.GESTURE, it.name)) },
-                )
-            }
-            TriggerType.MOVEMENT -> {
-                InfoNote(
-                    "Pick this for the game's own movement joystick (the one you drag to walk). In joystick mode PWDe " +
-                        "holds it and drags it the way you tilt your head, and lets go when you look straight ahead.",
-                )
-                PwdeButton(
-                    if (trigger?.type == TriggerType.MOVEMENT) "This is the movement joystick" else "Use as the movement joystick",
-                    { set(ButtonTrigger.MOVEMENT) },
-                    style = if (trigger?.type == TriggerType.MOVEMENT) ButtonStyle.SECONDARY else ButtonStyle.PRIMARY,
-                    icon = Icons.Outlined.CheckCircle,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            TriggerType.JOYSTICK -> ChipGrid(
-                items = JoystickDirection.entries.filter { it != JoystickDirection.CENTER },
-                label = { it.label },
-                selected = { trigger?.type == TriggerType.JOYSTICK && trigger.value == it.name },
-                onPick = { set(ButtonTrigger(TriggerType.JOYSTICK, it.name)) },
+        stage = {
+            ButtonCanvas(
+                screenshot = ui.screenshot,
+                buttons = buttons,
+                selectedId = ui.selectedButtonId,
+                showTriggers = true,
+                fit = true,
+                focusSelected = true,
+                onTapButton = viewModel::openTriggerChooser,
             )
+        },
+    ) {
+        if (selected != null) {
+            TriggerChooser(
+                viewModel = viewModel,
+                button = selected,
+                buttons = buttons,
+                gestures = gestures,
+                type = type,
+                onType = { type = it },
+            )
+        } else {
+            StatusPill(
+                if (mapped == buttons.size) "All mapped" else "$mapped/${buttons.size} mapped",
+                color = if (mapped == buttons.size) PwdeTheme.colors.primary else PwdeTheme.colors.warning,
+                icon = if (mapped == buttons.size) Icons.Outlined.CheckCircle else Icons.Outlined.TouchApp,
+            )
+            if (ui.controlsShown) {
+                ControlsList(buttons, onClose = { viewModel.setControlsShown(false) })
+            } else {
+                SideButton("Show controls", { viewModel.setControlsShown(true) }, style = ButtonStyle.SECONDARY, icon = Icons.AutoMirrored.Outlined.FormatListBulleted, modifier = Modifier.fillMaxWidth())
+            }
+            Text("The joystick only moves — your head steers it.", style = MaterialTheme.typography.bodySmall, color = PwdeTheme.colors.textMuted)
         }
-        trigger?.let { StatusPill("Pressed by: ${it.describe()}", icon = Icons.Outlined.CheckCircle) }
-        if (gestureOff) {
-            StatusPill("That gesture is off in this calibration — pick another", color = PwdeTheme.colors.warning, icon = Icons.Outlined.WarningAmber)
-        }
-        if (conflicts.isNotEmpty()) {
-            StatusPill("Also used by ${conflicts.joinToString()}", color = PwdeTheme.colors.warning, icon = Icons.Outlined.WarningAmber)
+    }
+}
+
+/** In the sidebar: voice or head for one button. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TriggerChooser(
+    viewModel: GabAiViewModel,
+    button: MappedButton,
+    buttons: List<MappedButton>,
+    gestures: List<FacialGesture>,
+    type: TriggerType,
+    onType: (TriggerType) -> Unit,
+) {
+    val colors = PwdeTheme.colors
+    val trigger = button.trigger
+    val close = { viewModel.openTriggerChooser(null) }
+    val conflicts = trigger?.let { t -> buttons.filter { it.id != button.id && it.trigger == t }.map { it.label } }.orEmpty()
+    val gestureOff = trigger?.gesture?.let { it !in gestures } == true
+    run {
+        GradientCard(Modifier.fillMaxWidth(), contentPadding = 8.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(button.label, style = MaterialTheme.typography.titleSmall, color = colors.text, modifier = Modifier.weight(1f))
+                IconButton(onClick = close) { Icon(Icons.Outlined.Close, contentDescription = "Close", tint = colors.primary) }
+            }
+            if (trigger?.type == TriggerType.MOVEMENT) {
+                Text("Movement joystick: your head joystick steers it. Pick voice or head only if it's really a button.", style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+            }
+            SegmentedToggle(CHOOSER_TYPES, type.takeIf { it in CHOOSER_TYPES }, { if (it == TriggerType.VOICE) "Voice" else "Head" }, onType)
+            when (type) {
+                TriggerType.GESTURE -> {
+                    if (gestures.isEmpty()) {
+                        Text("No gestures on in this calibration — use voice.", style = MaterialTheme.typography.bodySmall, color = colors.warning)
+                    } else if (gestures.size < FacialGesture.curated.size) {
+                        Text("Gestures from your calibration", style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        gestures.forEach { g ->
+                            SideChip(g.label, trigger?.type == TriggerType.GESTURE && trigger.value == g.name) { viewModel.pickGesture(button.id, g) }
+                        }
+                    }
+                }
+                else -> {
+                    val phrase = if (trigger?.type == TriggerType.VOICE) trigger.value else ""
+                    PwdeTextField(
+                        "What will you say?",
+                        phrase,
+                        { viewModel.setTrigger(button.id, if (it.isBlank()) null else ButtonTrigger(TriggerType.VOICE, it)) },
+                    )
+                    Text("Or say \"assign\" + words.", style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+                    if (phrase.isEmpty()) {
+                        SideButton(
+                            "Use \"${button.label.lowercase()}\"",
+                            { viewModel.setTrigger(button.id, ButtonTrigger(TriggerType.VOICE, button.label.lowercase())) },
+                            style = ButtonStyle.SECONDARY,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+            trigger?.let { Text("✓ ${it.describe()}", style = MaterialTheme.typography.labelMedium, color = colors.primary) }
+            if (gestureOff) {
+                Text("Gesture off in this calibration", style = MaterialTheme.typography.bodySmall, color = colors.warning)
+            }
+            if (conflicts.isNotEmpty()) {
+                Text("Also on ${conflicts.joinToString()}", style = MaterialTheme.typography.bodySmall, color = colors.warning)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SideButton("Next", viewModel::nextButtonToAssign, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.SkipNext, modifier = Modifier.weight(1f))
+                SideButton("Done", close, enabled = trigger != null, icon = Icons.Outlined.CheckCircle, modifier = Modifier.weight(1f))
+            }
         }
     }
 }
@@ -525,6 +691,128 @@ private fun <T> ChipGrid(items: List<T>, label: (T) -> String, selected: (T) -> 
     }
 }
 
+// ---------------- Testing the new controls ----------------
+
+private val TEST_COMMANDS = listOf(
+    voiceCommand("done", *TEST_DONE_PHRASES.toTypedArray()),
+    voiceCommand("change", *TEST_CHANGE_PHRASES.toTypedArray()),
+    voiceCommand("show_controls", *GameInput.SHOW_CONTROLS_PHRASES.toTypedArray()),
+    voiceCommand("hide_controls", *GameInput.HIDE_CONTROLS_PHRASES.toTypedArray()),
+    voiceCommand("hide_panel", *PANEL_PHRASES_HIDE),
+    voiceCommand("show_panel", *PANEL_PHRASES_SHOW),
+)
+
+/**
+ * Try the new mapping before saving: the buttons' phrases are heard by gameplay's own voice engine
+ * and gestures come from the camera, and whatever would be pressed lights up on the screenshot.
+ */
+@Composable
+internal fun TestControlsStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
+    val face by viewModel.faceState.collectAsStateWithLifecycle()
+    val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
+    val voice by viewModel.testVoice.collectAsStateWithLifecycle()
+    val colors = PwdeTheme.colors
+    val context = LocalContext.current
+    val hit = ui.testHit
+    // Gameplay's voice engine is shared with a live game session, so that ends first.
+    LaunchedEffect(Unit) { PlayService.stop(context) }
+    // The engine holds the mic only while this step is on screen.
+    LifecycleStartEffect(viewModel) {
+        viewModel.setTestScreenVisible(true)
+        onStopOrDispose { viewModel.setTestScreenVisible(false) }
+    }
+    // Only heard if the in-game engine isn't holding the mic (it has these phrases too).
+    VoiceCommandsEffect(TEST_COMMANDS) { id ->
+        when (id) {
+            "done" -> viewModel.testingDone()
+            "change" -> viewModel.changeMapping()
+            "show_controls" -> viewModel.setControlsShown(true)
+            "hide_controls" -> viewModel.setControlsShown(false)
+            "hide_panel" -> viewModel.setSidebarOpen(false)
+            "show_panel" -> viewModel.setSidebarOpen(true)
+        }
+    }
+    val flash = remember { Animatable(0f) }
+    LaunchedEffect(hit?.seq) {
+        if (hit?.buttonId != null) {
+            flash.snapTo(1f)
+            flash.animateTo(0f, tween(900))
+        }
+    }
+    GabAiStageStep(
+        viewModel, ui,
+        title = "Test your controls",
+        says = "Say a button's words or do its gesture — it lights up.",
+        voiceHint = "Say a button's words, \"show controls\", \"hide panel\", \"change mapping\" or \"done testing\"",
+        footer = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SideButton("Change", viewModel::changeMapping, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Tune, modifier = Modifier.weight(1f))
+                SideButton("Looks good", viewModel::testingDone, icon = Icons.Outlined.CheckCircle, modifier = Modifier.weight(1f))
+            }
+        },
+        stage = {
+            ButtonCanvas(
+                screenshot = ui.screenshot,
+                buttons = ui.form.buttons,
+                selectedId = null,
+                showTriggers = true,
+                pressedId = hit?.buttonId?.takeIf { flash.value > 0f },
+                pressedLevel = flash.value,
+                fit = true,
+            )
+        },
+    ) {
+        DemoModeBanner(face)
+        StatusPill(
+            hit?.text ?: "Waiting for your first try…",
+            color = if (hit?.buttonId != null) colors.primary else colors.textMuted,
+            icon = if (hit?.buttonId != null) Icons.Outlined.CheckCircle else Icons.Outlined.TouchApp,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Text(
+            when {
+                voice.usesTextFallback -> "${voice.availability.label} — type a button's words instead."
+                voice.listening -> "Listening with ${viewModel.buttonSpeechModel}, just like in a game."
+                voice.running -> "Game voice is on."
+                else -> "Starting game voice…"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.textMuted,
+        )
+        if (voice.usesTextFallback) TestCommandField(viewModel::submitTestText)
+        if (ui.controlsShown) {
+            ControlsList(ui.form.buttons, onClose = { viewModel.setControlsShown(false) })
+        } else {
+            SideButton("Show controls", { viewModel.setControlsShown(true) }, style = ButtonStyle.SECONDARY, icon = Icons.AutoMirrored.Outlined.FormatListBulleted, modifier = Modifier.fillMaxWidth())
+        }
+        CameraFeed(
+            faceState = face,
+            surfaceRequest = surface,
+            canRequestCamera = viewModel.canRequestCamera,
+            onCameraPermissionResult = viewModel::onCameraPermissionResult,
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.6f),
+        )
+        if (ui.form.buttons.any { it.trigger?.type == TriggerType.MOVEMENT }) {
+            Text("Your head steers the joystick in game.", style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+        }
+    }
+}
+
+/** Typed button words when the mic can't be used — matched exactly like speech. */
+@Composable
+private fun TestCommandField(onSend: (String) -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PwdeTextField("Button words", text, { text = it }, modifier = Modifier.weight(1f))
+        SideButton("Send", {
+            if (text.isNotBlank()) {
+                onSend(text)
+                text = ""
+            }
+        })
+    }
+}
+
 // ---------------- Name, save, done ----------------
 
 @Composable
@@ -535,7 +823,7 @@ internal fun NameAndSaveStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         viewModel, ui,
         title = "Name and save",
         says = "All set! Give this ${game?.displayName ?: "game"} profile a name, and I'll save it.",
-        voiceHint = "Say \"save\"",
+        voiceHint = "Say \"name it\" + a name, then \"save\"",
         footer = { PwdeButton("Save game profile", viewModel::saveGameProfile, icon = Icons.Outlined.Save, modifier = Modifier.fillMaxWidth()) },
     ) {
         PwdeTextField("Profile name (optional)", ui.form.profileName, viewModel::setProfileName)

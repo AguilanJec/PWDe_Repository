@@ -20,6 +20,8 @@ data class LivePlayState(
     val paused: Boolean = false,
     /** The user hid PWDe's floating UI; the pointer and taps still work. */
     val overlayHidden: Boolean = false,
+    /** "show controls": every mapped button is labelled with what presses it, for a few seconds. */
+    val controlsShown: Boolean = false,
     val face: FaceState = FaceState(),
     /** A drag is holding the screen at the pointer until "drop". */
     val dragging: Boolean = false,

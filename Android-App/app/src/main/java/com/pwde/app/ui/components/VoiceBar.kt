@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -63,7 +64,12 @@ import kotlinx.coroutines.flow.map
  * [hint] is what can be said on this screen; it is read out with the mic button rather than shown.
  */
 @Composable
-fun VoiceMicOverlay(hint: String?, modifier: Modifier = Modifier) {
+fun VoiceMicOverlay(
+    hint: String?,
+    modifier: Modifier = Modifier,
+    /** Show what was heard to the mic's right, for a mic pinned to a left corner (it then never moves). */
+    popupAtEnd: Boolean = false,
+) {
     val controller = LocalVoiceController.current
     if (controller == null) {
         MicFab(listening = false, level = 0f, icon = Icons.Outlined.MicOff, description = "Voice unavailable here", modifier = modifier)
@@ -92,19 +98,7 @@ fun VoiceMicOverlay(hint: String?, modifier: Modifier = Modifier) {
         }
     }
 
-    Row(
-        modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        AnimatedVisibility(
-            visible = popupVisible,
-            modifier = Modifier.weight(1f, fill = false),
-            enter = fadeIn() + slideInHorizontally { it / 4 },
-            exit = fadeOut(),
-        ) {
-            RecognitionPopup(listOfNotNull(heard, notice).joinToString(" · "))
-        }
+    val mic: @Composable () -> Unit = {
         MicFab(
             listening = state.listening,
             level = state.level,
@@ -121,6 +115,29 @@ fun VoiceMicOverlay(hint: String?, modifier: Modifier = Modifier) {
             status = statusLine(state),
             onClick = micAction,
         )
+    }
+    val popup: @Composable RowScope.() -> Unit = {
+        AnimatedVisibility(
+            visible = popupVisible,
+            modifier = Modifier.weight(1f, fill = false),
+            enter = fadeIn() + slideInHorizontally { if (popupAtEnd) -it / 4 else it / 4 },
+            exit = fadeOut(),
+        ) {
+            RecognitionPopup(listOfNotNull(heard, notice).joinToString(" · "))
+        }
+    }
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (popupAtEnd) {
+            mic()
+            popup()
+        } else {
+            popup()
+            mic()
+        }
     }
 }
 

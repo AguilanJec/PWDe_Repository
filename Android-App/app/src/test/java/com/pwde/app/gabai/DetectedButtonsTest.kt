@@ -24,13 +24,49 @@ class DetectedButtonsTest {
     }
 
     @Test
-    fun buttonsAreOrderedTopToBottomWithFreshIdsAndNumberedRepeats() {
+    fun buttonsAreGroupedByClassWithFreshIdsAndNumberedRepeats() {
         val buttons = detectedToButtons(
             listOf(detected("skill_button", 0.8f, 0.9f), detected("skill_button", 0.7f, 0.6f), detected("recall", 0.5f, 0.2f)),
             firstId = 3,
         )
-        assertEquals(listOf("Recall", "Skill button", "Skill button 2"), buttons.map { it.label })
+        assertEquals(listOf("Recall", "Skill button 1", "Skill button 2"), buttons.map { it.label })
         assertEquals(listOf(3, 4, 5), buttons.map { it.id })
+    }
+
+    @Test
+    fun mobileLegendsHudFollowsTheMappingOrder() {
+        val buttons = detectedToButtons(
+            listOf(
+                detected("use_item", 0.82f, 0.4f), detected("buy_item", 0.86f, 0.2f), detected("skill_upgrade", 0.7f, 0.7f),
+                detected("skill_button", 0.72f, 0.8f), detected("basic_attack", 0.9f, 0.85f), detected("spell", 0.62f, 0.9f),
+                detected("regen", 0.55f, 0.9f), detected("recall", 0.48f, 0.9f), detected("joystick", 0.2f, 0.75f),
+            ),
+            firstId = 1,
+        )
+        assertEquals(
+            listOf("Movement joystick", "Recall", "Regen", "Spell", "Basic attack", "Skill button", "Skill upgrade", "Buy item", "Use item"),
+            buttons.map { it.label },
+        )
+    }
+
+    @Test
+    fun skillsAndUpgradesAreNumberedLeftToRightWhateverTheirHeight() {
+        // MLBB's arc: skill 1 lowest and leftmost, the ultimate highest and rightmost; each upgrade sits above its skill.
+        val buttons = detectedToButtons(
+            listOf(
+                detected("skill_upgrade", 0.86f, 0.45f), detected("skill_button", 0.88f, 0.55f),
+                detected("skill_upgrade", 0.70f, 0.72f), detected("skill_button", 0.72f, 0.82f),
+                detected("skill_upgrade", 0.78f, 0.58f), detected("skill_button", 0.80f, 0.68f),
+                detected("basic_attack", 0.92f, 0.85f),
+            ),
+            firstId = 1,
+        )
+        assertEquals(
+            listOf("Basic attack", "Skill button 1", "Skill upgrade 1", "Skill button 2", "Skill upgrade 2", "Skill button 3", "Skill upgrade 3"),
+            buttons.map { it.label },
+        )
+        assertEquals(listOf(0.72f, 0.80f, 0.88f), buttons.filter { it.label.startsWith("Skill button") }.map { it.x })
+        assertEquals(listOf(0.70f, 0.78f, 0.86f), buttons.filter { it.label.startsWith("Skill upgrade") }.map { it.x })
     }
 
     @Test

@@ -61,7 +61,7 @@ object StandardCommands {
  * assignment, so stray speech never renames a button.
  */
 object Dictation {
-    val PREFIXES = listOf("assign", "use")
+    val PREFIXES = listOf("assign", "use", "assigned", "a sign" , "name it", "call it")
     val RETRY = listOf("retry", "reassign", "try again")
 
     sealed interface Parsed {
@@ -81,8 +81,8 @@ object Dictation {
      * the words being assigned ("use move left") can't fire commands on the way.
      */
     fun isAssignment(text: String): Boolean {
-        val first = CommandMatcher.normalize(text).substringBefore(' ')
-        return first in PREFIXES
+        val heard = CommandMatcher.normalize(text)
+        return PREFIXES.any { heard == it || heard.startsWith("$it ") } || heard.substringBefore(' ') in PREFIXES
     }
 }
 

@@ -80,6 +80,14 @@ class GameplayViewModel(
     private val _overlayHidden = MutableStateFlow(false)
     val overlayHidden: StateFlow<Boolean> = _overlayHidden.asStateFlow()
 
+    /** "show controls": the list of buttons and what presses each, until "hide controls". */
+    private val _controlsShown = MutableStateFlow(false)
+    val controlsShown: StateFlow<Boolean> = _controlsShown.asStateFlow()
+
+    fun setControlsShown(shown: Boolean) {
+        _controlsShown.value = shown
+    }
+
     private val _lastEvent = MutableStateFlow<OverlayEvent?>(null)
     val lastEvent: StateFlow<OverlayEvent?> = _lastEvent.asStateFlow()
 
@@ -189,6 +197,8 @@ class GameplayViewModel(
             GameCommand.Back, GameCommand.Home, GameCommand.Exit -> exit()
             GameCommand.HideOverlay -> setOverlayHidden(true)
             GameCommand.ShowOverlay -> setOverlayHidden(false)
+            GameCommand.ShowControls -> setControlsShown(true)
+            GameCommand.HideControls -> setControlsShown(false)
             // Phone-wide actions only act in the real game; the preview just shows them.
             GameCommand.Notifications -> post("Notifications (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.AllApps -> post("All apps (in the real game only)", OverlayEvent.Kind.ACTION)

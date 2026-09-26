@@ -14,6 +14,8 @@ import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.InGameVoiceEngine
 import com.pwde.app.data.prefs.InputMode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -40,6 +42,9 @@ class LiveGameSession(
     /** Runs until cancelled. */
     /** The session's own scope, for work that outlives one command (saving the input mode). */
     private var scope: CoroutineScope? = null
+
+    /** Hides the "show controls" labels again; restarted by every "show controls". */
+    private var controlsTimeout: Job? = null
 
     suspend fun run(game: Game, profileId: Long?) {
         val profile = profileId?.let { profileRepository.getGameProfile(it) }
@@ -123,6 +128,8 @@ class LiveGameSession(
             GameCommand.Exit -> onExit()
             GameCommand.HideOverlay -> livePlay.update { it.copy(overlayHidden = true) }
             GameCommand.ShowOverlay -> livePlay.update { it.copy(overlayHidden = false) }
+            GameCommand.ShowControls -> showControls()
+            GameCommand.HideControls -> hideControls()
             is GameCommand.Ignored -> message(command.reason)
             // Presses, select, touch & hold and system actions happen on the real screen.
             is GameCommand.Press -> {
@@ -156,6 +163,23 @@ class LiveGameSession(
         }
     }
 
+    private fun showControls() {
+        val buttons = livePlay.state.value.buttons
+        if (buttons.isEmpty()) return message("This profile has no mapped buttons")
+        livePlay.update { it.copy(controlsShown = true) }
+        message(buttons.joinToString(" · ") { "${it.label}: ${it.trigger?.shortLabel() ?: "—"}" })
+        controlsTimeout?.cancel()
+        controlsTimeout = scope?.launch {
+            delay(CONTROLS_SHOWN_MS)
+            livePlay.update { it.copy(controlsShown = false) }
+        }
+    }
+
+    private fun hideControls() {
+        controlsTimeout?.cancel()
+        livePlay.update { it.copy(controlsShown = false) }
+    }
+
     private fun switchMode(mode: InputMode, label: String) {
         scope?.launch { settingsRepository.setInputMode(mode) }
         message(label)
@@ -170,5 +194,6 @@ class LiveGameSession(
 
     private companion object {
         const val TAG = "PwdeLiveSession"
+        const val CONTROLS_SHOWN_MS = 10_000L
     }
 }

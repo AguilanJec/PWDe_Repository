@@ -33,6 +33,9 @@ class GameInputTest {
         assertEquals(GameCommand.Exit, GameInput.fromVoice(GameInput.MENU, "pwde menu", buttons))
         assertEquals(GameCommand.Back, GameInput.fromVoice(GameInput.BACK, "back", buttons))
         assertEquals(GameCommand.HideOverlay, GameInput.fromVoice(GameInput.HIDE_OVERLAY, "hide overlay", buttons))
+        assertEquals(GameCommand.ShowControls, GameInput.fromVoice(GameInput.SHOW_CONTROLS, "show controls", buttons))
+        assertEquals(GameCommand.HideControls, GameInput.fromVoice(GameInput.HIDE_CONTROLS, "hide controls", buttons))
+        assertTrue(GameInput.worksWhilePaused(GameCommand.ShowControls))
         assertTrue(GameInput.fromVoice(null, "banana", buttons) is GameCommand.Ignored)
         assertNull(GameInput.fromVoice(null, null, buttons))
     }

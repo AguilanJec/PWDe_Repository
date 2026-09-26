@@ -125,9 +125,12 @@ class PwdeAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** The mapped buttons where PWDe taps them, while the Testing Station's switch is on. */
+    /**
+     * The mapped buttons where PWDe taps them: while the Testing Station's switch is on, and for a
+     * few seconds after "show controls", when each label also says what presses the button.
+     */
     private fun renderMarkers(state: LivePlayState, overlay: ButtonOverlay) {
-        if (!state.active || !overlay.shown || state.buttons.isEmpty()) {
+        if (!state.active || !(overlay.shown || state.controlsShown) || state.buttons.isEmpty()) {
             removeView(markersView)
             markersView = null
             return
@@ -138,9 +141,10 @@ class PwdeAccessibilityService : AccessibilityService() {
         view?.update(
             state.buttons.map { b ->
                 val p = toScreen(b.x, b.y)
-                ButtonMarkersView.Marker(b.id, b.label, p.x, p.y, reach.takeIf { b.trigger?.type == TriggerType.MOVEMENT })
+                val label = if (state.controlsShown) "${b.label} · ${b.trigger?.shortLabel() ?: "not mapped"}" else b.label
+                ButtonMarkersView.Marker(b.id, label, p.x, p.y, reach.takeIf { b.trigger?.type == TriggerType.MOVEMENT })
             },
-            overlay.opacity,
+            if (state.controlsShown) maxOf(overlay.opacity, CONTROLS_OPACITY) else overlay.opacity,
         )
     }
 
@@ -402,6 +406,8 @@ class PwdeAccessibilityService : AccessibilityService() {
         private const val HOLD_MS = 700L
         private const val SCROLL_MS = 300L
         private const val CAPTION_GAP_DP = 6
+        /** "show controls" labels stay readable even when the debug overlay is set faint. */
+        private const val CONTROLS_OPACITY = 0.9f
 
         /** Slack after a resent tap before the movement stick may press again. */
         private const val TAP_SETTLE_MS = 40L

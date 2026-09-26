@@ -77,7 +77,9 @@ import com.pwde.app.sensors.face.FaceState
 import com.pwde.app.sensors.face.TrackingStatus
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.DemoModeBanner
+import com.pwde.app.ui.components.ControlsList
 import com.pwde.app.ui.components.JoystickView
+import com.pwde.app.ui.components.LockOrientation
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeIconButton
 import com.pwde.app.ui.components.StatusPill
@@ -100,9 +102,12 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
     val paused by viewModel.paused.collectAsStateWithLifecycle()
     val lastEvent by viewModel.lastEvent.collectAsStateWithLifecycle()
     val overlayHidden by viewModel.overlayHidden.collectAsStateWithLifecycle()
+    val controlsShown by viewModel.controlsShown.collectAsStateWithLifecycle()
     val requestCamera = rememberCameraPermissionRequest { viewModel.onCameraPermissionResult() }
     val colors = PwdeTheme.colors
     BackHandler(onBack = onExit)
+    // Held the way the game is played, so the mapped buttons sit where they do in the game.
+    LockOrientation(viewModel.game?.landscape ?: true)
     LaunchedEffect(viewModel) { viewModel.exitRequests.collect { onExit() } }
     // The in-game voice engine holds the mic only while this screen is visible.
     LifecycleStartEffect(viewModel) {
@@ -165,6 +170,7 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
                     )
                 }
             }
+            if (controlsShown) ControlsList(ui.buttons, onClose = { viewModel.setControlsShown(false) })
             if (!overlayHidden) {
                 if (voice.usesTextFallback) GameCommandField(voice.availability.label, viewModel::submitText)
                 OverlayPanel(face, voiceLine(voice), lastEvent, paused, viewModel::togglePause, onExit)
@@ -186,7 +192,7 @@ private fun OverlayToggle(hidden: Boolean, onClick: () -> Unit) {
 
 private fun voiceLine(voice: InGameVoiceState): String = when {
     voice.lastText != null -> "Heard: \"${voice.lastText}\""
-    else -> "Voice: say \"pause\", \"select\", \"hide overlay\", \"exit\" or a button's command"
+    else -> "Voice: say \"pause\", \"show controls\", \"hide overlay\", \"exit\" or a button's command"
 }
 
 /** In-game voice status (the app-wide voice bar is paused while the game has the mic). */

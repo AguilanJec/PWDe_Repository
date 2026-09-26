@@ -24,6 +24,14 @@ data class ButtonTrigger(val type: TriggerType, val value: String) {
         TriggerType.MOVEMENT -> "Held and moved by the head joystick"
     }
 
+    /** Short enough to sit under a button marker: the phrase in quotes, the gesture's name, or the stick. */
+    fun shortLabel(): String = when (type) {
+        TriggerType.VOICE -> "\"$value\""
+        TriggerType.GESTURE -> gesture?.label ?: value
+        TriggerType.JOYSTICK -> "Stick ${value.lowercase().replace('_', '-')}"
+        TriggerType.MOVEMENT -> "Head joystick"
+    }
+
     companion object {
         const val MOVEMENT_STICK = "STICK"
 

@@ -8,6 +8,7 @@ import com.pwde.app.ui.controls.CURSOR_COMMANDS
 import com.pwde.app.ui.controls.GESTURES_COMMANDS
 import com.pwde.app.ui.controls.INPUT_COMMANDS
 import com.pwde.app.ui.controls.JOYSTICK_COMMANDS
+import com.pwde.app.ui.gabai.ASSIGN_COMMANDS
 import com.pwde.app.ui.gabai.MAPPING_COMMANDS
 import com.pwde.app.ui.games.GAME_DETAIL_COMMANDS
 import com.pwde.app.ui.games.gameCommands
@@ -33,6 +34,7 @@ fun allVoiceCommandGroups(thisScreen: List<VoiceCommand>, shortcuts: List<VoiceC
     CommandGroup("Cursor speed (Controls → Cursor speed)", CURSOR_COMMANDS),
     CommandGroup("Joystick tuning (Controls → Joystick)", JOYSTICK_COMMANDS),
     CommandGroup("Custom button mapping (GabAI)", MAPPING_COMMANDS),
+    CommandGroup("Choosing how to press buttons (GabAI)", ASSIGN_COMMANDS),
     CommandGroup(
         "Games",
         gameCommands(MainTab.GAMES).filterNot { it.id.startsWith("tab:") } + GAME_DETAIL_COMMANDS,

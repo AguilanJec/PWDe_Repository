@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +61,8 @@ import com.pwde.app.ui.components.IconBadge
 import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.JoystickView
 import com.pwde.app.ui.components.LevelSlider
+import com.pwde.app.ui.components.LockOrientation
+import com.pwde.app.data.model.Game
 import com.pwde.app.ui.components.MainTab
 import com.pwde.app.ui.components.NavCard
 import com.pwde.app.ui.components.OptionCard
@@ -102,6 +106,11 @@ fun GabAiScreen(
         }
     }
     if (!ui.loaded) return
+    // From marking the buttons on, the work is on the game's screen: hold the phone the way the game
+    // is played. One call site for all these steps, so moving between them never unlocks and re-locks.
+    if (ui.state.let { it is GabAiState.ButtonMapping || it in GAME_SCREEN_STEPS }) {
+        LockOrientation(Game.byId(ui.form.gameId)?.landscape ?: true)
+    }
     when (val state = ui.state) {
         GabAiState.Welcome -> WelcomeStep(viewModel, ui, onTab)
         GabAiState.ChooseCalibrationMode -> ChooseModeStep(viewModel, ui)
@@ -115,11 +124,16 @@ fun GabAiScreen(
         GabAiState.ConfirmCalibrationProfile -> ConfirmCalibrationStep(viewModel, ui)
         GabAiState.UploadScreenshot -> ScreenshotStep(viewModel, ui)
         is GabAiState.ButtonMapping -> ButtonMappingStep(viewModel, ui)
-        is GabAiState.TriggerAssignment -> TriggerStep(viewModel, ui, state)
+        GabAiState.AssignTriggers -> AssignTriggersStep(viewModel, ui)
+        GabAiState.TestControls -> TestControlsStep(viewModel, ui)
         GabAiState.NameAndSaveProfile -> NameAndSaveStep(viewModel, ui)
         GabAiState.ProfileSaved -> ProfileSavedStep(viewModel, ui)
     }
 }
+
+private val GAME_SCREEN_STEPS = setOf(
+    GabAiState.AssignTriggers, GabAiState.TestControls, GabAiState.NameAndSaveProfile, GabAiState.ProfileSaved,
+)
 
 /** Shared frame for every GabAI step: GabAI's line on top, then the step's own content. */
 @Composable
@@ -134,11 +148,18 @@ internal fun GabAiStep(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     PwdeScreen(
-        title = title,
+        // Always GabAI on top, like a chat; the step or section is the subheader.
+        title = "GabAI",
+        subtitle = title,
         // Tab screens (with a bottom bar) have no back arrow; system back still works.
         onBack = if (bottomBar == null) viewModel::back else null,
         voiceHint = voiceHint,
-        footer = footer,
+        footer = {
+            Column(verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+                ReplyHint(voiceHint)
+                footer?.invoke()
+            }
+        },
         bottomBar = bottomBar,
     ) {
         GabAiSays(says)
@@ -147,13 +168,40 @@ internal fun GabAiStep(
     }
 }
 
+/** Where a chat's reply box would be: what the user can say back to GabAI right now. */
 @Composable
-internal fun GabAiSays(text: String) {
+internal fun ReplyHint(hint: String) {
     val colors = PwdeTheme.colors
-    GradientCard(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconBadge(Icons.Outlined.AutoAwesome, tint = colors.secondary)
-            Text(text, style = MaterialTheme.typography.bodyLarge, color = colors.text, modifier = Modifier.weight(1f))
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(PwdeShapes.pill)
+            .background(colors.surfaceMuted)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .semantics { contentDescription = "You can reply: $hint" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Outlined.Mic, contentDescription = null, tint = colors.primary)
+        Column(Modifier.weight(1f)) {
+            Text("You can reply", style = MaterialTheme.typography.labelSmall, color = colors.textMuted)
+            Text(hint, style = MaterialTheme.typography.bodyMedium, color = colors.text)
+        }
+    }
+}
+
+@Composable
+internal fun GabAiSays(text: String, compact: Boolean = false) {
+    val colors = PwdeTheme.colors
+    GradientCard(Modifier.fillMaxWidth(), contentPadding = if (compact) 10.dp else PwdeTheme.spacing.internal) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
+            IconBadge(Icons.Outlined.AutoAwesome, tint = colors.secondary, size = if (compact) 28.dp else 44.dp)
+            Text(
+                text,
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,
+                color = colors.text,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -179,7 +227,7 @@ private fun WelcomeStep(viewModel: GabAiViewModel, ui: GabAiUiState, onTab: (Mai
     }
     GabAiStep(
         viewModel, ui,
-        title = "GabAI",
+        title = "Welcome",
         says = "Hi, I'm GabAI! I'll walk you through setting up PWDe one small step at a time. What would you like to do?",
         voiceHint = "Say \"new calibration\", \"new game\" or \"continue\"",
         bottomBar = { PwdeBottomNav(MainTab.GABAI, onTab) },
@@ -522,7 +570,7 @@ private fun GestureReviewStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
             missed.isEmpty() -> "You did every gesture, so they're all on! "
             else -> "You did ${on.size} of ${tests.size} gestures. Only those are on, so the others can't fire by accident. "
         } + "Give this profile a name and save it.",
-        voiceHint = if (missed.isEmpty()) "Say \"save\"" else "Say \"try again\" or \"save\"",
+        voiceHint = "Say \"name it\" + a name, " + if (missed.isEmpty()) "then \"save\"" else "\"try again\" or \"save\"",
         footer = { PwdeButton("Save calibration profile", viewModel::saveCalibration, icon = Icons.Outlined.Save, modifier = Modifier.fillMaxWidth()) },
     ) {
         SectionTitle("On (${on.size})")

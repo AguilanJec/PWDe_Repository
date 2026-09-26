@@ -36,7 +36,8 @@ sealed class GabAiState {
     object ConfirmCalibrationProfile : GabAiState() // use existing or switch
     object UploadScreenshot : GabAiState()
     data class ButtonMapping(val buttonsPlaced: Int) : GabAiState()
-    data class TriggerAssignment(val buttonIndex: Int, val totalButtons: Int) : GabAiState() // "button N of M"
+    object AssignTriggers : GabAiState() // every button on one screen; pick one to choose voice or head
+    object TestControls : GabAiState() // try the new mapping: presses light up on the screenshot
     object NameAndSaveProfile : GabAiState()
     object ProfileSaved : GabAiState() // Dashboard, or Create Another
 
@@ -60,7 +61,8 @@ sealed class GabAiState {
             ConfirmCalibrationProfile -> "Game profile: pick a calibration"
             UploadScreenshot -> "Game profile: screenshot"
             is ButtonMapping -> "Game profile: placing buttons ($buttonsPlaced so far)"
-            is TriggerAssignment -> "Game profile: button ${buttonIndex + 1} of $totalButtons"
+            AssignTriggers -> "Game profile: choosing how to press each button"
+            TestControls -> "Game profile: testing your controls"
             NameAndSaveProfile -> "Game profile: name and save"
             ProfileSaved -> "Game profile saved"
         }
@@ -99,7 +101,6 @@ object GabAiCodec {
         is GabAiState.CalibrateCursorAxis -> "CalibrateCursorAxis:${state.axis.name}"
         is GabAiState.CalibrationGestureTest -> "CalibrationGestureTest:${state.index}"
         is GabAiState.ButtonMapping -> "ButtonMapping:${state.buttonsPlaced}"
-        is GabAiState.TriggerAssignment -> "TriggerAssignment:${state.buttonIndex}:${state.totalButtons}"
         // Spelled out rather than taken from class names, which minification would rename.
         GabAiState.Welcome -> "Welcome"
         GabAiState.ChooseCalibrationMode -> "ChooseCalibrationMode"
@@ -110,6 +111,8 @@ object GabAiCodec {
         GabAiState.ChooseGame -> "ChooseGame"
         GabAiState.ConfirmCalibrationProfile -> "ConfirmCalibrationProfile"
         GabAiState.UploadScreenshot -> "UploadScreenshot"
+        GabAiState.AssignTriggers -> "AssignTriggers"
+        GabAiState.TestControls -> "TestControls"
         GabAiState.NameAndSaveProfile -> "NameAndSaveProfile"
         GabAiState.ProfileSaved -> "ProfileSaved"
     }
@@ -131,12 +134,10 @@ object GabAiCodec {
             "ConfirmCalibrationProfile" -> GabAiState.ConfirmCalibrationProfile
             "UploadScreenshot" -> GabAiState.UploadScreenshot
             "ButtonMapping" -> GabAiState.ButtonMapping(parts.getOrNull(1)?.toIntOrNull() ?: 0)
-            "TriggerAssignment" -> {
-                val index = parts.getOrNull(1)?.toIntOrNull()
-                val total = parts.getOrNull(2)?.toIntOrNull()
-                if (index != null && total != null && index in 0 until total) GabAiState.TriggerAssignment(index, total)
-                else GabAiState.ButtonMapping(0)
-            }
+            "AssignTriggers" -> GabAiState.AssignTriggers
+            "TestControls" -> GabAiState.TestControls
+            // Sessions saved before assignment moved onto one screen resume on that screen.
+            "TriggerAssignment" -> GabAiState.AssignTriggers
             "NameAndSaveProfile" -> GabAiState.NameAndSaveProfile
             "ProfileSaved" -> GabAiState.ProfileSaved
             else -> GabAiState.Welcome

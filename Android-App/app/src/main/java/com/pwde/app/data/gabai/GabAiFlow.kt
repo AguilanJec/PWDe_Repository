@@ -56,11 +56,14 @@ object GabAiFlow {
 
     /** Needs at least one button; otherwise stays on mapping. */
     fun buttonsDone(form: GabAiForm): GabAiState =
-        if (form.buttons.isEmpty()) GabAiState.ButtonMapping(0) else GabAiState.TriggerAssignment(0, form.buttons.size)
+        if (form.buttons.isEmpty()) GabAiState.ButtonMapping(0) else GabAiState.AssignTriggers
 
-    fun triggerDone(state: GabAiState.TriggerAssignment): GabAiState =
-        if (state.buttonIndex + 1 < state.totalButtons) state.copy(buttonIndex = state.buttonIndex + 1)
-        else GabAiState.NameAndSaveProfile
+    /** Only once every button has a trigger: straight into testing them. */
+    fun triggersDone(form: GabAiForm): GabAiState =
+        if (form.buttons.isNotEmpty() && form.buttons.all { it.trigger != null }) GabAiState.TestControls
+        else GabAiState.AssignTriggers
+
+    fun testingDone(): GabAiState = GabAiState.NameAndSaveProfile
 
     fun profileSaved(): GabAiState = GabAiState.ProfileSaved
 
@@ -85,12 +88,10 @@ object GabAiFlow {
         GabAiState.ConfirmCalibrationProfile -> GabAiState.ChooseGame
         GabAiState.UploadScreenshot -> GabAiState.ConfirmCalibrationProfile
         is GabAiState.ButtonMapping -> GabAiState.UploadScreenshot
-        is GabAiState.TriggerAssignment ->
-            if (state.buttonIndex == 0) GabAiState.ButtonMapping(form.buttons.size)
-            else state.copy(buttonIndex = state.buttonIndex - 1)
+        GabAiState.AssignTriggers -> GabAiState.ButtonMapping(form.buttons.size)
+        GabAiState.TestControls -> GabAiState.AssignTriggers
         GabAiState.NameAndSaveProfile ->
-            if (form.buttons.isEmpty()) GabAiState.ButtonMapping(0)
-            else GabAiState.TriggerAssignment(form.buttons.size - 1, form.buttons.size)
+            if (form.buttons.isEmpty()) GabAiState.ButtonMapping(0) else GabAiState.TestControls
         GabAiState.ProfileSaved -> GabAiState.Welcome
     }
 }

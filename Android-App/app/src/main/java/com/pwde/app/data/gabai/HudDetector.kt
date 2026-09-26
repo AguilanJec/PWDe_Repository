@@ -79,25 +79,55 @@ class CloudHudDetector(baseUrl: String) : HudDetector {
 }
 
 /**
- * Detected HUD elements → GabAI buttons, top to bottom, numbered when a class repeats ("Skill button 2").
+ * Detected HUD elements → GabAI buttons, in a fixed order so the same HUD always maps the same way:
+ * grouped by class in [CLASS_ORDER] (unknown classes after, alphabetically), and within a class
+ * left to right. Skills and their upgrades are paired: skill 1, upgrade 1, skill 2, upgrade 2…
+ * A class that appears more than once is numbered from the left ("Skill button 1" is always the
+ * leftmost skill), so numbering never depends on the arc a game lays its skills in.
  * The model's joystick becomes the game's movement joystick: named so, and already set to be held
  * and steered by the head joystick, so the user doesn't have to set it up by hand.
  */
 fun detectedToButtons(detected: List<DetectedButton>, firstId: Int): List<MappedButton> {
+    val rank = { name: String ->
+        (if (name == SKILL_UPGRADE_CLASS) SKILL_CLASS else name).let { CLASS_ORDER.indexOf(it) }.let { if (it < 0) CLASS_ORDER.size else it }
+    }
+    // Each button's place, left to right, among its own class.
+    val position = detected.groupBy { it.className }.values
+        .flatMap { same -> same.sortedWith(compareBy({ it.x }, { it.y })).mapIndexed { i, d -> d to i } }
+        .associate { (d, i) -> System.identityHashCode(d) to i }
+    val sorted = detected.sortedWith(
+        compareBy<DetectedButton>(
+            { rank(it.className) },
+            { position[System.identityHashCode(it)] ?: 0 },
+            // Within a pair the skill comes before its upgrade; other classes don't share a rank.
+            { if (it.className == SKILL_UPGRADE_CLASS) 1 else 0 },
+            { it.className },
+        ),
+    )
+    // The leftmost joystick is the movement joystick; any others are ordinary buttons.
+    val movement = sorted.firstOrNull { it.className == JOYSTICK_CLASS }
+    val totals = sorted.filter { it !== movement }.groupingBy { it.className }.eachCount()
     val counts = mutableMapOf<String, Int>()
     var id = firstId
-    var movementAssigned = false
-    return detected.sortedWith(compareBy({ it.y }, { it.x })).map { d ->
-        if (d.className == JOYSTICK_CLASS && !movementAssigned) {
-            movementAssigned = true
-            return@map MappedButton(id++, "Movement joystick", d.x, d.y, ButtonTrigger.MOVEMENT)
-        }
+    return sorted.map { d ->
+        if (d === movement) return@map MappedButton(id++, "Movement joystick", d.x, d.y, ButtonTrigger.MOVEMENT)
         val base = d.className.replace('_', ' ').replaceFirstChar { it.uppercase() }
-        val n = (counts[base] ?: 0) + 1
-        counts[base] = n
-        MappedButton(id++, if (n == 1) base else "$base $n", d.x, d.y)
+        val n = (counts[d.className] ?: 0) + 1
+        counts[d.className] = n
+        MappedButton(id++, if ((totals[d.className] ?: 0) > 1) "$base $n" else base, d.x, d.y)
     }
 }
+
+/**
+ * The order detected buttons are listed (and so assigned) in. Skill upgrades share their skills'
+ * place (see [detectedToButtons]). Names are calibration-backend's classes (app/constants.py).
+ */
+private val CLASS_ORDER = listOf(
+    JOYSTICK_CLASS, "recall", "regen", "spell", "basic_attack", "skill_button", "buy_item", "use_item",
+    "card", "champion_ability",
+)
+private const val SKILL_CLASS = "skill_button"
+private const val SKILL_UPGRADE_CLASS = "skill_upgrade"
 
 /** calibration-backend's class name for a game's movement joystick (app/constants.py). */
 const val JOYSTICK_CLASS = "joystick"
