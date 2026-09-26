@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -116,7 +117,7 @@ class CursorSpeedViewModel(
 
 data class JoystickUiMessage(val text: String, val isError: Boolean = false)
 
-/** E9/E10 Joystick: live head-tilt joystick; size, sensitivity, dead zone and center saved to Room. */
+/** E9/E10 Joystick: live head joystick; size, sensitivity, dead zone and center saved to Room. */
 class JoystickViewModel(
     private val controlsRepository: ControlsRepository,
     faceTracking: FaceTrackingManager,
@@ -125,12 +126,27 @@ class JoystickViewModel(
         .map { it.joystick }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * The stick is damped by the same head-jitter filter the pointer uses, so this is the cursor's
+     * smoothing level — surfaced here too rather than hidden, because it is what steadies the stick.
+     */
+    val smoothing: StateFlow<Int?> = controlsRepository.config
+        .map { it.cursor.smoothing }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     private val _message = MutableStateFlow<JoystickUiMessage?>(null)
     val message: StateFlow<JoystickUiMessage?> = _message.asStateFlow()
 
     fun update(transform: (JoystickTuning) -> JoystickTuning) {
         val current = tuning.value ?: return
         viewModelScope.launch { controlsRepository.setJoystickTuning(transform(current)) }
+    }
+
+    fun setSmoothing(level: Int) {
+        viewModelScope.launch {
+            val cursor = controlsRepository.config.first().cursor
+            controlsRepository.setCursorTuning(cursor.copy(smoothing = level.coerceIn(MIN_LEVEL, MAX_LEVEL)))
+        }
     }
 
     fun setCenterHere() {

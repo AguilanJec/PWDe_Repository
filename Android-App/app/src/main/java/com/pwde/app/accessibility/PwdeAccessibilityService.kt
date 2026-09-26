@@ -25,7 +25,6 @@ import com.pwde.app.data.model.TriggerType
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.LivePlay
 import com.pwde.app.play.LivePlayState
-import com.pwde.app.play.MovementStick
 import com.pwde.app.play.ScrollDirection
 import com.pwde.app.play.hasJoystickConfig
 import com.pwde.app.sensors.face.JoystickDirection
@@ -148,7 +147,7 @@ class PwdeAccessibilityService : AccessibilityService() {
         }
         val view = markersView ?: ButtonMarkersView(this).takeIf { addOverlay(it, cursorParams()) }?.also { markersView = it }
         val (width, height) = displaySize()
-        val reach = MovementStick.REACH * minOf(width, height)
+        val reach = state.face.joystick.radius * minOf(width, height)
         view?.update(
             state.buttons.map { b ->
                 val p = toScreen(b.x, b.y)
@@ -320,7 +319,8 @@ class PwdeAccessibilityService : AccessibilityService() {
             target = {
                 val current = livePlay.state.value
                 val (width, height) = displaySize()
-                val reach = MovementStick.REACH * minOf(width, height)
+                // The Size setting is the stick's travel: the same radius the preview and marker draw.
+                val reach = current.face.joystick.radius * minOf(width, height)
                 val button = current.buttons.firstOrNull { it.trigger?.type == TriggerType.MOVEMENT }
                 val c = button?.let { toScreen(it.x, it.y) } ?: center
                 PointF(

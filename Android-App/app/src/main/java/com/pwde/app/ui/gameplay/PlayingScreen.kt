@@ -70,7 +70,6 @@ import com.pwde.app.BuildConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.data.model.TriggerType
-import com.pwde.app.play.MovementStick
 import com.pwde.app.sensors.face.JoystickState
 import com.pwde.app.sensors.voice.InGameVoiceState
 import com.pwde.app.sensors.face.FaceState
@@ -315,7 +314,7 @@ private fun ProfileButtons(
         Box(Modifier.offset(viewportLeft, viewportTop).size(viewportWidth, viewportHeight)) {
             buttons.forEach { button ->
                 if (stick != null && button.trigger?.type == TriggerType.MOVEMENT) {
-                    val size = minOf(viewportWidth, viewportHeight) * MovementStick.REACH * 2f + diameter
+                    val size = minOf(viewportWidth, viewportHeight) * stick.radius * 2f + diameter
                     JoystickView(
                         stick,
                         Modifier

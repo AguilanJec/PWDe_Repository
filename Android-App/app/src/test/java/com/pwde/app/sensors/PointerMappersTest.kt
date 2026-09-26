@@ -7,6 +7,7 @@ import com.pwde.app.sensors.face.CursorPosition
 import com.pwde.app.sensors.face.HeadPose
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.face.JoystickMapper
+import com.pwde.app.sensors.face.JoystickTracker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -70,9 +71,13 @@ class CursorMapperTest {
 class JoystickMapperTest {
     private val tuning = JoystickTuning(size = 5, sensitivity = 5, deadZone = 1)
 
+    /** One reading from a freshly engaged stick, with no smoothing lag. */
+    private fun stick(pose: HeadPose, tuning: JoystickTuning = this.tuning) =
+        JoystickTracker().update(pose, tuning, smoothing = 1)
+
     @Test
     fun insideDeadZoneIsCentered() {
-        val state = JoystickMapper.map(HeadPose(0f, 0.5f, 0.5f), tuning.copy(deadZone = 10))
+        val state = stick(HeadPose(0f, 0.5f, 0.5f), tuning.copy(deadZone = 10))
         assertEquals(JoystickDirection.CENTER, state.direction)
         assertEquals(0f, state.x, 0f)
         assertEquals(0f, state.y, 0f)
@@ -80,30 +85,72 @@ class JoystickMapperTest {
 
     @Test
     fun rollSteersSidewaysAndPitchSteersVertically() {
-        assertEquals(JoystickDirection.RIGHT, JoystickMapper.map(HeadPose(0f, 0f, 25f), tuning).direction)
-        assertEquals(JoystickDirection.LEFT, JoystickMapper.map(HeadPose(0f, 0f, -25f), tuning).direction)
-        assertEquals(JoystickDirection.UP, JoystickMapper.map(HeadPose(0f, 25f, 0f), tuning).direction)
-        assertEquals(JoystickDirection.DOWN, JoystickMapper.map(HeadPose(0f, -25f, 0f), tuning).direction)
-        assertEquals(JoystickDirection.UP_RIGHT, JoystickMapper.map(HeadPose(0f, 20f, 20f), tuning).direction)
+        assertEquals(JoystickDirection.RIGHT, stick(HeadPose(0f, 0f, 25f)).direction)
+        assertEquals(JoystickDirection.LEFT, stick(HeadPose(0f, 0f, -25f)).direction)
+        assertEquals(JoystickDirection.UP, stick(HeadPose(0f, 25f, 0f)).direction)
+        assertEquals(JoystickDirection.DOWN, stick(HeadPose(0f, -25f, 0f)).direction)
+        assertEquals(JoystickDirection.UP_RIGHT, stick(HeadPose(0f, 20f, 20f)).direction)
     }
 
     @Test
     fun centerOffsetsTheNeutralPose() {
         val centered = tuning.copy(centerPitch = -10f, centerRoll = 5f)
-        assertEquals(JoystickDirection.CENTER, JoystickMapper.map(HeadPose(0f, -10f, 5f), centered).direction)
+        assertEquals(JoystickDirection.CENTER, stick(HeadPose(0f, -10f, 5f), centered).direction)
     }
 
     @Test
     fun deflectionIsClampedToTheRim() {
-        val state = JoystickMapper.map(HeadPose(0f, 0f, 90f), tuning)
-        assertEquals(1f, state.x, 0.001f)
+        assertEquals(1f, stick(HeadPose(0f, 0f, 90f)).x, 0.001f)
     }
 
     @Test
     fun higherSensitivityNeedsLessTilt() {
-        val low = JoystickMapper.map(HeadPose(0f, 0f, 10f), tuning.copy(sensitivity = 1)).x
-        val high = JoystickMapper.map(HeadPose(0f, 0f, 10f), tuning.copy(sensitivity = 10)).x
+        val low = stick(HeadPose(0f, 0f, 10f), tuning.copy(sensitivity = 1)).x
+        val high = stick(HeadPose(0f, 0f, 10f), tuning.copy(sensitivity = 10)).x
         assertTrue(high > low)
+    }
+
+    /**
+     * The old full-scale curve needed a 23° head tilt at the default level, which is a strain rather
+     * than a steering gesture — the "barely responds, needs a huge tilt" report.
+     */
+    @Test
+    fun theDefaultSensitivityReachesTheRimWithoutStraining() {
+        assertEquals(1f, stick(HeadPose(0f, 0f, 14f)).x, 0.001f)
+    }
+
+    /**
+     * The dead zone used to be a share of the full scale, so raising Sensibility silently shrank it
+     * and the same tilt drifted at one level but not the other.
+     */
+    @Test
+    fun deadZoneDoesNotMoveWhenSensitivityChanges() {
+        val quiet = tuning.copy(sensitivity = 1, deadZone = 5)
+        assertEquals(JoystickDirection.CENTER, stick(HeadPose(0f, 0f, 3f), quiet).direction)
+        assertEquals(JoystickDirection.CENTER, stick(HeadPose(0f, 0f, 3f), quiet.copy(sensitivity = 10)).direction)
+    }
+
+    /**
+     * A head resting on the dead-zone edge used to flip CENTER/direction every frame, and each flip
+     * makes the accessibility layer lift and re-press the held finger — the game sees taps instead
+     * of a held stick, i.e. "twitchy".
+     */
+    @Test
+    fun leavingAndReturningToTheDeadZoneUseDifferentThresholds() {
+        val hysteresis = tuning.copy(deadZone = 4)   // 3° to leave, 1.8° to come back
+        val tracker = JoystickTracker()
+        assertEquals(JoystickDirection.CENTER, tracker.update(HeadPose(0f, 0f, 0f), hysteresis, 1).direction)
+        assertEquals(JoystickDirection.RIGHT, tracker.update(HeadPose(0f, 0f, 6f), hysteresis, 1).direction)
+        assertEquals(JoystickDirection.RIGHT, tracker.update(HeadPose(0f, 0f, 2f), hysteresis, 1).direction)
+        assertEquals(JoystickDirection.CENTER, tracker.update(HeadPose(0f, 0f, 1f), hysteresis, 1).direction)
+    }
+
+    @Test
+    fun smoothingDampsASpikeInsteadOfPassingItStraightThrough() {
+        val tracker = JoystickTracker()
+        tracker.update(HeadPose(0f, 0f, 8f), tuning, HEAVY_SMOOTHING)
+        val spiked = tracker.update(HeadPose(0f, 0f, 18f), tuning, HEAVY_SMOOTHING).x
+        assertTrue(spiked < stick(HeadPose(0f, 0f, 18f)).x)
     }
 
     @Test
@@ -118,8 +165,21 @@ class JoystickMapperTest {
         assertEquals(JoystickDirection.UP_RIGHT, JoystickMapper.directionOf(1f, -1f))
     }
 
+    /** Level 5 keeps the travel the accessibility stepper used to hard-code, so nothing moves in game. */
     @Test
-    fun sizeSetsRadius() {
-        assertTrue(JoystickMapper.map(HeadPose.NEUTRAL, tuning.copy(size = 10)).radius > JoystickMapper.map(HeadPose.NEUTRAL, tuning.copy(size = 1)).radius)
+    fun sizeSetsTheSticksTravel() {
+        assertTrue(JoystickMapper.radiusFor(10) > JoystickMapper.radiusFor(1))
+        assertEquals(0.12f, JoystickMapper.radiusFor(5), 0.02f)
+    }
+
+    /** The dead-zone ring the UI draws is the degree threshold as a share of the full scale. */
+    @Test
+    fun theDrawnDeadZoneFollowsTheDegreeThreshold() {
+        assertTrue(JoystickMapper.deadZoneFraction(tuning.copy(deadZone = 10)) > JoystickMapper.deadZoneFraction(tuning))
+    }
+
+    private companion object {
+        /** Level 10 — heavy damping, so the lag is unmistakable. */
+        const val HEAVY_SMOOTHING = 10
     }
 }

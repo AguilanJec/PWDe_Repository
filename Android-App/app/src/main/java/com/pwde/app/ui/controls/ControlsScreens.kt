@@ -474,6 +474,7 @@ internal val JOYSTICK_COMMANDS = listOf(
 fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
     var detail by rememberSaveable { mutableStateOf(Detail.BASIC) }
     val tuning by viewModel.tuning.collectAsStateWithLifecycle()
+    val smoothing by viewModel.smoothing.collectAsStateWithLifecycle()
     val face by viewModel.faceState.collectAsStateWithLifecycle()
     val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
@@ -523,6 +524,9 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
         } else {
             LevelSlider("Dead zone", t.deadZone, { level -> viewModel.update { it.copy(deadZone = level) } })
             InfoNote("A bigger dead zone ignores small head movements, so the joystick doesn't drift while you rest.")
+            val smoothingLevel = smoothing ?: return@PwdeScreen
+            LevelSlider("Smoothing", smoothingLevel, viewModel::setSmoothing)
+            InfoNote("More smoothing steadies a shaky stick but makes it a little slower to react. Shared with the pointer.")
             PwdeButton("Reset center to straight ahead", viewModel::resetCenter, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
         }
     }

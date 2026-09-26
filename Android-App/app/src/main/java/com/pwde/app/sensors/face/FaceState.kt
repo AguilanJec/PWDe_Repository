@@ -71,6 +71,7 @@ data class TrackingTuning(
 class FaceFrameProcessor {
     private val classifier = GestureClassifier()
     private val cursorMapper = CursorMapper()
+    private val joystickTracker = JoystickTracker()
     private var cursor = CursorPosition.CENTER
     private var lastFrameMs = 0L
     private var fps = 0f
@@ -93,8 +94,16 @@ class FaceFrameProcessor {
         val neutral = HeadPose(0f, controls.joystick.centerPitch, controls.joystick.centerRoll)
         val gesture = classifier.classify(blendshapes, pose, timestampMs, controls::sensitivityOf, neutral)
         if (pose != null) cursor = cursorMapper.update(pose, controls.cursor) else cursorMapper.resetTracking()
-        val joystick = if (pose != null) JoystickMapper.map(pose, controls.joystick)
-        else JoystickState(radius = JoystickMapper.radiusFor(controls.joystick.size), deadZone = JoystickMapper.deadZoneFor(controls.joystick.deadZone))
+        // The stick's jitter filter is the same head-smoothing level the pointer uses.
+        val joystick = if (pose != null) {
+            joystickTracker.update(pose, controls.joystick, controls.cursor.smoothing)
+        } else {
+            joystickTracker.resetTracking()
+            JoystickState(
+                radius = JoystickMapper.radiusFor(controls.joystick.size),
+                deadZone = JoystickMapper.deadZoneFraction(controls.joystick),
+            )
+        }
 
         return base.copy(
             status = if (pose != null) TrackingStatus.Live else TrackingStatus.NoFace,
