@@ -30,11 +30,26 @@ class GameInputTest {
     @Test
     fun voiceCommandsMapToGameCommands() {
         assertEquals(GameCommand.Press(skill), GameInput.fromVoice(GameInput.buttonCommandId(1), "fire", buttons))
-        assertEquals(GameCommand.Exit, GameInput.fromVoice(GameInput.MENU, "menu", buttons))
+        assertEquals(GameCommand.Exit, GameInput.fromVoice(GameInput.MENU, "pwde menu", buttons))
         assertEquals(GameCommand.Back, GameInput.fromVoice(GameInput.BACK, "back", buttons))
         assertEquals(GameCommand.HideOverlay, GameInput.fromVoice(GameInput.HIDE_OVERLAY, "hide overlay", buttons))
         assertTrue(GameInput.fromVoice(null, "banana", buttons) is GameCommand.Ignored)
         assertNull(GameInput.fromVoice(null, null, buttons))
+    }
+
+    /**
+     * The in-game spotter hears the game's own audio, so ending the session can't be a bare, common
+     * word: the game saying "menu" used to stop the session and pull PWDe over the game.
+     */
+    @Test
+    fun leavingTheGameNeedsAnExplicitPhrase() {
+        val phrases = GameInput.STANDARD_BINDINGS.flatMap { it.phrases }
+        assertFalse("menu" in phrases)
+        assertFalse("main menu" in phrases)
+        assertFalse("exit" in phrases)
+        assertFalse("quit" in phrases)
+        assertEquals(GameCommand.Exit, GameInput.fromVoice(GameInput.EXIT, "exit game", buttons))
+        assertEquals(GameCommand.Exit, GameInput.fromVoice(GameInput.EXIT, "stop pwde", buttons))
     }
 
     @Test

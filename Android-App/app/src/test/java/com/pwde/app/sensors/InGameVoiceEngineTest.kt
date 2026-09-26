@@ -63,7 +63,7 @@ class InGameVoiceEngineTest {
         val results = collect(engine) {
             engine.hear("go back")
             engine.hear("pause")
-            engine.hear("menu")
+            engine.hear("pwde menu")
         }
         assertEquals(listOf(GameInput.BACK, GameInput.PAUSE, GameInput.MENU), results.map { it.commandId })
     }

@@ -70,9 +70,12 @@ object GameInput {
     val STANDARD_BINDINGS = listOf(
         VoiceCommandBinding(BACK, listOf("back", "go back")),
         VoiceCommandBinding(PAUSE, listOf("pause", "pause game")),
-        VoiceCommandBinding(MENU, listOf("menu", "main menu")),
+        // Leaving the game ends the whole session, and in-game voice is a keyword spotter that
+        // hears the mic, game audio included. So the only way out is an explicit phrase — a bare
+        // "menu" or "exit" is too easy for the game's own music and voice lines to trip.
+        VoiceCommandBinding(MENU, listOf("pwde menu")),
         VoiceCommandBinding(RESUME, listOf("resume", "continue game", "unpause")),
-        VoiceCommandBinding(EXIT, listOf("exit", "exit game", "quit", "exit to pwde", "stop pwde")),
+        VoiceCommandBinding(EXIT, listOf("exit game", "quit game", "exit to pwde", "stop pwde")),
         VoiceCommandBinding(SELECT, listOf("select", "tap", "click")),
         VoiceCommandBinding(RECENTER, listOf("recenter", "center", "recenter joystick", "center joystick")),
         VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel")),
