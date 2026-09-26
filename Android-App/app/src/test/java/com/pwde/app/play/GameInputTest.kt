@@ -67,6 +67,29 @@ class GameInputTest {
         assertFalse(GameInput.worksWhilePaused(GameCommand.StartDrag))
     }
 
+    /**
+     * Joystick mode takes the pointer away (the head steers the game's movement stick), so only the
+     * commands that act where the user is looking need cursor mode. Everything a user can assign to a
+     * button — the button's own voice trigger above all — works in both modes.
+     */
+    @Test
+    fun onlyPointerCommandsNeedCursorMode() {
+        assertEquals(GameCommand.Press(skill), GameInput.fromVoice(GameInput.buttonCommandId(1), "fire", buttons))
+        assertFalse(GameInput.needsPointer(GameCommand.Press(skill)))
+        assertFalse(GameInput.needsPointer(GameCommand.CursorMode))
+        assertFalse(GameInput.needsPointer(GameCommand.JoystickMode))
+        assertFalse(GameInput.needsPointer(GameCommand.Drop))
+        listOf(
+            GameCommand.Back, GameCommand.Home, GameCommand.Recents, GameCommand.Notifications,
+            GameCommand.AllApps, GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause,
+            GameCommand.Exit, GameCommand.Recenter, GameCommand.HideOverlay, GameCommand.ShowControls,
+        ).forEach { assertFalse("$it acts at the pointer", GameInput.needsPointer(it)) }
+        assertTrue(GameInput.needsPointer(GameCommand.Select))
+        assertTrue(GameInput.needsPointer(GameCommand.TouchHold))
+        assertTrue(GameInput.needsPointer(GameCommand.StartDrag))
+        assertTrue(GameInput.needsPointer(GameCommand.Scroll(ScrollDirection.DOWN)))
+    }
+
     @Test
     fun aButtonMappedToAGestureWinsOverItsAction() {
         assertEquals(GameCommand.Press(attack), GameInput.fromGesture(gesture, buttons, ControlConfig()))

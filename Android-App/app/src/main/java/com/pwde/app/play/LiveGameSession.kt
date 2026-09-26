@@ -100,28 +100,25 @@ class LiveGameSession(
     }
 
     private fun onVoice(commandId: String?, rawText: String?) {
-        val isJoystickMode = livePlay.state.value.face.outputMode == FaceOutputMode.JOYSTICK
-        if (isJoystickMode) {
-            // In joystick mode, voice commands are strictly limited to: cursor mode and switch profile.
-            val text = rawText?.lowercase() ?: ""
-            val isCursorMode = commandId == GameInput.CURSOR_MODE || text.contains("cursor mode")
-            val isSwitchProfile = text.contains("switch profile") || text.contains("change profile")
+        val command = GameInput.fromVoice(commandId, rawText, livePlay.state.value.buttons)
+        Log.i(TAG, "Voice \"$rawText\" ($commandId) -> $command")
+        if (command == null) return
 
-            if (isCursorMode) {
-                execute(GameCommand.CursorMode)
-            } else if (isSwitchProfile) {
-                scope?.launch { switchCalibrationProfile() }
-            } else {
-                Log.i(TAG, "Voice command dropped in joystick mode: $rawText ($commandId)")
-                message("In joystick mode, voice commands are limited to cursor mode and switch profile")
-            }
+        // "Switch profile" is a spoken shortcut rather than a mapped button, so it matches the words.
+        val text = rawText?.lowercase().orEmpty()
+        if (command is GameCommand.Ignored && (text.contains("switch profile") || text.contains("change profile"))) {
+            scope?.launch { switchCalibrationProfile() }
             return
         }
 
-        // In cursor mode, all voice controls for navigation work normally
-        val command = GameInput.fromVoice(commandId, rawText, livePlay.state.value.buttons)
-        Log.i(TAG, "Voice \"$rawText\" ($commandId) -> $command")
-        command?.let(::runUnlessPaused)
+        // Every command, including every button the user assigned, works in both modes. Joystick mode
+        // only takes away the pointer: the head steers the game's movement stick instead, so a command
+        // that acts where the user is looking has nowhere to act. Say so rather than dropping it silently.
+        if (livePlay.state.value.face.outputMode == FaceOutputMode.JOYSTICK && GameInput.needsPointer(command)) {
+            Log.i(TAG, "Dropped $command in joystick mode: it acts at the pointer")
+            return message("In joystick mode your head steers the movement stick — say \"cursor mode\" for that")
+        }
+        runUnlessPaused(command)
     }
 
     private fun showHeard(text: String?, matched: Boolean) {

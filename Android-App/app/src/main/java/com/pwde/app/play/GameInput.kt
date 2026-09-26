@@ -153,6 +153,18 @@ object GameInput {
         if (direction == JoystickDirection.CENTER) null
         else buttonFor(buttons, TriggerType.JOYSTICK, direction.name)?.let { GameCommand.Press(it) }
 
+    /**
+     * Commands that act **where the user is looking**. In joystick mode the head steers the game's
+     * movement stick instead of a pointer, so there is no visible spot to act on and PWDe says so
+     * rather than tapping somewhere the user cannot see. Everything else — every mapped button,
+     * the system actions, the mode switches — works in both modes.
+     */
+    fun needsPointer(command: GameCommand): Boolean = when (command) {
+        GameCommand.Select, GameCommand.TouchHold, GameCommand.StartDrag -> true
+        is GameCommand.Scroll -> true
+        else -> false
+    }
+
     /** While paused only commands that control PWDe itself still work. */
     fun worksWhilePaused(command: GameCommand): Boolean = when (command) {
         GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause, GameCommand.Recenter, GameCommand.Exit,

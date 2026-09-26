@@ -112,22 +112,9 @@ class VoiceViewModel(
     }
 
     private suspend fun handleGlobal(command: VoiceCommand) {
-        val currentInputMode = settingsRepository.settings.first().inputMode
-        if (currentInputMode == InputMode.JOYSTICK) {
-            // When in joystick mode, voice commands are limited strictly to: cursor mode, switch profile
-            val shortcut = StandardCommands.shortcutOf(command)
-            val phrase = command.phrases.firstOrNull()?.lowercase() ?: ""
-            if (shortcut == VoiceShortcut.CURSOR_MODE || phrase.contains("cursor mode")) {
-                switchInput(InputMode.HEAD_FACE, "Switched to cursor mode")
-            } else if (shortcut == VoiceShortcut.SWITCH_PROFILE || phrase.contains("switch profile")) {
-                switchCalibrationProfile()
-            } else {
-                showNotice("In joystick mode, voice commands are limited to cursor mode and switch profile")
-            }
-            return
-        }
-
-        // In cursor mode, voice controls for navigation work normally
+        // Speaking is never restricted by the input mode. Joystick mode decides what the *head* drives
+        // (the movement stick instead of the pointer), not which commands may be spoken — it used to
+        // drop everything but "cursor mode" and "switch profile", which read as voice being broken.
         when (command.id) {
             StandardCommands.BACK.id, StandardCommands.CLOSE.id -> _navigation.send(VoiceNavigation.BACK)
             StandardCommands.HOME.id, StandardCommands.MENU.id -> _navigation.send(VoiceNavigation.HOME)
