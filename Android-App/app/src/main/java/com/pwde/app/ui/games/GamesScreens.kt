@@ -12,12 +12,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,8 +50,6 @@ import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.MainTab
-import com.pwde.app.ui.components.OptionCard
-import com.pwde.app.ui.components.OptionKind
 import com.pwde.app.ui.components.PlaceholderNotice
 import com.pwde.app.ui.components.PwdeBottomNav
 import com.pwde.app.ui.components.PwdeButton
@@ -199,7 +207,13 @@ internal val GAME_DETAIL_COMMANDS = listOf(
 fun GamesScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
     val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(GameFilter.ALL) }
-    val results = Game.entries.filter { filter.matches(it, withProfiles) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val results = Game.entries.filter { game ->
+        filter.matches(game, withProfiles) &&
+                (query.isBlank() || listOf(game.displayName, game.genre, game.description).any {
+                    it.contains(query.trim(), ignoreCase = true)
+                })
+    }
     GameListVoice(MainTab.GAMES, onGame, onTab)
     val filterCommands = remember { GameFilter.entries.map { voiceCommand(it.name, it.label) } }
     VoiceCommandsEffect(filterCommands) { id -> filter = GameFilter.valueOf(id) }
@@ -209,16 +223,63 @@ fun GamesScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainT
         voiceHint = "Say a game's or filter's name",
         bottomBar = { PwdeBottomNav(MainTab.GAMES, onTab) },
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
-            GameFilter.entries.forEach { option ->
-                OptionCard(
-                    option.label, null, option == filter, { filter = option },
-                    kind = OptionKind.RADIO,
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = { Text("Search games") },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = if (query.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Clear search")
+                        }
+                    }
+                } else null,
+                shape = PwdeShapes.field,
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = PwdeTheme.colors.text,
+                    unfocusedTextColor = PwdeTheme.colors.text,
+                    cursorColor = PwdeTheme.colors.primary,
+                    focusedBorderColor = PwdeTheme.colors.primary,
+                    unfocusedBorderColor = PwdeTheme.colors.secondary.copy(alpha = 0.6f),
+                ),
+            )
+            var menuExpanded by remember { mutableStateOf(false) }
+            Box {
+                OutlinedButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Outlined.FilterList, contentDescription = null)
+                    Text("Filter", modifier = Modifier.padding(start = 4.dp))
+                    Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    GameFilter.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.label) },
+                            onClick = {
+                                filter = option
+                                menuExpanded = false
+                            },
+                            trailingIcon = if (option == filter) {
+                                { Icon(Icons.Outlined.CheckCircle, contentDescription = "Selected") }
+                            } else null,
+                        )
+                    }
+                }
             }
         }
         SectionTitle("${results.size} ${if (results.size == 1) "game" else "games"}")
-        if (results.isEmpty()) InfoNote("No games match. Game profiles are created with GabAI from the GabAI tab.")
+        if (results.isEmpty()) InfoNote("No games match this search and filter.")
         results.forEach { game -> GameCard(game, game.id in withProfiles) { onGame(game) } }
     }
 }
