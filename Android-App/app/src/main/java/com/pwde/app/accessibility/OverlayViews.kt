@@ -6,16 +6,23 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.widget.TextView
 import kotlin.math.abs
 
 private const val PRIMARY = 0xFF9BEEE2.toInt()
 private const val WARNING = 0xFFFFC764.toInt()
 private const val DARK = 0xCC0E1A18.toInt()
+private const val MUTED = 0xFFB8C9C6.toInt()
 
 /**
  * Full-screen, untouchable layer that draws the head pointer over any app. Taps pass straight
@@ -89,7 +96,7 @@ class ModeBubbleView(
     private val onMove: (dx: Int, dy: Int) -> Unit,
 ) : View(context) {
     private val density = resources.displayMetrics.density
-    private val size = (64 * density).toInt()
+    private val size = (SIZE_DP * density).toInt()
     private val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DARK }
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f * density }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -172,5 +179,63 @@ class ModeBubbleView(
             }
         }
         return true
+    }
+
+    companion object {
+        const val SIZE_DP = 64
+    }
+}
+
+/**
+ * The caption under the floating bubble: what the in-game speech engine last heard, and which engine
+ * it is, so it's plain whether buttons go through sherpa-onnx or the platform recognizer. Touches
+ * pass straight through it.
+ */
+class SpeechCaptionView(context: Context) : TextView(context) {
+    private val density = resources.displayMetrics.density
+    private val frame = GradientDrawable().apply {
+        setColor(DARK)
+        cornerRadius = 12 * density
+    }
+    private var lastSeq = -1
+    private val settle = Runnable { frame.setStroke((1.5f * density).toInt(), MUTED) }
+
+    init {
+        background = frame
+        frame.setStroke((1.5f * density).toInt(), MUTED)
+        setTextColor(Color.WHITE)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        val pad = (8 * density).toInt()
+        setPadding(pad, pad / 2, pad, pad / 2)
+        maxWidth = (220 * density).toInt()
+        maxLines = 3
+        ellipsize = TextUtils.TruncateAt.END
+        // The session's own feedback already reaches TalkBack; don't read this a second time.
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    /**
+     * [heard] is null until the first result. A new [seq] briefly lights the border: teal for a
+     * matched command, amber for speech that matched nothing.
+     */
+    fun update(model: String?, heard: String?, matched: Boolean, seq: Int) {
+        val said = if (heard == null) "Listening…" else "“$heard”" + if (matched) "" else "  (no match)"
+        text = SpannableStringBuilder(said).append("\n")
+            .append(model ?: "Unknown engine", ForegroundColorSpan(MUTED), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (heard != null && seq != lastSeq) {
+            lastSeq = seq
+            frame.setStroke((2.5f * density).toInt(), if (matched) PRIMARY else WARNING)
+            removeCallbacks(settle)
+            postDelayed(settle, HIGHLIGHT_MS)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(settle)
+        super.onDetachedFromWindow()
+    }
+
+    private companion object {
+        const val HIGHLIGHT_MS = 800L
     }
 }

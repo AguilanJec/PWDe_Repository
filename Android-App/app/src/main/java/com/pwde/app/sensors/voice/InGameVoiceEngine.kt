@@ -46,6 +46,9 @@ interface InGameVoiceEngine {
 
     /** Typed fallback: matched against the loaded commands exactly like speech. */
     fun submitText(text: String)
+
+    /** The speech model this engine presses buttons with, for display. */
+    val modelLabel: String get() = "Unknown"
 }
 
 data class VoiceCommandBinding(val commandId: String, val phrases: List<String>)
@@ -143,6 +146,8 @@ class SpeechRecognizerInGameVoiceEngine(
 ) : BaseInGameVoiceEngine() {
     private val appContext = context.applicationContext
     private var settingsJob: Job? = null
+
+    override val modelLabel: String by lazy { ContinuousSpeechRecognizer.modelLabel(appContext) }
 
     private val recognizer = ContinuousSpeechRecognizer(appContext, scope, object : ContinuousSpeechRecognizer.Listener {
         override fun onListening(listening: Boolean) = updateState { it.copy(listening = listening) }

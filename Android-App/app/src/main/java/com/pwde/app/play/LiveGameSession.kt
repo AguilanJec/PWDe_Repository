@@ -44,7 +44,15 @@ class LiveGameSession(
         val profile = profileId?.let { profileRepository.getGameProfile(it) }
         if (profile != null) applyProfileCalibration(profile, profileRepository, controlsRepository, settingsRepository)
         val buttons = profile?.let { ControlJson.decodeButtons(it.buttonMappingsJson) }.orEmpty()
-        livePlay.update { LivePlayState(active = true, game = game, profileName = profile?.profileName, buttons = buttons) }
+        livePlay.update {
+            LivePlayState(
+                active = true,
+                game = game,
+                profileName = profile?.profileName,
+                buttons = buttons,
+                voiceModel = voiceEngine.modelLabel.substringBefore(" ·"),
+            )
+        }
         voiceEngine.loadCommands(GameInput.bindings(buttons))
         voiceEngine.start()
         try {
@@ -57,7 +65,12 @@ class LiveGameSession(
                     faceTracking.state.map { it.joystick.direction }.distinctUntilChanged().collect(::onJoystickDirection)
                 }
                 launch { faceTracking.gestureEvents.collect(::onGesture) }
-                launch { voiceEngine.results.collect { onVoice(it.commandId, it.rawText) } }
+                launch {
+                    voiceEngine.results.collect {
+                        showHeard(it.rawText, matched = it.commandId != null)
+                        onVoice(it.commandId, it.rawText)
+                    }
+                }
                 launch { livePlay.requests.collect(::runUnlessPaused) }
             }
         } finally {
@@ -80,6 +93,11 @@ class LiveGameSession(
 
     private fun onVoice(commandId: String?, rawText: String?) {
         GameInput.fromVoice(commandId, rawText, livePlay.state.value.buttons)?.let(::runUnlessPaused)
+    }
+
+    private fun showHeard(text: String?, matched: Boolean) {
+        if (text.isNullOrBlank()) return
+        livePlay.update { it.copy(heard = Heard(text, matched, (it.heard?.seq ?: 0) + 1)) }
     }
 
     private fun onGesture(gesture: FacialGesture) =

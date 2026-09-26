@@ -115,11 +115,14 @@ fun levelWord(level: Int): String = when {
     else -> "High"
 }
 
-/** Two-or-more segment toggle (e.g. Basic / Advanced). */
+/**
+ * Two-or-more segment toggle (e.g. Basic / Advanced). [selected] may be null, which renders nothing
+ * highlighted — used when a value has been edited away from every preset.
+ */
 @Composable
 fun <T> SegmentedToggle(
     options: List<T>,
-    selected: T,
+    selected: T?,
     label: (T) -> String,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,

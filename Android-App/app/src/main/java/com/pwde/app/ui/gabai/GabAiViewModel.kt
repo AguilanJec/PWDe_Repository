@@ -99,7 +99,12 @@ class GabAiViewModel(
     faceTracking: FaceTrackingManager,
     start: GabAiStart,
     private val hudDetector: HudDetector = HudDetector.None,
+    /** The speech model gameplay presses mapped buttons with (see `InGameVoiceEngine.modelLabel`). */
+    val buttonSpeechModel: String = "Unknown",
 ) : FaceTrackingViewModel(faceTracking) {
+    /** The speech model behind GabAI's own voice commands and "assign/use" dictation. */
+    val navigationSpeechModel: String get() = voiceCommandManager.modelLabel
+
     private val _ui = MutableStateFlow(GabAiUiState())
     val ui: StateFlow<GabAiUiState> = _ui.asStateFlow()
 
