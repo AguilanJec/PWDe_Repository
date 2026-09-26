@@ -12,6 +12,7 @@ import androidx.room.Room
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import com.pwde.app.data.local.ControlsRepository
+import com.pwde.app.data.local.ProfileRepository
 import com.pwde.app.data.local.PwdeDatabase
 import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.ControlConfig
@@ -33,12 +34,14 @@ import java.io.File
 class ControlsTuningTest {
     private lateinit var db: PwdeDatabase
     private lateinit var controls: ControlsRepository
+    private lateinit var profiles: ProfileRepository
 
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, PwdeDatabase::class.java).allowMainThreadQueries().build()
-        controls = ControlsRepository(db.controlSettingsDao()) { 1_000L }
+        profiles = ProfileRepository(db.calibrationProfileDao(), db.gameProfileDao()) { 1_000L }
+        controls = ControlsRepository(db.controlSettingsDao(), profiles) { 1_000L }
     }
 
     @After
@@ -92,6 +95,32 @@ class ControlsTuningTest {
         assertEquals(JoystickTuning(8, 2, 4, -7f, 2f), restored.joystick)
         assertEquals(9, restored.sensitivityOf(FacialGesture.PUCKER))
         assertEquals(InputMode.JOYSTICK, snapshot.inputModeOrDefault)
+    }
+
+    @Test
+    fun editsToActiveCalibrationPersistWhenSwitchingAwayAndBack() = runTest {
+        val profileAId = profiles.saveCalibrationProfile(
+            ControlConfig(gestureAssignments = mapOf(GestureAction.SELECT to FacialGesture.SMILE))
+                .toCalibrationProfile("Profile A", InputMode.HEAD_FACE),
+        )
+        controls.applyCalibration(requireNotNull(profiles.getCalibrationProfile(profileAId)))
+        controls.setGesture(GestureAction.SELECT, FacialGesture.NOD, persistToActiveProfile = true)
+        controls.setGestureSensitivity(FacialGesture.NOD, 9, persistToActiveProfile = true)
+        controls.setCursorTuning(CursorTuning(2, 3, 4, 5, 6), persistToActiveProfile = true)
+
+        val profileBId = profiles.saveCalibrationProfile(
+            ControlConfig(cursor = CursorTuning(8, 8, 8, 8, 2))
+                .toCalibrationProfile("Profile B", InputMode.HEAD_FACE),
+        )
+        controls.applyCalibration(requireNotNull(profiles.getCalibrationProfile(profileBId)))
+        controls.applyCalibration(requireNotNull(profiles.getCalibrationProfile(profileAId)))
+
+        val restored = controls.config.first()
+        assertEquals(mapOf(GestureAction.SELECT to FacialGesture.NOD), restored.gestureAssignments)
+        assertEquals(9, restored.sensitivityOf(FacialGesture.NOD))
+        assertEquals(CursorTuning(2, 3, 4, 5, 6), restored.cursor)
+        assertEquals(profileAId, controls.activeCalibrationProfileId.first())
+        assertEquals(profileAId, ControlsRepository(db.controlSettingsDao(), profiles) { 1_000L }.activeCalibrationProfileId.first())
     }
 
     @Test
@@ -182,7 +211,7 @@ class MigrationTest {
     fun migrate1To2() = runTest {
         createVersion1(DB)
         val db = Room.databaseBuilder(context, PwdeDatabase::class.java, DB)
-            .addMigrations(PwdeDatabase.MIGRATION_3_4, PwdeDatabase.MIGRATION_4_5)
+            .addMigrations(PwdeDatabase.MIGRATION_3_4, PwdeDatabase.MIGRATION_4_5, PwdeDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
         try {

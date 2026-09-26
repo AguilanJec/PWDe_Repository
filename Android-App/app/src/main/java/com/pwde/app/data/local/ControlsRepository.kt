@@ -18,37 +18,40 @@ import kotlinx.coroutines.sync.withLock
 /** Persists the working controls configuration (gestures, voice, cursor, joystick) to Room. */
 class ControlsRepository(
     private val dao: ControlSettingsDao,
+    private val profileRepository: ProfileRepository? = null,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val writeLock = Mutex()
 
     val config: Flow<ControlConfig> = dao.observe().map { it?.toConfig() ?: ControlConfig() }
+    val activeCalibrationProfileId: Flow<Long?> = dao.observe().map { it?.activeCalibrationProfileId }
 
-    suspend fun setGesture(action: GestureAction, gesture: FacialGesture?) = edit { config ->
+    suspend fun setGesture(action: GestureAction, gesture: FacialGesture?, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) { config ->
         val updated = config.gestureAssignments.toMutableMap()
         if (gesture == null) updated.remove(action) else updated[action] = gesture
         config.copy(gestureAssignments = updated)
     }
 
-    suspend fun setGestureSensitivity(gesture: FacialGesture, level: Int) = edit {
+    suspend fun setGestureSensitivity(gesture: FacialGesture, level: Int, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) {
         it.copy(gestureSensitivity = it.gestureSensitivity + (gesture to level.coerceIn(MIN_LEVEL, MAX_LEVEL)))
     }
 
-    suspend fun setCursorTuning(tuning: CursorTuning) = edit { it.copy(cursor = tuning.clamped()) }
+    suspend fun setCursorTuning(tuning: CursorTuning, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) { it.copy(cursor = tuning.clamped()) }
 
     /** Size, sensitivity and dead zone. The center is kept; set it with [setJoystickCenter]. */
-    suspend fun setJoystickTuning(tuning: JoystickTuning) = edit {
+    suspend fun setJoystickTuning(tuning: JoystickTuning, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) {
         it.copy(joystick = tuning.clamped().copy(centerPitch = it.joystick.centerPitch, centerRoll = it.joystick.centerRoll))
     }
 
-    suspend fun setJoystickCenter(pitch: Float, roll: Float) = edit {
+    suspend fun setJoystickCenter(pitch: Float, roll: Float, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) {
         it.copy(joystick = it.joystick.copy(centerPitch = pitch, centerRoll = roll))
     }
 
     /** Makes a saved calibration profile the working controls (voice shortcuts are kept). */
-    suspend fun applyCalibration(profile: CalibrationProfile, keepGestureSettings: Boolean = false) = edit { current ->
+    suspend fun applyCalibration(profile: CalibrationProfile, keepGestureSettings: Boolean = false) = writeLock.withLock {
+        val current = dao.get()?.toConfig() ?: ControlConfig()
         val calibrated = profile.toControlConfig(keepShortcutsFrom = current)
-        if (keepGestureSettings) {
+        val updated = if (keepGestureSettings) {
             calibrated.copy(
                 gestureAssignments = current.gestureAssignments,
                 gestureSensitivity = current.gestureSensitivity,
@@ -57,24 +60,47 @@ class ControlsRepository(
         } else {
             calibrated
         }
+        dao.upsert(updated.toEntity(clock()).copy(activeCalibrationProfileId = profile.id))
+    }
+
+    suspend fun clearActiveCalibrationProfile(profileId: Long) = writeLock.withLock {
+        dao.get()?.takeIf { it.activeCalibrationProfileId == profileId }?.let {
+            dao.upsert(it.copy(activeCalibrationProfileId = null, updatedAt = clock()))
+        }
     }
 
     /** Replaces the working controls wholesale, e.g. with GabAI's in-progress calibration. */
     suspend fun replace(config: ControlConfig) = edit { config }
 
-    suspend fun setVoiceEnabled(enabled: Boolean) = edit { it.copy(voiceEnabled = enabled) }
+    suspend fun setVoiceEnabled(enabled: Boolean, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) { it.copy(voiceEnabled = enabled) }
 
-    suspend fun setVoiceMatchMode(mode: VoiceMatchMode) = edit { it.copy(voiceMatchMode = mode) }
+    suspend fun setVoiceMatchMode(mode: VoiceMatchMode, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) { it.copy(voiceMatchMode = mode) }
 
-    suspend fun setVoiceActivationMode(mode: VoiceActivationMode) = edit { it.copy(voiceActivationMode = mode) }
+    suspend fun setVoiceActivationMode(mode: VoiceActivationMode, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) { it.copy(voiceActivationMode = mode) }
 
-    suspend fun setVoiceShortcut(shortcut: VoiceShortcut, phrase: String) = edit {
+    suspend fun setVoiceShortcut(shortcut: VoiceShortcut, phrase: String, persistToActiveProfile: Boolean = false) = edit(persistToActiveProfile) {
         it.copy(voiceShortcuts = it.voiceShortcuts + (shortcut to phrase))
     }
 
-    private suspend fun edit(transform: (ControlConfig) -> ControlConfig) = writeLock.withLock {
-        val current = dao.get()?.toConfig() ?: ControlConfig()
-        dao.upsert(transform(current).toEntity(clock()))
+    private suspend fun edit(persistToActiveProfile: Boolean = false, transform: (ControlConfig) -> ControlConfig) = writeLock.withLock {
+        val currentEntity = dao.get()
+        val current = currentEntity?.toConfig() ?: ControlConfig()
+        val updated = transform(current)
+        val activeProfileId = currentEntity?.activeCalibrationProfileId
+        dao.upsert(updated.toEntity(clock()).copy(activeCalibrationProfileId = activeProfileId))
+        if (persistToActiveProfile && activeProfileId != null) {
+            val profile = profileRepository?.getCalibrationProfile(activeProfileId)
+            if (profile != null) {
+                val snapshot = updated.toCalibrationProfile(profile.name, profile.inputModeOrDefault, profile.id).copy(
+                    createdAt = profile.createdAt,
+                    remoteId = profile.remoteId,
+                    lastSyncedAt = profile.lastSyncedAt,
+                )
+                profileRepository.saveCalibrationProfile(snapshot)
+            } else if (profileRepository != null) {
+                dao.upsert(updated.toEntity(clock()).copy(activeCalibrationProfileId = null))
+            }
+        }
     }
 }
 

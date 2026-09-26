@@ -83,7 +83,7 @@ interface FaceTrackingManager {
     fun recenterCursor()
 
     /** Saves the current head pose as the joystick's (and tilt/nod's) neutral. False if no head is seen. */
-    suspend fun captureJoystickCenter(): Boolean
+    suspend fun captureJoystickCenter(persistToActiveProfile: Boolean = false): Boolean
 }
 
 /*
@@ -136,9 +136,9 @@ class MediaPipeFaceTrackingManager(
         activeProcessor?.recenterCursor()
     }
 
-    override suspend fun captureJoystickCenter(): Boolean {
+    override suspend fun captureJoystickCenter(persistToActiveProfile: Boolean): Boolean {
         val pose = state.value.pose ?: return false
-        controlsRepository.setJoystickCenter(pose.pitch, pose.roll)
+        controlsRepository.setJoystickCenter(pose.pitch, pose.roll, persistToActiveProfile)
         return true
     }
 

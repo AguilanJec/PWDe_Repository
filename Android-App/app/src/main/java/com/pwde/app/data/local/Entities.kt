@@ -94,6 +94,7 @@ data class ControlSettingsEntity(
     @ColumnInfo(defaultValue = "0") val joystickCenterRoll: Float = 0f,
     /** As [CalibrationProfile.enabledGesturesJson]. */
     val enabledGesturesJson: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val activeCalibrationProfileId: Long? = null,
 ) {
     companion object {
         const val SINGLETON_ID = 0

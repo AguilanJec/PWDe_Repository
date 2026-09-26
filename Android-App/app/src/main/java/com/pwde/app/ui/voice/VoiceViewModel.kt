@@ -91,7 +91,7 @@ class VoiceViewModel(
     }
 
     override fun setVoiceEnabled(enabled: Boolean) {
-        viewModelScope.launch { controlsRepository.setVoiceEnabled(enabled) }
+        viewModelScope.launch { controlsRepository.setVoiceEnabled(enabled, persistToActiveProfile = true) }
         voiceCommandManager.refreshPermissions()
     }
 

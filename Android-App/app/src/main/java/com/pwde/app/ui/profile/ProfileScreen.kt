@@ -88,6 +88,7 @@ data class ProfileUiState(
     val syncStatus: SyncStatus = SyncStatus.LocalOnly,
     val calibrationProfiles: List<CalibrationProfile> = emptyList(),
     val gameProfiles: List<GameProfile> = emptyList(),
+    val activeCalibrationProfileId: Long? = null,
 )
 
 class ProfileViewModel(
@@ -109,13 +110,17 @@ class ProfileViewModel(
         }
     }
 
-    val state: StateFlow<ProfileUiState> = combine(
+    private val profileState = combine(
         authRepository.authState,
         syncRepository.status,
         profileRepository.calibrationProfiles,
         profileRepository.gameProfiles,
     ) { auth, sync, calibrations, games ->
         ProfileUiState(auth, authRepository.isCloudAvailable, sync, calibrations, games)
+    }
+
+    val state: StateFlow<ProfileUiState> = combine(profileState, controlsRepository.activeCalibrationProfileId) { profileState, activeId ->
+        profileState.copy(activeCalibrationProfileId = activeId)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -139,7 +144,10 @@ class ProfileViewModel(
     fun delete(profile: SavedProfile) {
         viewModelScope.launch {
             when (profile) {
-                is SavedProfile.Calibration -> profileRepository.deleteCalibrationProfile(profile.profile)
+                is SavedProfile.Calibration -> {
+                    controlsRepository.clearActiveCalibrationProfile(profile.profile.id)
+                    profileRepository.deleteCalibrationProfile(profile.profile)
+                }
                 is SavedProfile.Game -> profileRepository.deleteGameProfile(profile.profile)
             }
         }
@@ -255,6 +263,7 @@ fun ProfileScreen(
             notice?.let { StatusPill(it, icon = Icons.Outlined.CheckCircle) }
             state.calibrationProfiles.forEach {
                 ProfileRow(SavedProfile.Calibration(it), Icons.Outlined.Tune, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
+                    if (it.id == state.activeCalibrationProfileId) StatusPill("Active profile", icon = Icons.Outlined.CheckCircle)
                     PwdeButton(
                         "Use now", { viewModel.useCalibration(it) }, icon = Icons.Outlined.CheckCircle,
                         modifier = Modifier.fillMaxWidth(), contentPadding = buttonPadding(),

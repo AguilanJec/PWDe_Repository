@@ -76,15 +76,15 @@ class ChooseGestureViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChooseGestureUiState(action))
 
     fun select(gesture: FacialGesture) {
-        viewModelScope.launch { controlsRepository.setGesture(action, gesture) }
+        viewModelScope.launch { controlsRepository.setGesture(action, gesture, persistToActiveProfile = true) }
     }
 
     fun clear() {
-        viewModelScope.launch { controlsRepository.setGesture(action, null) }
+        viewModelScope.launch { controlsRepository.setGesture(action, null, persistToActiveProfile = true) }
     }
 
     fun setSensitivity(gesture: FacialGesture, level: Int) {
-        viewModelScope.launch { controlsRepository.setGestureSensitivity(gesture, level) }
+        viewModelScope.launch { controlsRepository.setGestureSensitivity(gesture, level, persistToActiveProfile = true) }
     }
 }
 
@@ -99,7 +99,7 @@ class CursorSpeedViewModel(
 
     fun update(transform: (CursorTuning) -> CursorTuning) {
         val current = tuning.value ?: return
-        viewModelScope.launch { controlsRepository.setCursorTuning(transform(current)) }
+        viewModelScope.launch { controlsRepository.setCursorTuning(transform(current), persistToActiveProfile = true) }
     }
 
     /** Basic mode: one speed for all four directions. */
@@ -139,19 +139,19 @@ class JoystickViewModel(
 
     fun update(transform: (JoystickTuning) -> JoystickTuning) {
         val current = tuning.value ?: return
-        viewModelScope.launch { controlsRepository.setJoystickTuning(transform(current)) }
+        viewModelScope.launch { controlsRepository.setJoystickTuning(transform(current), persistToActiveProfile = true) }
     }
 
     fun setSmoothing(level: Int) {
         viewModelScope.launch {
             val cursor = controlsRepository.config.first().cursor
-            controlsRepository.setCursorTuning(cursor.copy(smoothing = level.coerceIn(MIN_LEVEL, MAX_LEVEL)))
+            controlsRepository.setCursorTuning(cursor.copy(smoothing = level.coerceIn(MIN_LEVEL, MAX_LEVEL)), persistToActiveProfile = true)
         }
     }
 
     fun setCenterHere() {
         viewModelScope.launch {
-            _message.value = if (faceTracking.captureJoystickCenter()) {
+            _message.value = if (faceTracking.captureJoystickCenter(persistToActiveProfile = true)) {
                 JoystickUiMessage("Center saved. Hold your head like this to keep the joystick still.")
             } else {
                 JoystickUiMessage("No head found — face the camera, then try again.", isError = true)
@@ -161,7 +161,7 @@ class JoystickViewModel(
 
     fun resetCenter() {
         viewModelScope.launch {
-            controlsRepository.setJoystickCenter(0f, 0f)
+            controlsRepository.setJoystickCenter(0f, 0f, persistToActiveProfile = true)
             _message.value = JoystickUiMessage("Center reset to straight ahead.")
         }
     }

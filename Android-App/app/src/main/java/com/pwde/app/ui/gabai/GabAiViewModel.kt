@@ -397,6 +397,7 @@ class GabAiViewModel(
         controlsRepository.replace(config)
         val inputMode = if (form.calibrationMode == FaceOutputMode.JOYSTICK) InputMode.JOYSTICK else InputMode.HEAD_FACE
         val id = profileRepository.saveCalibrationProfile(config.toCalibrationProfile(name, inputMode, id = form.savedCalibrationId ?: 0))
+        profileRepository.getCalibrationProfile(id)?.let { controlsRepository.applyCalibration(it) }
         updateForm { it.copy(calibrationName = name, savedCalibrationId = id, calibrationProfileId = id) }
         go(GabAiFlow.calibrationSaved())
     }
