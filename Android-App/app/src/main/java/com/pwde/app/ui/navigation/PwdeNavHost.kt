@@ -175,13 +175,16 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         }
 
         // B · Setup, C · Voice tutorial
+        // B · Setup, C · Voice tutorial
         composable(
             Routes.SETUP,
             arguments = listOf(navArgument("appearanceOnly") { type = NavType.BoolType; defaultValue = false }),
         ) { entry ->
             val appearanceOnly = entry.arguments?.getBoolean("appearanceOnly") ?: false
             SetupScreen(
-                viewModel = pwdeViewModel(key = "setup-$appearanceOnly") { SetupViewModel(it.settingsRepository, appearanceOnly) },
+                viewModel = pwdeViewModel(key = "setup-$appearanceOnly") {
+                    SetupViewModel(it.settingsRepository, it.controlsRepository, appearanceOnly, it.faceTrackingManager)
+                },
                 onExit = ::back,
                 onFinished = {
                     if (appearanceOnly) back() else navController.navigate(Routes.VOICE_TUTORIAL)

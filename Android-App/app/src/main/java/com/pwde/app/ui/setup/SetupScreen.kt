@@ -7,12 +7,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -22,7 +25,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Accessible
+import androidx.compose.material.icons.outlined.CenterFocusStrong
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Hearing
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Mic
@@ -47,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -58,14 +65,21 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.accessibility.PwdeAccessibilityService
+import com.pwde.app.data.gabai.Axis
+import com.pwde.app.data.model.CursorTuning
+import com.pwde.app.data.model.MAX_LEVEL
+import com.pwde.app.data.model.MIN_LEVEL
 import com.pwde.app.data.prefs.AccessibilityNeed
 import com.pwde.app.data.prefs.ColorSchemeOption
 import com.pwde.app.data.prefs.LayoutMode
 import com.pwde.app.data.prefs.TextSizeOption
 import com.pwde.app.ui.components.ButtonStyle
+import com.pwde.app.ui.components.CameraFeed
+import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.FooterActions
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.InfoNote
+import com.pwde.app.ui.components.LevelSlider
 import com.pwde.app.ui.components.OptionCard
 import com.pwde.app.ui.components.OptionKind
 import com.pwde.app.ui.components.PwdeButton
@@ -82,6 +96,7 @@ import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 import com.pwde.app.ui.theme.colorsFor
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 private val SETUP_COMMANDS = listOf(
@@ -103,13 +118,22 @@ private val PERMISSION_COMMANDS = listOf(
 private val TURN_ON_COMMANDS = listOf(
     voiceCommand("open_settings", "open settings", "use pwde"),
 )
+
+/** Just the axis-tuning phrases; "next"/"continue" is handled once, by [SETUP_COMMANDS]. */
+private val CURSOR_CALIBRATION_COMMANDS = listOf(
+    voiceCommand("faster", "faster", "more"),
+    voiceCommand("slower", "slower", "less"),
+    voiceCommand("recenter", "recenter", "center"),
+)
+
 @Composable
 fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val onCursorStep = state.step == SetupStep.CURSOR_CALIBRATION
     LaunchedEffect(state.finished) { if (state.finished) onFinished() }
     VoiceCommandsEffect(SETUP_COMMANDS) { id ->
         when {
-            id == "continue" -> viewModel.continueStep()
+            id == "continue" -> if (onCursorStep) viewModel.axisDone() else viewModel.continueStep()
             id == "skip" -> viewModel.skipStep()
             id == "bigger" -> TextSizeOption.entries.getOrNull(state.textSize.ordinal + 1)?.let(viewModel::setTextSize)
             id == "smaller" -> TextSizeOption.entries.getOrNull(state.textSize.ordinal - 1)?.let(viewModel::setTextSize)
@@ -141,7 +165,13 @@ fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () ->
                 "Android needs you to switch PWDe on once so its controls work while you play.",
                 "Say \"open settings\"",
             )
+            SetupStep.CURSOR_CALIBRATION -> Triple(
+                "Calibrate your cursor",
+                "GabAI walks you through moving the pointer in each direction so it matches how you move your head.",
+                "Say \"faster\", \"slower\", \"recenter\" or \"next\"",
+            )
         }
+        val onLastAxis = state.axis == Axis.entries.last()
         PwdeScreen(
             title = title,
             subtitle = subtitle,
@@ -149,9 +179,13 @@ fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () ->
             voiceHint = hint,
             footer = {
                 FooterActions(
-                    primaryText = if (state.isLastStep) "Finish" else "Continue",
-                    onPrimary = viewModel::continueStep,
-                    primaryIcon = if (state.isLastStep) Icons.Outlined.Check else null,
+                    primaryText = when {
+                        onCursorStep && !onLastAxis -> "Next"
+                        state.isLastStep -> "Finish"
+                        else -> "Continue"
+                    },
+                    onPrimary = if (onCursorStep) viewModel::axisDone else viewModel::continueStep,
+                    primaryIcon = if (state.isLastStep && (!onCursorStep || onLastAxis)) Icons.Outlined.Check else null,
                     secondaryText = "Skip",
                     onSecondary = viewModel::skipStep,
                 )
@@ -165,6 +199,7 @@ fun SetupScreen(viewModel: SetupViewModel, onExit: () -> Unit, onFinished: () ->
                 SetupStep.NEEDS -> NeedsStep(state.needs, viewModel::toggleNeed)
                 SetupStep.PERMISSIONS -> PermissionsStep()
                 SetupStep.APPEARANCE -> AppearanceStep(state, viewModel)
+                SetupStep.CURSOR_CALIBRATION -> CursorCalibrationStep(state, viewModel)
             }
         }
     }
@@ -424,4 +459,102 @@ private fun TurnOnStep() {
     }
     PwdeButton("Open settings", openSettings, icon = Icons.Outlined.Settings, modifier = Modifier.fillMaxWidth())
     InfoNote("If Android says the setting is restricted, open PWDe's app info, tap ⋮ and choose \"Allow restricted settings\".")
+}
+
+private fun axisSays(axis: Axis) = when (axis) {
+    Axis.UP -> "Look up to move the pointer onto the top target. Change the speed until it feels comfortable."
+    Axis.DOWN -> "Now look down to reach the bottom target."
+    Axis.LEFT -> "Turn your head left to reach the left target."
+    Axis.RIGHT -> "And right, to the right target."
+    Axis.DIAGONAL -> "Last one: move to a corner target. If the pointer shakes, add smoothing; if it lags, take some away."
+}
+
+/**
+ * B7 · Cursor calibration. The same axis-by-axis walkthrough GabAI uses when building a new
+ * calibration profile, folded into Setup so a new user's pointer is tuned before they ever open
+ * GabAI. Each adjustment is written straight to the working controls, exactly as GabAI's does.
+ */
+@Composable
+private fun CursorCalibrationStep(state: SetupUiState, viewModel: SetupViewModel) {
+    val axis = state.axis
+    val face by viewModel.faceState.collectAsStateWithLifecycle()
+    val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
+    val cursor = state.cursor
+    val level = when (axis) {
+        Axis.UP -> cursor.speedUp
+        Axis.DOWN -> cursor.speedDown
+        Axis.LEFT -> cursor.speedLeft
+        Axis.RIGHT -> cursor.speedRight
+        Axis.DIAGONAL -> cursor.smoothing
+    }
+    fun set(value: Int) = viewModel.setCursor(
+        when (axis) {
+            Axis.UP -> cursor.copy(speedUp = value)
+            Axis.DOWN -> cursor.copy(speedDown = value)
+            Axis.LEFT -> cursor.copy(speedLeft = value)
+            Axis.RIGHT -> cursor.copy(speedRight = value)
+            Axis.DIAGONAL -> cursor.copy(smoothing = value)
+        },
+    )
+    VoiceCommandsEffect(CURSOR_CALIBRATION_COMMANDS) { id ->
+        when (id) {
+            "faster" -> set((level + 1).coerceAtMost(MAX_LEVEL))
+            "slower" -> set((level - 1).coerceAtLeast(MIN_LEVEL))
+            "recenter" -> viewModel.recenterCursor()
+        }
+    }
+    InfoNote(axisSays(axis))
+    DemoModeBanner(face)
+    CameraFeed(
+        faceState = face,
+        surfaceRequest = surface,
+        canRequestCamera = viewModel.canRequestCamera,
+        onCameraPermissionResult = viewModel::onCameraPermissionResult,
+        modifier = Modifier.fillMaxWidth(),
+        feedAspectRatio = 16f / 10f,
+        overlay = { CursorCalibrationOverlay(face.cursor.x, face.cursor.y, face.hasFace, axis) },
+    )
+    PwdeButton(
+        "Recenter pointer",
+        viewModel::recenterCursor,
+        style = ButtonStyle.SECONDARY,
+        icon = Icons.Outlined.CenterFocusStrong,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    LevelSlider(if (axis == Axis.DIAGONAL) "Smoothing" else "Speed moving ${axis.label.lowercase()}", level, ::set)
+}
+
+/** Where the target sits for each direction. */
+private fun targetFor(axis: Axis): Offset = when (axis) {
+    Axis.UP -> Offset(0.5f, 0.1f)
+    Axis.DOWN -> Offset(0.5f, 0.9f)
+    Axis.LEFT -> Offset(0.1f, 0.5f)
+    Axis.RIGHT -> Offset(0.9f, 0.5f)
+    Axis.DIAGONAL -> Offset(0.9f, 0.1f)
+}
+
+@Composable
+private fun BoxScope.CursorCalibrationOverlay(x: Float, y: Float, active: Boolean, axis: Axis) {
+    val colors = PwdeTheme.colors
+    val target = targetFor(axis)
+    val onTarget = hypot(x - target.x, y - target.y) < 0.1f
+    Canvas(
+        Modifier
+            .fillMaxSize()
+            .semantics {
+                contentDescription = if (onTarget) "Pointer is on the target" else "Pointer at ${(x * 100).toInt()}% across, ${(y * 100).toInt()}% down"
+            },
+    ) {
+        val t = Offset(target.x * size.width, target.y * size.height)
+        drawCircle(colors.primary.copy(alpha = if (onTarget) 0.5f else 0.2f), radius = 26.dp.toPx(), center = t)
+        drawCircle(colors.primary, radius = 26.dp.toPx(), center = t, style = Stroke(3.dp.toPx()))
+        drawCircle(if (active) colors.secondary else colors.textMuted, radius = 12.dp.toPx(), center = Offset(x * size.width, y * size.height))
+    }
+    if (onTarget) {
+        StatusPill(
+            "On target!",
+            icon = Icons.Outlined.CheckCircle,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+        )
+    }
 }
