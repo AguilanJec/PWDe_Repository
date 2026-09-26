@@ -54,9 +54,18 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
-    // The MediaPipe model is memory-mapped straight from the APK, so it must stay uncompressed.
+    // The MediaPipe model is memory-mapped straight from the APK, so it must stay uncompressed. The
+    // sherpa-onnx wake word weights (debug builds) are read straight from assets for the same reason.
     androidResources {
         noCompress += "task"
+        noCompress += "onnx"
+    }
+    // sherpa-onnx's prebuilt libraries load with System.loadLibrary, so extract them rather than
+    // mmap them from the APK.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 

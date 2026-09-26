@@ -21,6 +21,8 @@ import com.pwde.app.sensors.voice.InGameVoiceEngine
 import com.pwde.app.sensors.voice.MicArbiter
 import com.pwde.app.sensors.voice.SpeechRecognizerInGameVoiceEngine
 import com.pwde.app.sensors.voice.VoiceCommandManager
+import com.pwde.app.sensors.voice.WakeWordEngine
+import com.pwde.app.sensors.voice.createWakeWordEngine
 
 private val Context.settingsDataStore by preferencesDataStore(name = "user_settings")
 
@@ -55,6 +57,12 @@ class AppContainer(private val context: Context) {
         // swap SpeechRecognizerInGameVoiceEngine for a dedicated low-latency engine here once one is chosen — GameplayViewModel and everything above it needs no changes
         SpeechRecognizerInGameVoiceEngine(context, controlsRepository, micArbiter)
     }
+
+    /**
+     * Wake word for the Testing Station (Picovoice Porcupine). Debug builds only: the release
+     * source set swaps in a no-op so Porcupine's native libraries never ship in an APK.
+     */
+    val wakeWordEngine: WakeWordEngine by lazy { createWakeWordEngine(context, micArbiter) }
 
     /** Resumable GabAI sessions and game screenshots. */
     val gabAiRepository by lazy { GabAiRepository(context, database.gabAiSessionDao()) }

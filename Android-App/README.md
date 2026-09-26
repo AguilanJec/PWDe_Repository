@@ -28,7 +28,8 @@ com.pwde.app
 │   ├── face/              FaceTrackingManager (CameraX + MediaPipe Face Landmarker),
 │   │                      GestureClassifier, Cursor/JoystickMapper, OrientationHeadTracker
 │   └── voice/             VoiceCommandManager (app-wide), InGameVoiceEngine (gameplay),
-│                          ContinuousSpeechRecognizer (shared plumbing), MicArbiter, CommandMatcher
+│                          ContinuousSpeechRecognizer (shared plumbing), MicArbiter, CommandMatcher,
+│                          WakeWordEngine (sherpa-onnx KWS, debug builds only)
 └── ui/
     ├── theme/             PwdeTheme + ThemeViewModel (drives the whole app from settings)
     ├── components/        design-system components (buttons, cards, steppers, voice bar…)
@@ -55,6 +56,35 @@ pwde.firebase.projectId=...
 
 Signing in only adds (future) cloud sync. It never gates features and never deletes local data. `SyncRepository` is a no-op stub in this build, and the Profile screen says so.
 
+## Wake word testing (sherpa-onnx KWS)
+
+The Testing Station has a **Wake word** panel that runs [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) keyword spotting on-device, so the team can measure how reliably a wake word fires on a real phone before it goes anywhere near gameplay. Type a phrase, press **Add phrase**, press **Start listening**, and say it.
+
+**Any phrase works** — nothing to train, no account. The English GigaSpeech 3.3M model decides in ~320 ms chunks and listens for several phrases at once. "hey pwde" is the default, and it is confirmed representable:
+
+```
+▁HE Y ▁P W DE @k0     ▁P OR C U P IN E @k2     ▁START ▁PLAY ING @k3
+```
+
+The panel names any phrase the model can't spell instead of ignoring it silently (`Can't spot: "…"`). Worth knowing: the model matches *sounds*, so "PWDE" becomes the pieces `P W DE` — say it as written rather than spelling the letters out loud.
+
+**How it works.** Phrases are converted to the model's tokens **on the device** by `KeywordList` + `SentencePieceUnigramTokenizer` in `sensors/voice/KeywordTokenizer.kt`, reproducing upstream's Python `sherpa-onnx-cli text2token` step. That is what allows a text field instead of a fixed keyword list.
+- Every generated token is validated against the model's `tokens.txt` first: the native spotter **terminates the process** on an unknown token rather than returning an error.
+- The keyword list is read from a file at construction, so the model is copied out of assets into `filesDir` once and `keywords.txt` is written next to it.
+- `keywordsScore` (3.5) and `keywordsThreshold` (0.05) are pushed well past upstream's 1.5 / 0.25 so the spotter is as sensitive as it can be, catching even marginal utterances at the cost of more false alarms. The same tuned numbers back each phrase's Normal/High/Max preset.
+
+**Every number is editable by hand.** The panel is not limited to the three presets. Open **Tune** beside a phrase to step its own `boost` and `threshold` (0.5 and 0.05 per tap), and the **Spotter defaults** steppers expose the four spotter-wide values — sherpa-onnx's `keywordsScore`, `keywordsThreshold`, `numTrailingBlanks` and `maxActivePaths` — that an untuned phrase inherits. **Apply & restart** pushes both halves into the engine; **Reset** puts every phrase back on the eager preset the app ships with.
+
+- A null per-phrase value is the *inherit* state: the keyword line then carries no `:boost #threshold` at all and uses the spotter's pair, which is what **Normal** selects. Stepping any field turns the pair into explicit numbers seeded from the spotter defaults.
+- Steppers, not text fields: every tap is already a valid number, so nothing has to be parsed on the way in. `stepTuningValue` also snaps each move back onto the step grid, so repeated taps can't leave `0.15000001` in the keywords file and stepping away and back restores a preset exactly, letting the toggle light up again.
+- Hand-edited values are clamped by `WakeWordSpotterTuning.clamped()` to the range the native spotter accepts (score 0–10, threshold 0–1, 0–10 trailing blanks, 1–32 active paths), so a number typed or stepped out of range can't produce a config the model rejects.
+- Applying a change reloads ~6 MB of weights, so edits are deliberately batched behind one button rather than restarting the spotter per tap.
+- `WakeWordTuningTest` pins the suffix format, the clamp ranges, the preset lookup and the step grid.
+
+**Cost, and why it stays in debug.** The spotter needs sherpa-onnx's prebuilt libraries (arm64-v8a only — `libonnxruntime.so` is 22 MB, plus ~10 MB of sherpa JNI) and the ~6 MB model. All of it lives in `src/debug/` (assets, `jniLibs`, engine), so a release APK carries none of it, and `src/release/` provides a no-op twin of `createWakeWordEngine`. `build.gradle.kts` adds `noCompress += "onnx"` so the weights load straight from the APK, and `packaging { jniLibs { useLegacyPackaging = true } }` because the libraries load with `System.loadLibrary` and are extracted rather than mmapped.
+
+`KeywordTokenizerTest` and `GigaSpeechTokenizerTest` pin the tokenizer to upstream's reference output, so a bad model copy or a tokenizer regression fails the tests instead of failing silently on the device.
+
 ## Input pipelines
 
 **Head & face tracking.** `FaceTrackingManager` runs the front camera through MediaPipe's Face Landmarker with blendshapes and the facial transformation matrix. This is modelled on [Google Project GameFace](https://github.com/google/project-gameface); see `NOTICE`.
@@ -76,15 +106,19 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 **In-game voice (swappable).** During gameplay only, voice goes through the `InGameVoiceEngine` interface. It recognizes just the active game profile's commands plus back/pause/menu, resume, select and recenter.
 - The current implementation, `SpeechRecognizerInGameVoiceEngine`, is a working placeholder: the same Android `SpeechRecognizer` plumbing, scoped to those commands.
 - To use a dedicated low-latency engine, change the one binding in `di/AppContainer.kt` (it's commented). `GameplayViewModel` and everything above it depend only on the interface.
-- `MicArbiter` guarantees one listener at a time: while a game holds the mic, the app-wide `VoiceCommandManager` stands down.
+- `MicArbiter` guarantees one listener at a time: while a game (or the Testing Station's wake word engine) holds the mic, the app-wide `VoiceCommandManager` stands down.
 - `BaseInGameVoiceEngine` carries the contract every engine inherits: scoped matching, the user's match and activation modes, and the typed fallback when the mic is unavailable.
+
+**Wake word (debug tooling).** `WakeWordEngine` is the interface; the debug source set implements it with sherpa-onnx keyword spotting, the release source set with a no-op. Only the Testing Station's **Wake word** panel reaches it.
+- `start()` takes the microphone through `MicArbiter` so the app-wide recognizer stands down instead of fighting it for the mic; `stop()` gives the mic back and frees the native engine.
+- A missing mic permission, or a native library that won't load on the device, surfaces as `WakeWordState.availability`, never as a crash.
 
 **GabAI** is a scripted, resumable state machine, not a chatbot. `GabAiState` is a sealed hierarchy (Welcome, then the calibration branch, then the game-profile branch), and `GabAiFlow` holds the pure transitions.
 - Every step is saved to Room (`gabai_sessions`) with the form data entered so far. Backing out, or force-closing the app, resumes on the same step from **GabAI → Continue Existing**; the Dashboard card shows where you stopped.
 - The calibration steps reuse the Prompt 2 camera, pointer and joystick UI and apply live. Saving creates a `CalibrationProfile`.
 - For a game profile, you pick a game and a calibration, choose a screenshot, and mark its buttons: tap, drag, or say "place" to drop a button at your head pointer. You name each button by typing or by voice, then choose how to press it (voice phrase, head gesture or joystick direction). The result is saved as a `GameProfile`, editable later from the Profile or game screen.
 
-**Testing Station** is a development tool, so only debug builds have it. Its code lives in `src/debug/`, and `src/release/` provides a no-op twin. A release build has neither the Dashboard card nor the route, and no Testing Station classes are in the APK.
+**Testing Station** is a development tool, so only debug builds have it. Its code lives in `src/debug/`, and `src/release/` provides a no-op twin. A release build has neither the Dashboard card nor the route, and no Testing Station classes are in the APK. Its **Wake word** panel runs the sherpa-onnx keyword spotter: type any phrase, start it, and watch detections land.
 
 ## Real vs. placeholder in this build
 
@@ -97,7 +131,7 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 | Gestures + per-gesture sensitivity | Real: 25 gestures plus all 52 MediaPipe blendshapes, saved to Room, live "try it" meter |
 | Cursor speed, joystick | Real: live camera, live pointer/joystick; settings saved to Room |
 | Voice configuration | Real: live mic level, on/off, matching and activation modes, command list |
-| Testing Station (debug builds only) | Real: live face, gesture, voice, cursor and joystick readouts |
+| Testing Station (debug builds only) | Real: live face, gesture, voice, cursor and joystick readouts, plus a sherpa-onnx wake word panel for any phrase |
 | Watch Tutorial | Real player with a placeholder video (`res/raw/tutorial_placeholder.mp4`) |
 | GabAI | Real: calibration and game-profile flows, resumable after a force-close |
 | Games, game detail | Real: play, edit or create profiles per game; voice-selectable |

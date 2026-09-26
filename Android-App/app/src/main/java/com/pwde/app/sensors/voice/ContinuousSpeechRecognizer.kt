@@ -13,9 +13,11 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlin.math.min
 
@@ -191,12 +193,18 @@ class ContinuousSpeechRecognizer(
 }
 
 /**
- * Guarantees only one recognizer listens at a time: while gameplay's [InGameVoiceEngine] holds the
- * microphone, the app-wide [VoiceCommandManager] stands down.
+ * Guarantees only one recognizer listens at a time: while gameplay's [InGameVoiceEngine] or the
+ * debug wake-word engine holds the microphone, the app-wide [VoiceCommandManager] stands down.
  */
 class MicArbiter {
     private val _gameHasMic = MutableStateFlow(false)
     val gameHasMic: StateFlow<Boolean> = _gameHasMic.asStateFlow()
+
+    private val _wakeWordHasMic = MutableStateFlow(false)
+    val wakeWordHasMic: StateFlow<Boolean> = _wakeWordHasMic.asStateFlow()
+
+    /** True while anybody other than the app-wide recognizer is recording. */
+    val busy: Flow<Boolean> = combine(_gameHasMic, _wakeWordHasMic) { game, wakeWord -> game || wakeWord }
 
     fun takeForGame() {
         _gameHasMic.value = true
@@ -204,5 +212,13 @@ class MicArbiter {
 
     fun releaseFromGame() {
         _gameHasMic.value = false
+    }
+
+    fun takeForWakeWord() {
+        _wakeWordHasMic.value = true
+    }
+
+    fun releaseFromWakeWord() {
+        _wakeWordHasMic.value = false
     }
 }
