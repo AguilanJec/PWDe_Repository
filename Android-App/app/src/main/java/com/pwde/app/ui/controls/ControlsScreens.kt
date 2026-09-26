@@ -462,10 +462,10 @@ fun CursorSpeedScreen(viewModel: CursorSpeedViewModel, onBack: () -> Unit) {
 }
 
 internal val JOYSTICK_COMMANDS = listOf(
-    voiceCommand("bigger", "bigger", "larger"),
-    voiceCommand("smaller", "smaller"),
-    voiceCommand("more_sensitive", "more sensitive"),
-    voiceCommand("less_sensitive", "less sensitive"),
+    voiceCommand("bigger", "bigger", "larger", "increase size"),
+    voiceCommand("smaller", "smaller", "decrease size"),
+    voiceCommand("more_sensitive", "more sensitive", "increase sensitivity"),
+    voiceCommand("less_sensitive", "less sensitive", "decrease sensitivity"),
     voiceCommand("set_center", "set center", "center here", "set centre"),
     voiceCommand("advanced", "advanced"),
     voiceCommand("basic", "basic"),
@@ -497,25 +497,31 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
         title = "Joystick",
         subtitle = "Tilt your head to steer. Saved automatically.",
         onBack = onBack,
-        voiceHint = "Say \"bigger\", \"more sensitive\" or \"set center\"",
+        voiceHint = "Say \"increase size\", \"increase sensitivity\" or \"set center\"",
     ) {
         DemoModeBanner(face)
-        Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap), verticalAlignment = Alignment.CenterVertically) {
-            CameraFeed(
-                faceState = face,
-                surfaceRequest = surface,
-                canRequestCamera = viewModel.canRequestCamera,
-                onCameraPermissionResult = viewModel::onCameraPermissionResult,
-                modifier = Modifier.weight(1f),
-            )
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // The preview grows with the size setting, as it will in game.
-                val sizeLevel = tuning?.size ?: 5
-                val sizeFraction = 0.55f + 0.45f * (sizeLevel - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL).toFloat()
-                JoystickView(face.joystick, Modifier.fillMaxWidth(sizeFraction), active = face.hasFace)
-                StatusPill(face.joystick.direction.label, icon = Icons.Outlined.Gamepad)
-            }
-        }
+        val sizeLevel = tuning?.size ?: 5
+        val sizeFraction = 0.55f + 0.45f * (sizeLevel - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL).toFloat()
+        CameraFeed(
+            faceState = face,
+            surfaceRequest = surface,
+            canRequestCamera = viewModel.canRequestCamera,
+            onCameraPermissionResult = viewModel::onCameraPermissionResult,
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(),
+            feedAspectRatio = 16f / 10f,
+            overlay = {
+                JoystickView(
+                    face.joystick,
+                    Modifier.fillMaxWidth(sizeFraction * 0.5f).align(Alignment.Center),
+                    active = face.hasFace,
+                )
+                StatusPill(
+                    face.joystick.direction.label,
+                    icon = Icons.Outlined.Gamepad,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                )
+            },
+        )
         PwdeButton("Set center here", viewModel::setCenterHere, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
         message?.let { Text(it.text, style = MaterialTheme.typography.bodyMedium, color = if (it.isError) colors.warning else colors.primary) }
         SegmentedToggle(Detail.entries, detail, { it.label }, { detail = it })
