@@ -39,13 +39,17 @@ object Routes {
     const val WATCH_TUTORIAL = "watch_tutorial"
 
     // G · GabAI
-    const val GABAI = "gabai?start={start}&game={game}&edit={edit}"
+    const val GABAI = "gabai?start={start}&game={game}&edit={edit}&manual={manual}"
     const val GABAI_START_WELCOME = "welcome"
     const val GABAI_START_GAME = "game"
 
-    /** GabAI's Welcome, or straight into a new game profile (optionally for [gameId]), or editing one. */
-    fun gabai(newGameProfile: Boolean = false, gameId: String? = null, editProfileId: Long? = null) =
-        "gabai?start=${if (newGameProfile) GABAI_START_GAME else GABAI_START_WELCOME}&game=${gameId.orEmpty()}&edit=${editProfileId ?: -1}"
+    /**
+     * GabAI's Welcome, or straight into a new game profile (optionally for [gameId]), or editing
+     * one. [manual] skips GabAI's own auto-detection of a screenshot's buttons, so every button on
+     * the mapping step is placed and named by the user instead of pre-filled by the backend model.
+     */
+    fun gabai(newGameProfile: Boolean = false, gameId: String? = null, editProfileId: Long? = null, manual: Boolean = false) =
+        "gabai?start=${if (newGameProfile) GABAI_START_GAME else GABAI_START_WELCOME}&game=${gameId.orEmpty()}&edit=${editProfileId ?: -1}&manual=$manual"
 
     // H · Profile
     const val PROFILE = "profile"

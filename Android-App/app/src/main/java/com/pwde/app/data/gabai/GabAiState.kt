@@ -92,6 +92,8 @@ data class GabAiForm(
     val calibrationProfileId: Long? = null,
     val screenshotPath: String? = null,
     val buttons: List<MappedButton> = emptyList(),
+    /** Started from Controls' "Map buttons manually": skip auto-detection, every button is user-placed. */
+    val manualMapping: Boolean = false,
     val profileName: String = "",
     /** Editing an existing game profile rather than creating one. */
     val editingGameProfileId: Long? = null,
@@ -166,7 +168,7 @@ object GabAiCodec {
         val passedGestures: List<String>? = null,
         val calibrationName: String? = null, val savedCalibrationId: Long? = null, val continueToGame: Boolean? = null,
         val gameId: String? = null, val calibrationProfileId: Long? = null, val screenshotPath: String? = null,
-        val buttonsJson: String? = null, val profileName: String? = null,
+        val buttonsJson: String? = null, val manualMapping: Boolean? = null, val profileName: String? = null,
         val editingGameProfileId: Long? = null, val savedGameProfileId: Long? = null,
     ) {
         fun toForm(): GabAiForm {
@@ -192,6 +194,7 @@ object GabAiCodec {
                 calibrationProfileId = calibrationProfileId,
                 screenshotPath = screenshotPath,
                 buttons = ControlJson.decodeButtons(buttonsJson),
+                manualMapping = manualMapping ?: d.manualMapping,
                 profileName = profileName.orEmpty(),
                 editingGameProfileId = editingGameProfileId,
                 savedGameProfileId = savedGameProfileId,
@@ -209,7 +212,7 @@ object GabAiCodec {
                 passedGestures = f.passedGestures.map { it.name },
                 calibrationName = f.calibrationName, savedCalibrationId = f.savedCalibrationId, continueToGame = f.continueToGame,
                 gameId = f.gameId, calibrationProfileId = f.calibrationProfileId, screenshotPath = f.screenshotPath,
-                buttonsJson = ControlJson.encodeButtons(f.buttons), profileName = f.profileName,
+                buttonsJson = ControlJson.encodeButtons(f.buttons), manualMapping = f.manualMapping, profileName = f.profileName,
                 editingGameProfileId = f.editingGameProfileId, savedGameProfileId = f.savedGameProfileId,
             )
         }

@@ -279,6 +279,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                         ControlsDestination.JOYSTICK -> Routes.CONTROLS_JOYSTICK
                         ControlsDestination.VOICE -> Routes.VOICE_CONFIG
                         ControlsDestination.CUSTOM_BUTTONS -> Routes.gabai(newGameProfile = true)
+                        ControlsDestination.CUSTOM_BUTTONS_MANUAL -> Routes.gabai(newGameProfile = true, manual = true)
                     },
                 )
             }
@@ -329,13 +330,15 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 navArgument("start") { type = NavType.StringType; defaultValue = Routes.GABAI_START_WELCOME },
                 navArgument("game") { type = NavType.StringType; defaultValue = "" },
                 navArgument("edit") { type = NavType.LongType; defaultValue = -1L },
+                navArgument("manual") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { entry ->
             val args = entry.arguments
             val editId = args?.getLong("edit")?.takeIf { it >= 0 }
             val start = when {
                 editId != null -> GabAiStart.EditGameProfile(editId)
-                args?.getString("start") == Routes.GABAI_START_GAME -> GabAiStart.NewGameProfile(args.getString("game")?.ifEmpty { null })
+                args?.getString("start") == Routes.GABAI_START_GAME ->
+                    GabAiStart.NewGameProfile(args.getString("game")?.ifEmpty { null }, manual = args.getBoolean("manual"))
                 else -> GabAiStart.Welcome
             }
             GabAiScreen(

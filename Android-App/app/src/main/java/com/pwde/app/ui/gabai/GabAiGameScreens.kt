@@ -169,6 +169,7 @@ internal fun ScreenshotStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(viewModel::importScreenshot) }
     val pick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
     val hasShot = ui.form.screenshotPath != null
+    val manual = ui.form.manualMapping
     VoiceCommandsEffect(SCREENSHOT_COMMANDS) { id ->
         when (id) {
             "pick" -> pick()
@@ -179,12 +180,17 @@ internal fun ScreenshotStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     GabAiStep(
         viewModel, ui,
         title = "Game screenshot",
-        says = "Show me the game: pick a screenshot of it mid-match, with its buttons visible. We'll mark the buttons on it next.",
+        says = if (manual) {
+            "Show me the game: pick a screenshot of it mid-match, with its buttons visible. You'll mark every button yourself next — nothing gets placed for you."
+        } else {
+            "Show me the game: pick a screenshot of it mid-match, with its buttons visible. We'll mark the buttons on it next."
+        },
         voiceHint = "Say \"choose screenshot\", \"blank screen\" or \"next\"",
         footer = {
             PwdeButton("Next", viewModel::screenshotDone, enabled = hasShot, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth())
         },
     ) {
+        if (manual) StatusPill("Manual mapping — nothing is auto-placed", icon = Icons.Outlined.TouchApp)
         val shot = ui.screenshot
         if (shot != null) {
             Image(
@@ -197,7 +203,11 @@ internal fun ScreenshotStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         PwdeButton(if (shot == null) "Choose screenshot" else "Choose a different one", pick, icon = Icons.Outlined.Image, modifier = Modifier.fillMaxWidth())
         PwdeButton("Use a blank screen instead", viewModel::useBlankScreen, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
         if (ui.detectingButtons) InfoNote("Finding the buttons on your screenshot…")
-        val privacy = if (viewModel.autoDetectsButtons) "It's sent to PWDe's server once to find the buttons, then kept on this phone." else "It stays on this phone."
+        val privacy = when {
+            manual -> "It stays on this phone — nothing is sent anywhere to find buttons."
+            viewModel.autoDetectsButtons -> "It's sent to PWDe's server once to find the buttons, then kept on this phone."
+            else -> "It stays on this phone."
+        }
         InfoNote("Take the screenshot in the game first. $privacy Without one, you'll place buttons on a blank screen.")
     }
 }
@@ -243,7 +253,11 @@ internal fun ButtonMappingStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     GabAiStageStep(
         viewModel, ui,
         title = "Mark the buttons",
-        says = "Tap each game button, or point and say \"place\". Then name it.",
+        says = if (ui.form.manualMapping) {
+            "Tap each game button yourself, or point and say \"place\". Then name it — nothing here is auto-placed."
+        } else {
+            "Tap each game button, or point and say \"place\". Then name it."
+        },
         voiceHint = "Say \"place\", \"rename\", \"move left\" or \"done\"",
         footer = {
             SideButton(
@@ -479,8 +493,8 @@ internal fun AssignTriggersStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
     var type by rememberSaveable(selected?.id) { mutableStateOf(selected?.trigger?.type ?: TriggerType.VOICE) }
     val commands = remember(buttons.map { it.id to it.label }, gestures) {
         TRIGGER_COMMANDS + TRIGGER_PANEL_COMMANDS +
-            buttons.map { voiceCommand("button:${it.id}", it.label.lowercase()) } +
-            gestures.map { voiceCommand("gesture:${it.name}", it.spokenName) }
+                buttons.map { voiceCommand("button:${it.id}", it.label.lowercase()) } +
+                gestures.map { voiceCommand("gesture:${it.name}", it.spokenName) }
     }
     VoiceCommandsEffect(commands) { id ->
         when {

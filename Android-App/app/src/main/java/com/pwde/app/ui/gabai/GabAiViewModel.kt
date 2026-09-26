@@ -64,7 +64,9 @@ import kotlinx.coroutines.launch
 /** How GabAI was opened. */
 sealed interface GabAiStart {
     data object Welcome : GabAiStart
-    data class NewGameProfile(val gameId: String?) : GabAiStart
+
+    /** [manual] skips auto-detection: the user places every button themselves. */
+    data class NewGameProfile(val gameId: String?, val manual: Boolean = false) : GabAiStart
     data class EditGameProfile(val profileId: Long) : GabAiStart
 }
 
@@ -182,7 +184,7 @@ class GabAiViewModel(
             _ui.update { it.copy(loaded = true, resumable = resumable) }
             when (start) {
                 GabAiStart.Welcome -> Unit
-                is GabAiStart.NewGameProfile -> startGameProfile(start.gameId)
+                is GabAiStart.NewGameProfile -> startGameProfile(start.gameId, start.manual)
                 is GabAiStart.EditGameProfile -> editGameProfile(start.profileId)
             }
         }
@@ -237,8 +239,12 @@ class GabAiViewModel(
         begin(GabAiFlow.newCalibration(), form)
     }
 
-    fun startGameProfile(gameId: String? = null) = viewModelScope.launch {
-        val form = GabAiForm(gameId = gameId, calibrationProfileId = profileRepository.calibrationProfiles.first().firstOrNull()?.id)
+    fun startGameProfile(gameId: String? = null, manual: Boolean = false) = viewModelScope.launch {
+        val form = GabAiForm(
+            gameId = gameId,
+            calibrationProfileId = profileRepository.calibrationProfiles.first().firstOrNull()?.id,
+            manualMapping = manual,
+        )
         begin(GabAiFlow.newGameProfile(form), form)
     }
 
@@ -397,7 +403,6 @@ class GabAiViewModel(
         controlsRepository.replace(config)
         val inputMode = if (form.calibrationMode == FaceOutputMode.JOYSTICK) InputMode.JOYSTICK else InputMode.HEAD_FACE
         val id = profileRepository.saveCalibrationProfile(config.toCalibrationProfile(name, inputMode, id = form.savedCalibrationId ?: 0))
-        profileRepository.getCalibrationProfile(id)?.let { controlsRepository.applyCalibration(it) }
         updateForm { it.copy(calibrationName = name, savedCalibrationId = id, calibrationProfileId = id) }
         go(GabAiFlow.calibrationSaved())
     }
@@ -460,10 +465,14 @@ class GabAiViewModel(
         }
     }
 
-    /** Pre-places the buttons the backend model finds. Never overwrites buttons the user already placed. */
+    /**
+     * Pre-places the buttons the backend model finds. Never overwrites buttons the user already
+     * placed, and never runs at all for a manual-mapping session (see [GabAiForm.manualMapping]) —
+     * that screenshot is never sent to the detection backend.
+     */
     private suspend fun detectButtons(path: String) {
         val gameId = _ui.value.form.gameId ?: return
-        if (!hudDetector.isAvailable || _ui.value.form.buttons.isNotEmpty()) return
+        if (_ui.value.form.manualMapping || !hudDetector.isAvailable || _ui.value.form.buttons.isNotEmpty()) return
         _ui.update { it.copy(detectingButtons = true) }
         val found = runCatching { hudDetector.detect(path, gameId) }
         _ui.update { it.copy(detectingButtons = false) }
@@ -772,11 +781,11 @@ class GabAiViewModel(
         finish(GabAiNavigation.Play(gameId, profileId))
     }
 
-    /** Another game profile, keeping the same calibration profile. */
+    /** Another game profile, keeping the same calibration profile and manual-mapping choice. */
     fun createAnother() = viewModelScope.launch {
-        val calibration = _ui.value.form.calibrationProfileId
-        val form = GabAiForm(calibrationProfileId = calibration)
-        begin(GabAiFlow.createAnother(), form)
+        val form = _ui.value.form
+        val next = GabAiForm(calibrationProfileId = form.calibrationProfileId, manualMapping = form.manualMapping)
+        begin(GabAiFlow.createAnother(), next)
     }
 
     fun clearMessage() = _ui.update { it.copy(message = null) }

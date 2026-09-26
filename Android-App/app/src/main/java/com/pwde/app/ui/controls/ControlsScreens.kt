@@ -17,6 +17,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CenterFocusStrong
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Dashboard
@@ -40,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,7 +57,7 @@ import com.pwde.app.sensors.voice.VoiceCommand
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.CheckBadge
 import com.pwde.app.ui.components.CameraFeed
-import com.pwde.app.ui.components.CursorCalibrationOverlay
+import com.pwde.app.ui.components.CursorPad
 import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
@@ -84,7 +84,7 @@ import com.pwde.app.ui.theme.PwdeTheme
 import com.pwde.app.ui.theme.iconSizeFor
 import com.pwde.app.ui.theme.scaled
 
-enum class ControlsDestination { INPUT, GESTURES, CURSOR, JOYSTICK, VOICE, CUSTOM_BUTTONS }
+enum class ControlsDestination { INPUT, GESTURES, CURSOR, JOYSTICK, VOICE, CUSTOM_BUTTONS, CUSTOM_BUTTONS_MANUAL }
 
 private val HUB_COMMANDS = listOf(
     voiceCommand(ControlsDestination.INPUT.name, "input", "input mode"),
@@ -92,10 +92,11 @@ private val HUB_COMMANDS = listOf(
     voiceCommand(ControlsDestination.CURSOR.name, "cursor speed", "cursor", "pointer"),
     voiceCommand(ControlsDestination.JOYSTICK.name, "joystick"),
     voiceCommand(ControlsDestination.VOICE.name, "voice"),
-    voiceCommand(ControlsDestination.CUSTOM_BUTTONS.name, "custom buttons"),
+    voiceCommand(ControlsDestination.CUSTOM_BUTTONS.name, "custom buttons", "gabai buttons"),
+    voiceCommand(ControlsDestination.CUSTOM_BUTTONS_MANUAL.name, "manual buttons", "manual mapping", "map buttons myself"),
 )
 
-/** E1 Controls hub: six compact cards. */
+/** E1 Controls hub: seven compact cards. */
 @Composable
 fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit) {
     VoiceCommandsEffect(HUB_COMMANDS) { id -> onOpen(ControlsDestination.valueOf(id)) }
@@ -110,7 +111,8 @@ fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit)
         NavCard("Cursor speed", "How fast the pointer moves", Icons.Outlined.Mouse, { onOpen(ControlsDestination.CURSOR) })
         NavCard("Joystick", "Size, sensitivity, dead zone", Icons.Outlined.Gamepad, { onOpen(ControlsDestination.JOYSTICK) })
         NavCard("Voice", "Commands and matching", Icons.Outlined.RecordVoiceOver, { onOpen(ControlsDestination.VOICE) })
-        NavCard("Custom buttons", "Map a game's buttons with GabAI", Icons.Outlined.Dashboard, { onOpen(ControlsDestination.CUSTOM_BUTTONS) })
+        NavCard("Custom buttons", "Let GabAI find a game's buttons for you", Icons.Outlined.Dashboard, { onOpen(ControlsDestination.CUSTOM_BUTTONS) })
+        NavCard("Manual button mapping", "Place and name every button yourself — nothing auto-detected", Icons.Outlined.Add, { onOpen(ControlsDestination.CUSTOM_BUTTONS_MANUAL) })
     }
 }
 
@@ -485,12 +487,9 @@ fun CursorSpeedScreen(viewModel: CursorSpeedViewModel, onBack: () -> Unit) {
             surfaceRequest = surface,
             canRequestCamera = viewModel.canRequestCamera,
             onCameraPermissionResult = viewModel::onCameraPermissionResult,
-            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(),
-            feedAspectRatio = 16f / 10f,
-            overlay = {
-                CursorCalibrationOverlay(face.cursor.x, face.cursor.y, face.hasFace, Offset(0.5f, 0.5f))
-            },
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.55f),
         )
+        CursorPad(face.cursor, active = face.hasFace)
         PwdeButton(
             "Recenter pointer",
             viewModel::recenterCursor,
