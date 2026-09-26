@@ -59,9 +59,11 @@ import com.pwde.app.ui.components.IconBadge
 import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.JoystickView
 import com.pwde.app.ui.components.LevelSlider
+import com.pwde.app.ui.components.MainTab
 import com.pwde.app.ui.components.NavCard
 import com.pwde.app.ui.components.OptionCard
 import com.pwde.app.ui.components.OptionKind
+import com.pwde.app.ui.components.PwdeBottomNav
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeTextField
@@ -84,6 +86,7 @@ import com.pwde.app.ui.theme.PwdeTheme
 fun GabAiScreen(
     viewModel: GabAiViewModel,
     onExit: () -> Unit,
+    onTab: (MainTab) -> Unit,
     onDashboard: () -> Unit,
     onPlay: (gameId: String, profileId: Long) -> Unit,
 ) {
@@ -100,7 +103,7 @@ fun GabAiScreen(
     }
     if (!ui.loaded) return
     when (val state = ui.state) {
-        GabAiState.Welcome -> WelcomeStep(viewModel, ui)
+        GabAiState.Welcome -> WelcomeStep(viewModel, ui, onTab)
         GabAiState.ChooseCalibrationMode -> ChooseModeStep(viewModel, ui)
         is GabAiState.CalibrateCursorAxis -> CursorAxisStep(viewModel, ui, state.axis)
         GabAiState.CalibrateJoystick -> JoystickStep(viewModel, ui)
@@ -127,9 +130,17 @@ internal fun GabAiStep(
     says: String,
     voiceHint: String,
     footer: (@Composable () -> Unit)? = null,
+    bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    PwdeScreen(title = title, onBack = viewModel::back, voiceHint = voiceHint, footer = footer) {
+    PwdeScreen(
+        title = title,
+        // Tab screens (with a bottom bar) have no back arrow; system back still works.
+        onBack = if (bottomBar == null) viewModel::back else null,
+        voiceHint = voiceHint,
+        footer = footer,
+        bottomBar = bottomBar,
+    ) {
         GabAiSays(says)
         ui.message?.let { StatusPill(it, color = PwdeTheme.colors.warning, modifier = Modifier.fillMaxWidth()) }
         content()
@@ -153,16 +164,17 @@ private val WELCOME_COMMANDS = listOf(
     voiceCommand("calibration", "new calibration", "calibration"),
     voiceCommand("game", "new game", "game profile"),
     voiceCommand("continue", "continue", "continue existing"),
-)
+) + MainTab.entries.filter { it != MainTab.GABAI }.map { voiceCommand("tab:${it.name}", it.label) }
 
 @Composable
-private fun WelcomeStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
+private fun WelcomeStep(viewModel: GabAiViewModel, ui: GabAiUiState, onTab: (MainTab) -> Unit) {
     val gameProfiles by viewModel.gameProfiles.collectAsStateWithLifecycle()
     VoiceCommandsEffect(WELCOME_COMMANDS) { id ->
-        when (id) {
-            "calibration" -> viewModel.startCalibration()
-            "game" -> viewModel.startGameProfile()
-            "continue" -> viewModel.resume()
+        when {
+            id.startsWith("tab:") -> onTab(MainTab.valueOf(id.removePrefix("tab:")))
+            id == "calibration" -> viewModel.startCalibration()
+            id == "game" -> viewModel.startGameProfile()
+            id == "continue" -> viewModel.resume()
         }
     }
     GabAiStep(
@@ -170,6 +182,7 @@ private fun WelcomeStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         title = "GabAI",
         says = "Hi, I'm GabAI! I'll walk you through setting up PWDe one small step at a time. What would you like to do?",
         voiceHint = "Say \"new calibration\", \"new game\" or \"continue\"",
+        bottomBar = { PwdeBottomNav(MainTab.GABAI, onTab) },
     ) {
         NavCard("New Calibration Profile", "Tune cursor, joystick and voice to you", Icons.Outlined.Tune, viewModel::startCalibration)
         NavCard("New Game Profile", "Map a game's buttons to your moves", Icons.Outlined.SportsEsports, { viewModel.startGameProfile() })
@@ -521,7 +534,7 @@ private fun CalibrationSavedStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         viewModel, ui,
         title = "Calibration saved",
         says = "Saved \"${ui.form.calibrationName}\"! It's your active setup now. " +
-            if (nextGame) "Let's carry on with your game." else "Want to set up a game with it?",
+                if (nextGame) "Let's carry on with your game." else "Want to set up a game with it?",
         voiceHint = "Say \"set up a game\" or \"done\"",
     ) {
         PwdeButton(

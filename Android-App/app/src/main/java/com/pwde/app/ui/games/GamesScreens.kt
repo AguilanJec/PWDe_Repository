@@ -79,22 +79,6 @@ private fun GameListVoice(current: MainTab, onGame: (Game) -> Unit, onTab: (Main
     }
 }
 
-/** D2 Games: tiles show their setup status. */
-@Composable
-fun GamesScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
-    val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
-    GameListVoice(MainTab.GAMES, onGame, onTab)
-    PwdeScreen(
-        title = "Games",
-        subtitle = "Pick a game to play or set up.",
-        voiceHint = "Say a game's name",
-        bottomBar = { PwdeBottomNav(MainTab.GAMES, onTab) },
-    ) {
-        Game.entries.forEach { game -> GameCard(game, hasProfile = game.id in withProfiles, onClick = { onGame(game) }) }
-        InfoNote("More games and custom buttons for any game are on the way.")
-    }
-}
-
 @Composable
 fun GameCard(game: Game, hasProfile: Boolean, onClick: () -> Unit) {
     val colors = PwdeTheme.colors
@@ -210,20 +194,20 @@ internal val GAME_DETAIL_COMMANDS = listOf(
     voiceCommand("gabai", "set up with gabai", "new profile", "gabai", "gab ai"),
 )
 
-/** Filter: narrow the game list by genre or setup status. */
+/** D2 Games: narrow the game list by genre or setup status; tiles show their setup status. */
 @Composable
-fun FilterScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
+fun GamesScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (MainTab) -> Unit) {
     val withProfiles by viewModel.gamesWithProfiles.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(GameFilter.ALL) }
     val results = Game.entries.filter { filter.matches(it, withProfiles) }
-    GameListVoice(MainTab.FILTER, onGame, onTab)
+    GameListVoice(MainTab.GAMES, onGame, onTab)
     val filterCommands = remember { GameFilter.entries.map { voiceCommand(it.name, it.label) } }
     VoiceCommandsEffect(filterCommands) { id -> filter = GameFilter.valueOf(id) }
     PwdeScreen(
-        title = "Filter",
-        subtitle = "Find a game by type or setup status.",
-        voiceHint = "Say a filter's name",
-        bottomBar = { PwdeBottomNav(MainTab.FILTER, onTab) },
+        title = "Games",
+        subtitle = "Pick a game to play or set up. Filter by type or setup status.",
+        voiceHint = "Say a game's or filter's name",
+        bottomBar = { PwdeBottomNav(MainTab.GAMES, onTab) },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             GameFilter.entries.forEach { option ->
@@ -234,7 +218,7 @@ fun FilterScreen(viewModel: GamesViewModel, onGame: (Game) -> Unit, onTab: (Main
             }
         }
         SectionTitle("${results.size} ${if (results.size == 1) "game" else "games"}")
-        if (results.isEmpty()) InfoNote("No games match. Game profiles are created with GabAI from the Play tab.")
+        if (results.isEmpty()) InfoNote("No games match. Game profiles are created with GabAI from the GabAI tab.")
         results.forEach { game -> GameCard(game, game.id in withProfiles) { onGame(game) } }
     }
 }

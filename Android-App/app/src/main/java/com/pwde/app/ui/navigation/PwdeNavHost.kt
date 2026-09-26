@@ -39,7 +39,6 @@ import com.pwde.app.ui.gabai.GabAiStart
 import com.pwde.app.ui.gabai.GabAiViewModel
 import com.pwde.app.ui.gameplay.GameplayViewModel
 import com.pwde.app.ui.gameplay.PlayingScreen
-import com.pwde.app.ui.games.FilterScreen
 import com.pwde.app.ui.games.GameDetailScreen
 import com.pwde.app.ui.games.GameDetailViewModel
 import com.pwde.app.ui.games.GamesScreen
@@ -107,7 +106,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         val route = when (tab) {
             MainTab.PLAY -> Routes.DASHBOARD
             MainTab.GAMES -> Routes.GAMES
-            MainTab.FILTER -> Routes.FILTER
+            MainTab.GABAI -> Routes.gabai()
             MainTab.PROFILE -> Routes.PROFILE
         }
         navController.navigate(route) {
@@ -258,14 +257,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 onExit = ::back,
             )
         }
-        composable(Routes.FILTER) {
-            FilterScreen(
-                viewModel = pwdeViewModel { GamesViewModel(it.profileRepository) },
-                onGame = { navController.navigate(Routes.gameDetail(it.id)) },
-                onTab = ::openTab,
-            )
-        }
-
         // E · Controls
         composable(Routes.CONTROLS) {
             ControlsHubScreen(onBack = ::back) { destination ->
@@ -344,6 +335,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                     )
                 },
                 onExit = ::back,
+                onTab = ::openTab,
                 onDashboard = { if (!navController.popBackStack(Routes.DASHBOARD, inclusive = false)) enterMainApp() },
                 onPlay = { gameId, profileId ->
                     navController.navigate(Routes.playing(gameId, profileId)) {
