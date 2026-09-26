@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Login
@@ -191,6 +193,7 @@ fun ProfileScreen(
     onPlayGameProfile: (gameId: String, profileId: Long) -> Unit,
     onTestGameProfile: (gameId: String, profileId: Long) -> Unit,
     onNewWithGabAi: () -> Unit,
+    onEditCalibration: (Long) -> Unit,
     onEditAppearance: () -> Unit,
     onControls: () -> Unit,
     onTab: (MainTab) -> Unit,
@@ -261,15 +264,12 @@ fun ProfileScreen(
             )
         } else {
             notice?.let { StatusPill(it, icon = Icons.Outlined.CheckCircle) }
-            state.calibrationProfiles.forEach {
-                ProfileRow(SavedProfile.Calibration(it), Icons.Outlined.Tune, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
-                    if (it.id == state.activeCalibrationProfileId) StatusPill("Active profile", icon = Icons.Outlined.CheckCircle)
-                    PwdeButton(
-                        "Use now", { viewModel.useCalibration(it) }, icon = Icons.Outlined.CheckCircle,
-                        modifier = Modifier.fillMaxWidth(), contentPadding = buttonPadding(),
-                    )
-                }
-            }
+            CalibrationProfileCarousel(
+                profiles = state.calibrationProfiles,
+                activeProfileId = state.activeCalibrationProfileId,
+                onActivate = viewModel::useCalibration,
+                onEdit = onEditCalibration,
+            )
         }
 
         SectionTitle("Game profiles")
@@ -303,6 +303,65 @@ fun ProfileScreen(
         SectionTitle("Settings")
         NavCard("Appearance", "Colors, text size, layout", Icons.Outlined.Palette, onEditAppearance)
         NavCard("Controls", "Input, gestures, voice", Icons.Outlined.Tune, onControls)
+    }
+}
+
+@Composable
+private fun CalibrationProfileCarousel(
+    profiles: List<CalibrationProfile>,
+    activeProfileId: Long?,
+    onActivate: (CalibrationProfile) -> Unit,
+    onEdit: (Long) -> Unit,
+) {
+    val pagerState = rememberPagerState(pageCount = { profiles.size })
+    Column(verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+        HorizontalPager(
+            state = pagerState,
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            pageSpacing = PwdeTheme.spacing.itemGap,
+            modifier = Modifier.fillMaxWidth(),
+        ) { page ->
+            val profile = profiles[page]
+            val active = profile.id == activeProfileId
+            GradientCard(
+                Modifier.fillMaxWidth(),
+                contentPadding = PwdeTheme.spacing.screenMargin,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(profile.name, style = MaterialTheme.typography.titleLarge, color = PwdeTheme.colors.text)
+                            Text(profile.inputMode.lowercase().replace('_', ' '), style = MaterialTheme.typography.bodyMedium, color = PwdeTheme.colors.textMuted)
+                        }
+                        if (active) StatusPill("Active", icon = Icons.Outlined.CheckCircle)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+                        PwdeButton(
+                            if (active) "Active" else "Activate",
+                            { onActivate(profile) },
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.CheckCircle,
+                            enabled = !active,
+                        )
+                        PwdeButton(
+                            "Edit",
+                            { onEdit(profile.id) },
+                            modifier = Modifier.weight(1f),
+                            style = ButtonStyle.SECONDARY,
+                            icon = Icons.Outlined.Edit,
+                        )
+                    }
+                }
+            }
+        }
+        if (profiles.size > 1) {
+            Text(
+                "Swipe to browse · ${pagerState.currentPage + 1} of ${profiles.size}",
+                style = MaterialTheme.typography.labelMedium,
+                color = PwdeTheme.colors.textMuted,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        }
     }
 }
 

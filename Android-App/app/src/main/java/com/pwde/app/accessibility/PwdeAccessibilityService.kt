@@ -18,22 +18,29 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.pwde.app.PwdeApplication
+import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.FacialGesture
+import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.prefs.ButtonOverlay
 import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.play.GameCommand
+import com.pwde.app.play.GameInput
 import com.pwde.app.play.LivePlay
 import com.pwde.app.play.LivePlayState
 import com.pwde.app.play.ScrollDirection
 import com.pwde.app.play.hasJoystickConfig
 import com.pwde.app.play.navigationMode
+import com.pwde.app.sensors.face.FaceState
 import com.pwde.app.sensors.face.JoystickDirection
+import com.pwde.app.sensors.face.TrackingStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -72,11 +79,25 @@ class PwdeAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        val livePlay = (application as PwdeApplication).container.livePlay
+        val container = (application as PwdeApplication).container
+        val livePlay = container.livePlay
+        val faceTracking = container.faceTrackingManager
         scope?.cancel()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { s ->
             s.launch { livePlay.actions.collect { perform(it, livePlay) } }
             s.launch { livePlay.state.collect { render(it, livePlay) } }
+            s.launch {
+                faceTracking.state.collect { face ->
+                    if (!livePlay.state.value.active) {
+                        livePlay.update { current -> if (current.active) current else current.copy(face = face) }
+                    }
+                }
+            }
+            s.launch {
+                faceTracking.gestureEvents.collect { gesture ->
+                    if (!livePlay.state.value.active) handleIdleGesture(gesture, livePlay, faceTracking, container.controlsRepository)
+                }
+            }
             val overlayPrefs = (application as PwdeApplication).container.buttonOverlayPrefs
             s.launch { combine(livePlay.state, overlayPrefs.overlay, ::Pair).collect { (state, overlay) -> renderMarkers(state, overlay) } }
         }
@@ -104,10 +125,15 @@ class PwdeAccessibilityService : AccessibilityService() {
     private fun render(state: LivePlayState, livePlay: LivePlay) {
         if (!state.active) {
             gestures.cancelAll()
-            removeOverlays()
+            renderIdleCursor(
+                (application as PwdeApplication).container.faceTrackingManager.state.value,
+                livePlay,
+            )
             return
         }
         val face = state.face
+        val gameMode = state.navigationMode() == NavigationMode.GAME
+        val overlayOpacity = if (gameMode) GAME_MODE_OVERLAY_OPACITY else 1f
         // Joystick mode/overlay only appears if the currently opened app has a joystick configuration
         val joystick = face.outputMode == FaceOutputMode.JOYSTICK && state.hasJoystickConfig()
 
@@ -123,9 +149,12 @@ class PwdeAccessibilityService : AccessibilityService() {
             removeView(cursorView)
             cursorView = null
         } else {
-            val view = cursorView ?: CursorOverlayView(this).takeIf { addOverlay(it, cursorParams()) }?.also { cursorView = it }
-            val point = toScreen(face.cursor.x, face.cursor.y)
-            view?.update(point.x, point.y, active = face.hasFace && !state.paused, dragging = state.dragging)
+            renderCursor(
+                face,
+                active = face.hasFace && !state.paused,
+                dragging = state.dragging,
+                opacity = if (gameMode) 0.78f else 1f,
+            )
         }
         if (state.overlayHidden) {
             removeView(bubbleView)
@@ -134,7 +163,13 @@ class PwdeAccessibilityService : AccessibilityService() {
             captionView = null
         } else {
             val view = bubbleView ?: createBubble(livePlay)
-            view?.update(if (joystick) "Joystick" else "Cursor", state.paused)
+            view?.update(
+                if (joystick) "Joystick" else "Cursor",
+                state.paused,
+                tapEnabled = !gameMode || state.paused,
+                opacity = overlayOpacity,
+                disabledActionHint = if (gameMode && !state.paused) "Tap disabled in game mode" else null,
+            )
             val heard = state.heard
             (captionView ?: createCaption())?.update(
                 state.voiceModel,
@@ -142,8 +177,54 @@ class PwdeAccessibilityService : AccessibilityService() {
                 heard?.text,
                 heard?.matched == true,
                 heard?.seq ?: 0,
+                overlayOpacity,
             )
         }
+    }
+
+    private fun renderIdleCursor(face: FaceState, livePlay: LivePlay) {
+        removeView(captionView)
+        captionView = null
+        (bubbleView ?: createBubble(livePlay))?.update(
+            if (face.outputMode == FaceOutputMode.JOYSTICK) "Joystick" else "Cursor",
+            paused = false,
+            tapEnabled = false,
+            longPressEnabled = false,
+            disabledActionHint = "No game session",
+        )
+        if (face.status == TrackingStatus.Idle || face.outputMode == FaceOutputMode.JOYSTICK) {
+            removeView(cursorView)
+            cursorView = null
+            return
+        }
+        renderCursor(face, active = face.hasFace, dragging = false)
+    }
+
+    private suspend fun handleIdleGesture(
+        gesture: FacialGesture,
+        livePlay: LivePlay,
+        faceTracking: com.pwde.app.sensors.face.FaceTrackingManager,
+        controlsRepository: com.pwde.app.data.local.ControlsRepository,
+    ) {
+        val config = controlsRepository.config.first()
+        val state = livePlay.state.value
+        if (state.active) return
+        val command = GameInput.fromGesture(gesture, emptyList(), config)
+        GameInput.navigationRefusal(command, state.navigationMode())?.let {
+            Log.i(TAG, "Ignored idle gesture ${gesture.label}: $it")
+            return
+        }
+        when (command) {
+            GameCommand.Recenter -> faceTracking.recenterCursor()
+            GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause -> Unit
+            else -> perform(command, livePlay)
+        }
+    }
+
+    private fun renderCursor(face: FaceState, active: Boolean, dragging: Boolean, opacity: Float = 1f) {
+        val view = cursorView ?: CursorOverlayView(this).takeIf { addOverlay(it, cursorParams()) }?.also { cursorView = it }
+        val point = toScreen(face.cursor.x, face.cursor.y)
+        view?.update(point.x, point.y, active = active, dragging = dragging, opacity = opacity)
     }
 
     /**
@@ -165,7 +246,8 @@ class PwdeAccessibilityService : AccessibilityService() {
                 val label = if (state.controlsShown) "${b.label} · ${b.trigger?.shortLabel() ?: "not mapped"}" else b.label
                 ButtonMarkersView.Marker(b.id, label, p.x, p.y, reach.takeIf { b.trigger?.type == TriggerType.MOVEMENT })
             },
-            if (state.controlsShown) maxOf(overlay.opacity, CONTROLS_OPACITY) else overlay.opacity,
+            (if (state.controlsShown) maxOf(overlay.opacity, CONTROLS_OPACITY) else overlay.opacity)
+                .let { if (state.navigationMode() == NavigationMode.GAME) minOf(it, GAME_MODE_OVERLAY_OPACITY) else it },
         )
     }
 
@@ -173,7 +255,10 @@ class PwdeAccessibilityService : AccessibilityService() {
         val params = bubbleParams ?: bubbleLayoutParams().also { bubbleParams = it }
         val view = ModeBubbleView(
             this,
-            onTap = { livePlay.request(GameCommand.TogglePause) },
+            onTap = {
+                val state = livePlay.state.value
+                if (state.navigationMode() != NavigationMode.GAME || state.paused) livePlay.request(GameCommand.TogglePause)
+            },
             onLongPress = {
                 val currentState = livePlay.state.value
                 val joystick = currentState.face.outputMode == FaceOutputMode.JOYSTICK
@@ -507,6 +592,7 @@ class PwdeAccessibilityService : AccessibilityService() {
         private const val HOLD_MS = 700L
         private const val SCROLL_MS = 300L
         private const val CAPTION_GAP_DP = 6
+        private const val GAME_MODE_OVERLAY_OPACITY = 0.58f
         /** "show controls" labels stay readable even when the debug overlay is set faint. */
         private const val CONTROLS_OPACITY = 0.9f
 

@@ -151,6 +151,9 @@ class LiveGameSession(
     }
 
     private fun execute(command: GameCommand) {
+        if (command.isPauseBlockedInGameMode(livePlay.state.value.navigationMode(), livePlay.state.value.paused)) {
+            return message("Pause is disabled in game mode")
+        }
         when (command) {
             GameCommand.Pause -> setPaused(true)
             GameCommand.Resume -> setPaused(false)

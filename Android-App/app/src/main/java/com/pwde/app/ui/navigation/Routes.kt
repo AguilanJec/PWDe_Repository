@@ -49,6 +49,8 @@ object Routes {
 
     // H · Profile
     const val PROFILE = "profile"
+    const val CALIBRATION_EDITOR = "profile/calibration/{profileId}"
+    fun calibrationEditor(profileId: Long) = "profile/calibration/$profileId"
 
     /** Spoken screen names for the read-aloud option. */
     fun spokenTitle(route: String?): String? = when (route) {
@@ -74,6 +76,7 @@ object Routes {
         WATCH_TUTORIAL -> "Tutorial video"
         GABAI -> "GabAI setup"
         PROFILE -> "Profile"
+        CALIBRATION_EDITOR -> "Edit calibration"
         else -> null
     }
 }

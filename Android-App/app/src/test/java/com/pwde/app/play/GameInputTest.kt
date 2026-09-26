@@ -39,6 +39,8 @@ class GameInputTest {
         assertEquals(GameCommand.Exit, GameInput.fromVoice(GameInput.MENU, "pwde menu", buttons))
         assertEquals(GameCommand.Back, GameInput.fromVoice(GameInput.BACK, "back", buttons))
         assertEquals(GameCommand.HideOverlay, GameInput.fromVoice(GameInput.HIDE_OVERLAY, "hide overlay", buttons))
+        assertEquals(GameCommand.HideOverlay, GameInput.fromVoice(GameInput.HIDE_OVERLAY, "close overlay", buttons))
+        assertEquals(GameCommand.ShowOverlay, GameInput.fromVoice(GameInput.SHOW_OVERLAY, "open overlay", buttons))
         assertEquals(GameCommand.ShowControls, GameInput.fromVoice(GameInput.SHOW_CONTROLS, "show controls", buttons))
         assertEquals(GameCommand.HideControls, GameInput.fromVoice(GameInput.HIDE_CONTROLS, "hide controls", buttons))
         assertTrue(GameInput.worksWhilePaused(GameCommand.ShowControls))
@@ -138,6 +140,15 @@ class GameInputTest {
         // Neither gives up a pointer, so neither is a command joystick mode has to refuse.
         assertFalse(GameInput.needsPointer(GameCommand.GameMode))
         assertFalse(GameInput.needsPointer(GameCommand.NavigationMode))
+    }
+
+    @Test
+    fun gameModeBlocksPausingButAllowsResuming() {
+        assertTrue(GameCommand.Pause.isPauseBlockedInGameMode(NavigationMode.GAME, paused = false))
+        assertTrue(GameCommand.TogglePause.isPauseBlockedInGameMode(NavigationMode.GAME, paused = false))
+        assertFalse(GameCommand.TogglePause.isPauseBlockedInGameMode(NavigationMode.GAME, paused = true))
+        assertFalse(GameCommand.Resume.isPauseBlockedInGameMode(NavigationMode.GAME, paused = true))
+        assertFalse(GameCommand.TogglePause.isPauseBlockedInGameMode(NavigationMode.NAVIGATION, paused = false))
     }
 
     /**

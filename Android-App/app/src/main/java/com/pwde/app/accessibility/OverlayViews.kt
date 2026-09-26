@@ -51,11 +51,12 @@ class CursorOverlayView(context: Context) : View(context) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    fun update(x: Float, y: Float, active: Boolean, dragging: Boolean) {
+    fun update(x: Float, y: Float, active: Boolean, dragging: Boolean, opacity: Float = 1f) {
         px = x
         py = y
         this.active = active
         this.dragging = dragging
+        alpha = opacity
         invalidate()
     }
 
@@ -86,7 +87,7 @@ class CursorOverlayView(context: Context) : View(context) {
 
 /**
  * The small floating bubble: shows cursor or joystick mode and whether PWDe is paused. Drag to
- * move it; tap to pause or resume; long-press to switch mode.
+ * move it; active game sessions can tap to pause or resume and long-press to switch mode.
  */
 @SuppressLint("ViewConstructor")
 class ModeBubbleView(
@@ -108,6 +109,9 @@ class ModeBubbleView(
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var label = "Cursor"
     private var paused = false
+    private var tapEnabled = true
+    private var longPressEnabled = true
+    private var disabledActionHint: String? = null
 
     private var downX = 0f
     private var downY = 0f
@@ -122,16 +126,35 @@ class ModeBubbleView(
         updateDescription()
     }
 
-    fun update(label: String, paused: Boolean) {
-        if (this.label == label && this.paused == paused) return
+    fun update(
+        label: String,
+        paused: Boolean,
+        tapEnabled: Boolean = true,
+        opacity: Float = 1f,
+        longPressEnabled: Boolean = true,
+        disabledActionHint: String? = null,
+    ) {
+        if (this.label == label && this.paused == paused && this.tapEnabled == tapEnabled &&
+            this.longPressEnabled == longPressEnabled && this.disabledActionHint == disabledActionHint && alpha == opacity
+        ) return
         this.label = label
         this.paused = paused
+        this.tapEnabled = tapEnabled
+        this.longPressEnabled = longPressEnabled
+        this.disabledActionHint = disabledActionHint
+        alpha = opacity
         updateDescription()
         invalidate()
     }
 
     private fun updateDescription() {
-        contentDescription = "PWDe, $label mode${if (paused) ", paused" else ""}. Tap to ${if (paused) "resume" else "pause"}, long-press to switch mode."
+        val tapHint = when {
+            !tapEnabled -> disabledActionHint ?: "Tap disabled"
+            paused -> "Tap to resume"
+            else -> "Tap to pause"
+        }
+        val longPressHint = if (longPressEnabled) "long-press to switch mode" else "mode switching unavailable"
+        contentDescription = "PWDe, $label mode${if (paused) ", paused" else ""}. $tapHint, $longPressHint."
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) = setMeasuredDimension(size, size)
@@ -148,13 +171,13 @@ class ModeBubbleView(
     // Tap and long-press also come through performClick/performLongClick for TalkBack and switch users.
     override fun performClick(): Boolean {
         super.performClick()
-        onTap()
+        if (tapEnabled) onTap()
         return true
     }
 
     override fun performLongClick(): Boolean {
         super.performLongClick()
-        onLongPress()
+        if (longPressEnabled) onLongPress()
         return true
     }
 
@@ -219,7 +242,8 @@ class SpeechCaptionView(context: Context) : TextView(context) {
      * [seq] briefly lights the border: teal for a matched command, amber for speech that matched
      * nothing.
      */
-    fun update(model: String?, mode: String, heard: String?, matched: Boolean, seq: Int) {
+    fun update(model: String?, mode: String, heard: String?, matched: Boolean, seq: Int, opacity: Float = 1f) {
+        alpha = opacity
         val said = if (heard == null) "Listening…" else "“$heard”" + if (matched) "" else "  (no match)"
         text = SpannableStringBuilder(said).append("\n")
             .append(listOfNotNull(model ?: "Unknown engine", mode).joinToString(" · "), ForegroundColorSpan(MUTED), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)

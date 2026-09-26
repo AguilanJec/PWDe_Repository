@@ -55,6 +55,9 @@ sealed interface GameCommand {
 
 enum class ScrollDirection { UP, DOWN, LEFT, RIGHT }
 
+fun GameCommand.isPauseBlockedInGameMode(mode: NavigationMode, paused: Boolean): Boolean =
+    mode == NavigationMode.GAME && !paused && (this == GameCommand.Pause || this == GameCommand.TogglePause)
+
 /**
  * Turns in-game input into [GameCommand]s. Shared by the simulated Playing screen and the live
  * session over the real game, so both follow the same rules. Pure, so it's unit-tested.
@@ -112,8 +115,8 @@ object GameInput {
         VoiceCommandBinding(EXIT, listOf("exit game", "quit game", "exit to pwde", "stop pwde")),
         VoiceCommandBinding(SELECT, listOf("select", "tap", "click")),
         VoiceCommandBinding(RECENTER, listOf("recenter", "center", "recenter joystick", "center joystick")),
-        VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel")),
-        VoiceCommandBinding(SHOW_OVERLAY, listOf("show overlay", "show panel")),
+        VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel", "close overlay")),
+        VoiceCommandBinding(SHOW_OVERLAY, listOf("show overlay", "show panel", "open overlay")),
         VoiceCommandBinding(SHOW_CONTROLS, SHOW_CONTROLS_PHRASES),
         VoiceCommandBinding(HIDE_CONTROLS, HIDE_CONTROLS_PHRASES),
         VoiceCommandBinding(HOME, listOf("go home", "home screen")),

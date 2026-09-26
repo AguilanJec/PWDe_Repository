@@ -50,6 +50,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -194,7 +195,7 @@ private fun OverlayToggle(hidden: Boolean, onClick: () -> Unit) {
 
 private fun voiceLine(voice: InGameVoiceState): String = when {
     voice.lastText != null -> "Heard: \"${voice.lastText}\""
-    else -> "Voice: say \"pause\", \"show controls\", \"hide overlay\", \"exit\" or a button's command"
+    else -> "Voice: say \"pause\", \"show controls\", \"close overlay\", \"open overlay\", \"exit\" or a button's command"
 }
 
 /** In-game voice status (the app-wide voice bar is paused while the game has the mic). */
@@ -375,6 +376,7 @@ private fun OverlayPanel(
             .clip(PwdeShapes.card)
             .background(colors.background.copy(alpha = 0.92f))
             .border(2.dp, colors.primary, PwdeShapes.card)
+            .alpha(if (navigationMode == NavigationMode.GAME) 0.68f else 1f)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -421,6 +423,7 @@ private fun OverlayPanel(
                 onTogglePause,
                 icon = if (paused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause,
                 modifier = Modifier.weight(1f),
+                enabled = navigationMode != NavigationMode.GAME || paused,
             )
             PwdeButton(
                 "Exit to PWDe",

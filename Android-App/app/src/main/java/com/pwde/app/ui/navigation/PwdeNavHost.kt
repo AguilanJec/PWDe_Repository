@@ -52,6 +52,8 @@ import com.pwde.app.ui.onboarding.SplashScreen
 import com.pwde.app.ui.onboarding.SplashViewModel
 import com.pwde.app.ui.onboarding.WelcomeScreen
 import com.pwde.app.ui.profile.ProfileScreen
+import com.pwde.app.ui.profile.CalibrationProfileEditorScreen
+import com.pwde.app.ui.profile.CalibrationProfileEditorViewModel
 import com.pwde.app.ui.play.rememberPlayGame
 import com.pwde.app.ui.profile.ProfileViewModel
 import com.pwde.app.ui.setup.SetupScreen
@@ -362,6 +364,18 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         }
 
         // H · Profile
+        composable(
+            Routes.CALIBRATION_EDITOR,
+            arguments = listOf(navArgument("profileId") { type = NavType.LongType }),
+        ) { entry ->
+            val profileId = entry.arguments?.getLong("profileId") ?: -1L
+            CalibrationProfileEditorScreen(
+                viewModel = pwdeViewModel(key = "calibration-editor-$profileId") {
+                    CalibrationProfileEditorViewModel(profileId, it.profileRepository, it.controlsRepository, it.settingsRepository)
+                },
+                onBack = ::back,
+            )
+        }
         composable(Routes.PROFILE) {
             ProfileScreen(
                 viewModel = pwdeViewModel {
@@ -372,6 +386,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 onPlayGameProfile = { gameId, profileId -> Game.byId(gameId)?.let { playGame(it, profileId) } },
                 onTestGameProfile = { gameId, profileId -> navController.navigate(Routes.playing(gameId, profileId)) },
                 onNewWithGabAi = { navController.navigate(Routes.gabai()) },
+                onEditCalibration = { navController.navigate(Routes.calibrationEditor(it)) },
                 onEditAppearance = { navController.navigate(Routes.setup(appearanceOnly = true)) },
                 onControls = { navController.navigate(Routes.CONTROLS) },
                 onTab = ::openTab,

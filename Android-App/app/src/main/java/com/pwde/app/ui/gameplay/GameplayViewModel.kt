@@ -18,6 +18,7 @@ import com.pwde.app.data.model.navigationModeFor
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.GameInput
+import com.pwde.app.play.isPauseBlockedInGameMode
 import com.pwde.app.play.LivePlay
 import com.pwde.app.play.applyProfileCalibration
 import com.pwde.app.sensors.face.FaceTrackingManager
@@ -155,6 +156,9 @@ class GameplayViewModel(
     fun submitText(text: String) = voiceEngine.submitText(text)
 
     fun togglePause() {
+        if (GameCommand.TogglePause.isPauseBlockedInGameMode(currentNavigationMode(), _paused.value)) {
+            return post("Pause is disabled in game mode", OverlayEvent.Kind.IGNORED)
+        }
         _paused.value = !_paused.value
         post(if (_paused.value) "Paused — gestures and voice won't play" else "Resumed", OverlayEvent.Kind.ACTION)
     }
