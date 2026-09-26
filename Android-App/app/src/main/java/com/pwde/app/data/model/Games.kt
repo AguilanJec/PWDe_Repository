@@ -1,15 +1,17 @@
 package com.pwde.app.data.model
 
-/** Supported games. Launching the real game is out of scope; PWDe overlays on top of it later. */
-enum class Game(val id: String, val displayName: String, val genre: String, val description: String) {
+/** Supported games. [packageName] is the real game's Android app, which PWDe launches and controls. */
+enum class Game(val id: String, val displayName: String, val genre: String, val description: String, val packageName: String) {
     CLASH_ROYALE(
         id = "clash_royale",
+        packageName = "com.supercell.clashroyale",
         displayName = "Clash Royale",
         genre = "Strategy",
         description = "Real-time card battles. Drag cards onto the arena and defend your towers.",
     ),
     MOBILE_LEGENDS(
         id = "mobile_legends",
+        packageName = "com.mobile.legends",
         displayName = "Mobile Legends",
         genre = "MOBA",
         description = "5v5 hero battles. Move with a joystick and fire skills from buttons.",

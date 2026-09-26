@@ -77,6 +77,12 @@ interface VoiceCommandManager {
     fun setScreenCommands(owner: Any, commands: List<VoiceCommand>)
 
     fun clearScreenCommands(owner: Any)
+
+    /**
+     * While any owner is dictating, utterances starting with "assign" or "use" ([Dictation]) never
+     * fire commands; the owner reads them from [results] instead.
+     */
+    fun setDictating(owner: Any, dictating: Boolean)
 }
 
 class AndroidVoiceCommandManager(
@@ -91,6 +97,7 @@ class AndroidVoiceCommandManager(
     private val _results = MutableSharedFlow<VoiceResult>(extraBufferCapacity = 16)
     private val permissionTick = MutableStateFlow(0)
     private val screenCommands = MutableStateFlow<Map<Any, List<VoiceCommand>>>(emptyMap())
+    private val dictationOwners = MutableStateFlow<Set<Any>>(emptySet())
     private val gate = VoiceActivationGate()
     private var config = ControlConfig()
 
@@ -101,7 +108,7 @@ class AndroidVoiceCommandManager(
         override fun onUnavailable(reason: MicAvailability) = _state.update { it.copy(availability = reason) }
 
         override fun onHeard(hypotheses: List<String>, confidences: FloatArray?, isFinal: Boolean) {
-            val match = CommandMatcher.match(hypotheses, allCommands(), config.voiceMatchMode)
+            val match = if (isDictation(hypotheses.first())) null else CommandMatcher.match(hypotheses, allCommands(), config.voiceMatchMode)
             val fired = gate.offer(match, isFinal, config.voiceActivationMode)
             publish(hypotheses.first(), isFinal, fired, VoiceInputSource.MIC)
         }
@@ -158,7 +165,7 @@ class AndroidVoiceCommandManager(
     override fun submitText(text: String) {
         if (text.isBlank()) return
         scope.launch {
-            val command = CommandMatcher.match(text, allCommands(), config.voiceMatchMode)
+            val command = if (isDictation(text)) null else CommandMatcher.match(text, allCommands(), config.voiceMatchMode)
             publish(text.trim(), isFinal = true, command = command, source = VoiceInputSource.TEXT)
         }
     }
@@ -171,7 +178,14 @@ class AndroidVoiceCommandManager(
         screenCommands.update { it - owner }
     }
 
-    private fun globalCommands(config: ControlConfig) = StandardCommands.all + StandardCommands.shortcuts(config.voiceShortcuts)
+    override fun setDictating(owner: Any, dictating: Boolean) {
+        dictationOwners.update { if (dictating) it + owner else it - owner }
+    }
+
+    private fun isDictation(text: String) = dictationOwners.value.isNotEmpty() && Dictation.isAssignment(text)
+
+    private fun globalCommands(config: ControlConfig) =
+        StandardCommands.all + StandardCommands.playGames + StandardCommands.shortcuts(config.voiceShortcuts)
 
     private fun allCommands() = screenCommands.value.values.flatten() + globalCommands(config)
 

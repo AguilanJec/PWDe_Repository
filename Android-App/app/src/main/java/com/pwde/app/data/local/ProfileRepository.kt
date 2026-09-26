@@ -17,6 +17,12 @@ class ProfileRepository(
 
     suspend fun getGameProfile(id: Long): GameProfile? = gameDao.getById(id)
 
+    /** The profile to use when the user just says "play <game>": last played, else newest. */
+    suspend fun lastPlayedGameProfile(gameId: String): GameProfile? = gameDao.lastPlayedFor(gameId)
+
+    /** Doesn't touch updatedAt, so playing never reorders "newest first" lists. */
+    suspend fun markGameProfilePlayed(id: Long) = gameDao.markPlayed(id, clock())
+
     suspend fun saveCalibrationProfile(profile: CalibrationProfile): Long {
         val now = clock()
         return if (profile.id == 0L) {

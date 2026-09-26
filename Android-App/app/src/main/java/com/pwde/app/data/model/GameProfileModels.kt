@@ -5,11 +5,14 @@ enum class TriggerType(val label: String) {
     VOICE("Voice command"),
     GESTURE("Head gesture"),
     JOYSTICK("Joystick action"),
+
+    /** This button is the game's movement joystick: in joystick mode PWDe holds it and drags it with the head. */
+    MOVEMENT("Movement joystick"),
 }
 
 /**
  * One trigger. [value] depends on [type]: the spoken phrase (VOICE), a [FacialGesture] name
- * (GESTURE), or a joystick direction name such as "UP_LEFT" (JOYSTICK).
+ * (GESTURE), a joystick direction name such as "UP_LEFT" (JOYSTICK), or [MOVEMENT_STICK] (MOVEMENT).
  */
 data class ButtonTrigger(val type: TriggerType, val value: String) {
     val gesture: FacialGesture? get() = if (type == TriggerType.GESTURE) FacialGesture.entries.firstOrNull { it.name == value } else null
@@ -18,6 +21,14 @@ data class ButtonTrigger(val type: TriggerType, val value: String) {
         TriggerType.VOICE -> "Say \"$value\""
         TriggerType.GESTURE -> gesture?.label ?: value
         TriggerType.JOYSTICK -> "Joystick ${value.lowercase().replace('_', '-')}"
+        TriggerType.MOVEMENT -> "Held and moved by the head joystick"
+    }
+
+    companion object {
+        const val MOVEMENT_STICK = "STICK"
+
+        /** Marks a button as the game's movement joystick. */
+        val MOVEMENT = ButtonTrigger(TriggerType.MOVEMENT, MOVEMENT_STICK)
     }
 }
 

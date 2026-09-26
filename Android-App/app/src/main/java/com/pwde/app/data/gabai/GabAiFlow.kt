@@ -23,6 +23,25 @@ object GabAiFlow {
 
     fun joystickDone(): GabAiState = GabAiState.CalibrationVoiceSetup
 
+    /** After voice, test every gesture the user hasn't already performed. */
+    fun voiceDone(form: GabAiForm): GabAiState = nextGestureTest(form, after = -1)
+
+    /** Performed or skipped: on to the next gesture not yet performed, or the results once none are left. */
+    fun gestureTested(state: GabAiState.CalibrationGestureTest, form: GabAiForm): GabAiState =
+        nextGestureTest(form, after = state.index)
+
+    /** "Skip the rest" goes straight to the results. */
+    fun gestureTestEnded(): GabAiState = GabAiState.CalibrationGestureReview
+
+    /** From the results: another go at just the gestures that were missed. */
+    fun retryMissedGestures(form: GabAiForm): GabAiState = nextGestureTest(form, after = -1)
+
+    private fun nextGestureTest(form: GabAiForm, after: Int): GabAiState {
+        val tests = GabAiState.GESTURE_TEST
+        val next = ((after + 1) until tests.size).firstOrNull { tests[it] !in form.passedGestures }
+        return next?.let { GabAiState.CalibrationGestureTest(it) } ?: GabAiState.CalibrationGestureReview
+    }
+
     fun calibrationSaved(): GabAiState = GabAiState.CalibrationSaved
 
     /** "Continue to a game profile" after saving a calibration. */
@@ -58,6 +77,9 @@ object GabAiFlow {
         GabAiState.CalibrationVoiceSetup ->
             if (form.calibrationMode == FaceOutputMode.JOYSTICK) GabAiState.CalibrateJoystick
             else GabAiState.CalibrateCursorAxis(Axis.DIAGONAL)
+        is GabAiState.CalibrationGestureTest ->
+            if (state.index == 0) GabAiState.CalibrationVoiceSetup else GabAiState.CalibrationGestureTest(state.index - 1)
+        GabAiState.CalibrationGestureReview -> GabAiState.CalibrationGestureTest(GabAiState.GESTURE_TEST.lastIndex)
         GabAiState.CalibrationSaved -> GabAiState.Welcome
         GabAiState.ChooseGame -> GabAiState.Welcome
         GabAiState.ConfirmCalibrationProfile -> GabAiState.ChooseGame

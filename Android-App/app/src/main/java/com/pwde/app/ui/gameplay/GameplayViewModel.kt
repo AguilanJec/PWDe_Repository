@@ -8,20 +8,22 @@ import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.GameProfile
 import com.pwde.app.data.local.ProfileRepository
-import com.pwde.app.data.local.inputModeOrDefault
 import com.pwde.app.data.model.ControlConfig
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
-import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.MappedButton
-import com.pwde.app.data.model.TriggerType
 import com.pwde.app.data.prefs.SettingsRepository
+import com.pwde.app.play.GameCommand
+import com.pwde.app.play.GameInput
+import com.pwde.app.play.LivePlay
+import com.pwde.app.play.applyProfileCalibration
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.InGameVoiceEngine
 import com.pwde.app.sensors.voice.InGameVoiceState
-import com.pwde.app.sensors.voice.VoiceCommandBinding
 import com.pwde.app.ui.common.FaceTrackingViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +63,7 @@ class GameplayViewModel(
     private val gabAiRepository: GabAiRepository,
     val game: Game?,
     private val profileId: Long?,
+    private val livePlay: LivePlay? = null,
 ) : FaceTrackingViewModel(faceTracking) {
     val voice: StateFlow<InGameVoiceState> = voiceEngine.state
 
@@ -73,6 +76,10 @@ class GameplayViewModel(
     private val _paused = MutableStateFlow(false)
     val paused: StateFlow<Boolean> = _paused.asStateFlow()
 
+    /** Status pills and the info panel are hidden so the game (or screenshot) shows through. */
+    private val _overlayHidden = MutableStateFlow(false)
+    val overlayHidden: StateFlow<Boolean> = _overlayHidden.asStateFlow()
+
     private val _lastEvent = MutableStateFlow<OverlayEvent?>(null)
     val lastEvent: StateFlow<OverlayEvent?> = _lastEvent.asStateFlow()
 
@@ -83,7 +90,7 @@ class GameplayViewModel(
     private var lastDirection = JoystickDirection.CENTER
 
     init {
-        voiceEngine.loadCommands(STANDARD_BINDINGS)
+        voiceEngine.loadCommands(GameInput.STANDARD_BINDINGS)
         viewModelScope.launch {
             val profile = profileId?.let { profileRepository.getGameProfile(it) }
                 ?: game?.let { profileRepository.gameProfilesFor(it.id).firstOrNull()?.firstOrNull() }
@@ -95,36 +102,45 @@ class GameplayViewModel(
 
     private suspend fun loadProfile(profile: GameProfile, controlsRepository: ControlsRepository) {
         val buttons = ControlJson.decodeButtons(profile.buttonMappingsJson)
-        val calibration = profile.calibrationProfileId?.let { profileRepository.getCalibrationProfile(it) }
-        if (calibration != null) {
-            // Play with the calibration this game profile was made with.
-            controlsRepository.applyCalibration(calibration)
-            if (settingsRepository.settings.first().inputMode != calibration.inputModeOrDefault) {
-                settingsRepository.setInputMode(calibration.inputModeOrDefault)
-            }
-        }
+        val calibration = applyProfileCalibration(profile, profileRepository, controlsRepository, settingsRepository)
         _ui.update { it.copy(profile = profile, calibrationName = calibration?.name, buttons = buttons) }
         // Only this game's commands can be recognized while playing.
-        voiceEngine.loadCommands(
-            STANDARD_BINDINGS + buttons.mapNotNull { b ->
-                b.trigger?.takeIf { it.type == TriggerType.VOICE }?.let { VoiceCommandBinding(buttonCommandId(b.id), listOf(it.value)) }
-            },
-        )
+        voiceEngine.loadCommands(GameInput.bindings(buttons))
         val bitmap = gabAiRepository.loadScreenshot(profile.thumbnailPath)?.asImageBitmap()
         _ui.update { it.copy(screenshot = bitmap) }
     }
 
-    /** Screen visible: the game's voice engine takes the mic. */
-    fun onScreenStarted() = voiceEngine.start()
+    /**
+     * Screen visible: the game's voice engine takes the mic — once a live session over the real
+     * game has finished stopping, since it shares the engine.
+     */
+    fun onScreenStarted() {
+        voiceStart?.cancel()
+        voiceStart = viewModelScope.launch {
+            livePlay?.state?.first { !it.active }
+            voiceEngine.start()
+        }
+    }
+
+    private var voiceStart: Job? = null
 
     /** Screen hidden: give the mic back to the rest of PWDe. */
-    fun onScreenStopped() = voiceEngine.stop()
+    fun onScreenStopped() {
+        voiceStart?.cancel()
+        voiceEngine.stop()
+    }
 
     fun submitText(text: String) = voiceEngine.submitText(text)
 
     fun togglePause() {
         _paused.value = !_paused.value
         post(if (_paused.value) "Paused — gestures and voice won't play" else "Resumed", OverlayEvent.Kind.ACTION)
+    }
+
+    fun setOverlayHidden(hidden: Boolean) {
+        if (_overlayHidden.value == hidden) return
+        _overlayHidden.value = hidden
+        post(if (hidden) "Overlay hidden — say \"show overlay\" to bring it back" else "Overlay shown", OverlayEvent.Kind.ACTION)
     }
 
     fun select() {
@@ -140,58 +156,63 @@ class GameplayViewModel(
     fun onJoystickDirection(direction: JoystickDirection) {
         if (direction == lastDirection) return
         lastDirection = direction
-        if (direction == JoystickDirection.CENTER || _paused.value) return
-        buttonFor(TriggerType.JOYSTICK, direction.name)?.let(::press)
+        if (_paused.value) return
+        GameInput.fromJoystick(direction, _ui.value.buttons)?.let(::execute)
     }
 
     private fun onVoice(commandId: String?, rawText: String?) {
-        if (commandId == null) {
-            rawText?.let { post("Heard \"$it\" — not a command in this game", OverlayEvent.Kind.IGNORED) }
-            return
+        val command = GameInput.fromVoice(commandId, rawText, _ui.value.buttons) ?: return
+        // Voice "back" always leaves the preview, even while paused.
+        if (command == GameCommand.Back) return exit()
+        if (_paused.value && !GameInput.worksWhilePaused(command)) {
+            return post("Paused — say \"resume\" first", OverlayEvent.Kind.IGNORED)
         }
-        when (commandId) {
-            PAUSE -> if (!_paused.value) togglePause()
-            RESUME -> if (_paused.value) togglePause()
-            BACK, MENU, EXIT -> exit()
-            SELECT -> select()
-            RECENTER -> recenter()
-            else -> {
-                if (_paused.value) return post("Paused — say \"resume\" first", OverlayEvent.Kind.IGNORED)
-                _ui.value.buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let(::press)
-            }
-        }
+        execute(command)
     }
 
     private fun onGesture(gesture: FacialGesture) {
-        // A game button mapped to this gesture wins over the general gesture actions.
-        buttonFor(TriggerType.GESTURE, gesture.name)?.let { button ->
-            if (_paused.value) return post("${gesture.label} ignored while paused", OverlayEvent.Kind.IGNORED)
-            return press(button)
-        }
-        val action = config.value.actionFor(gesture)
-            ?: return post("${gesture.label} — no action assigned", OverlayEvent.Kind.IGNORED)
-        if (_paused.value && action != GestureAction.PAUSE_RESUME) {
+        val command = GameInput.fromGesture(gesture, _ui.value.buttons, config.value)
+        if (_paused.value && !GameInput.worksWhilePaused(command)) {
             return post("${gesture.label} ignored while paused", OverlayEvent.Kind.IGNORED)
         }
-        when (action) {
-            GestureAction.SELECT -> select()
-            GestureAction.PAUSE_RESUME -> togglePause()
-            GestureAction.RECENTER -> recenter()
-            GestureAction.BACK, GestureAction.HOME -> exit()
-            // Phone-wide actions need system access PWDe doesn't have; they act in the overlay only.
-            GestureAction.NOTIFICATIONS, GestureAction.ALL_APPS, GestureAction.TOUCH_HOLD ->
-                post("${action.label} (in PWDe's overlay only)", OverlayEvent.Kind.ACTION)
+        execute(command)
+    }
+
+    private fun execute(command: GameCommand) {
+        when (command) {
+            is GameCommand.Press -> post("Pressed ${command.button.label}", OverlayEvent.Kind.BUTTON, command.button.id)
+            GameCommand.Select -> select()
+            GameCommand.Pause -> if (!_paused.value) togglePause()
+            GameCommand.Resume -> if (_paused.value) togglePause()
+            GameCommand.TogglePause -> togglePause()
+            GameCommand.Recenter -> recenter()
+            GameCommand.Back, GameCommand.Home, GameCommand.Exit -> exit()
+            GameCommand.HideOverlay -> setOverlayHidden(true)
+            GameCommand.ShowOverlay -> setOverlayHidden(false)
+            // Phone-wide actions only act in the real game; the preview just shows them.
+            GameCommand.Notifications -> post("Notifications (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.AllApps -> post("All apps (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.TouchHold -> post("Touch & hold (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.Recents -> post("Recent apps (in the real game only)", OverlayEvent.Kind.ACTION)
+            is GameCommand.Scroll -> post("Scroll ${command.direction.name.lowercase()} (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.StartDrag -> post("Drag (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.Drop -> post("Drop (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.CursorMode -> post("Cursor mode (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.JoystickMode -> post("Joystick mode (in the real game only)", OverlayEvent.Kind.ACTION)
+            is GameCommand.Ignored -> post(command.reason, OverlayEvent.Kind.IGNORED)
         }
     }
 
-    private fun buttonFor(type: TriggerType, value: String): MappedButton? =
-        _ui.value.buttons.firstOrNull { it.trigger?.type == type && it.trigger.value == value }
-
-    private fun press(button: MappedButton) = post("Pressed ${button.label}", OverlayEvent.Kind.BUTTON, button.id)
-
+    /** Cursor mode: the pointer back to the middle. Joystick mode: where the head is now becomes the stick's neutral. */
     private fun recenter() {
-        recenterCursor()
-        post("Recentered", OverlayEvent.Kind.ACTION)
+        if (faceState.value.outputMode != FaceOutputMode.JOYSTICK) {
+            recenterCursor()
+            return post("Recentered", OverlayEvent.Kind.ACTION)
+        }
+        viewModelScope.launch {
+            val saved = faceTracking.captureJoystickCenter()
+            post(if (saved) "Joystick recentered" else "Can't see your face — look at the camera and try again", OverlayEvent.Kind.ACTION)
+        }
     }
 
     private fun post(text: String, kind: OverlayEvent.Kind, buttonId: Int? = null) {
@@ -200,28 +221,5 @@ class GameplayViewModel(
 
     override fun onCleared() {
         voiceEngine.stop()
-    }
-
-    companion object {
-        const val BACK = "game_back"
-        const val PAUSE = "game_pause"
-        const val MENU = "game_menu"
-        const val RESUME = "game_resume"
-        const val EXIT = "game_exit"
-        const val SELECT = "game_select"
-        const val RECENTER = "game_recenter"
-
-        fun buttonCommandId(buttonId: Int) = "button:$buttonId"
-
-        /** Always available in game, on top of the profile's own voice commands. */
-        val STANDARD_BINDINGS = listOf(
-            VoiceCommandBinding(BACK, listOf("back", "go back")),
-            VoiceCommandBinding(PAUSE, listOf("pause", "pause game")),
-            VoiceCommandBinding(MENU, listOf("menu", "main menu")),
-            VoiceCommandBinding(RESUME, listOf("resume", "continue game", "unpause")),
-            VoiceCommandBinding(EXIT, listOf("exit", "exit game", "quit", "exit to pwde")),
-            VoiceCommandBinding(SELECT, listOf("select", "tap", "click")),
-            VoiceCommandBinding(RECENTER, listOf("recenter", "center")),
-        )
     }
 }

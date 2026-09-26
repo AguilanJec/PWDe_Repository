@@ -1,0 +1,454 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 5,
+    "identityHash": "a9b327b07051c6a1ad1ae503b10fc6bd",
+    "entities": [
+      {
+        "tableName": "calibration_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `inputMode` TEXT NOT NULL, `cursorSpeedUp` INTEGER NOT NULL, `cursorSpeedDown` INTEGER NOT NULL, `cursorSpeedLeft` INTEGER NOT NULL, `cursorSpeedRight` INTEGER NOT NULL, `joystickSensitivity` INTEGER NOT NULL, `joystickDeadZone` INTEGER NOT NULL, `joystickRadius` INTEGER NOT NULL, `cursorSmoothing` INTEGER NOT NULL DEFAULT 7, `joystickCenterPitch` REAL NOT NULL DEFAULT 0, `joystickCenterRoll` REAL NOT NULL DEFAULT 0, `gestureAssignmentsJson` TEXT NOT NULL, `gestureSensitivityJson` TEXT NOT NULL DEFAULT '{}', `enabledGesturesJson` TEXT, `voiceEnabled` INTEGER NOT NULL, `voiceMatchMode` TEXT NOT NULL, `voiceActivationMode` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `remoteId` TEXT, `lastSyncedAt` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputMode",
+            "columnName": "inputMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cursorSpeedUp",
+            "columnName": "cursorSpeedUp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cursorSpeedDown",
+            "columnName": "cursorSpeedDown",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cursorSpeedLeft",
+            "columnName": "cursorSpeedLeft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cursorSpeedRight",
+            "columnName": "cursorSpeedRight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "joystickSensitivity",
+            "columnName": "joystickSensitivity",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "joystickDeadZone",
+            "columnName": "joystickDeadZone",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "joystickRadius",
+            "columnName": "joystickRadius",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cursorSmoothing",
+            "columnName": "cursorSmoothing",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "7"
+          },
+          {
+            "fieldPath": "joystickCenterPitch",
+            "columnName": "joystickCenterPitch",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "joystickCenterRoll",
+            "columnName": "joystickCenterRoll",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "gestureAssignmentsJson",
+            "columnName": "gestureAssignmentsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gestureSensitivityJson",
+            "columnName": "gestureSensitivityJson",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'{}'"
+          },
+          {
+            "fieldPath": "enabledGesturesJson",
+            "columnName": "enabledGesturesJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "voiceEnabled",
+            "columnName": "voiceEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voiceMatchMode",
+            "columnName": "voiceMatchMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voiceActivationMode",
+            "columnName": "voiceActivationMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteId",
+            "columnName": "remoteId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSyncedAt",
+            "columnName": "lastSyncedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "game_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `gameId` TEXT NOT NULL, `gameName` TEXT NOT NULL, `profileName` TEXT NOT NULL, `calibrationProfileId` INTEGER, `buttonMappingsJson` TEXT NOT NULL, `thumbnailPath` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `remoteId` TEXT, `lastSyncedAt` INTEGER, `lastPlayedAt` INTEGER, FOREIGN KEY(`calibrationProfileId`) REFERENCES `calibration_profiles`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gameId",
+            "columnName": "gameId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gameName",
+            "columnName": "gameName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileName",
+            "columnName": "profileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "calibrationProfileId",
+            "columnName": "calibrationProfileId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "buttonMappingsJson",
+            "columnName": "buttonMappingsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thumbnailPath",
+            "columnName": "thumbnailPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteId",
+            "columnName": "remoteId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSyncedAt",
+            "columnName": "lastSyncedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastPlayedAt",
+            "columnName": "lastPlayedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_game_profiles_calibrationProfileId",
+            "unique": false,
+            "columnNames": [
+              "calibrationProfileId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_game_profiles_calibrationProfileId` ON `${TABLE_NAME}` (`calibrationProfileId`)"
+          },
+          {
+            "name": "index_game_profiles_gameId",
+            "unique": false,
+            "columnNames": [
+              "gameId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_game_profiles_gameId` ON `${TABLE_NAME}` (`gameId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "calibration_profiles",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "calibrationProfileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "control_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `gestureAssignmentsJson` TEXT NOT NULL, `voiceEnabled` INTEGER NOT NULL, `voiceMatchMode` TEXT NOT NULL, `voiceActivationMode` TEXT NOT NULL, `voiceShortcutsJson` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `gestureSensitivityJson` TEXT NOT NULL DEFAULT '{}', `cursorSpeedUp` INTEGER NOT NULL DEFAULT 5, `cursorSpeedDown` INTEGER NOT NULL DEFAULT 5, `cursorSpeedLeft` INTEGER NOT NULL DEFAULT 5, `cursorSpeedRight` INTEGER NOT NULL DEFAULT 5, `cursorSmoothing` INTEGER NOT NULL DEFAULT 7, `joystickSize` INTEGER NOT NULL DEFAULT 5, `joystickSensitivity` INTEGER NOT NULL DEFAULT 5, `joystickDeadZone` INTEGER NOT NULL DEFAULT 3, `joystickCenterPitch` REAL NOT NULL DEFAULT 0, `joystickCenterRoll` REAL NOT NULL DEFAULT 0, `enabledGesturesJson` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gestureAssignmentsJson",
+            "columnName": "gestureAssignmentsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voiceEnabled",
+            "columnName": "voiceEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voiceMatchMode",
+            "columnName": "voiceMatchMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voiceActivationMode",
+            "columnName": "voiceActivationMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "voiceShortcutsJson",
+            "columnName": "voiceShortcutsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gestureSensitivityJson",
+            "columnName": "gestureSensitivityJson",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'{}'"
+          },
+          {
+            "fieldPath": "cursorSpeedUp",
+            "columnName": "cursorSpeedUp",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "5"
+          },
+          {
+            "fieldPath": "cursorSpeedDown",
+            "columnName": "cursorSpeedDown",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "5"
+          },
+          {
+            "fieldPath": "cursorSpeedLeft",
+            "columnName": "cursorSpeedLeft",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "5"
+          },
+          {
+            "fieldPath": "cursorSpeedRight",
+            "columnName": "cursorSpeedRight",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "5"
+          },
+          {
+            "fieldPath": "cursorSmoothing",
+            "columnName": "cursorSmoothing",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "7"
+          },
+          {
+            "fieldPath": "joystickSize",
+            "columnName": "joystickSize",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "5"
+          },
+          {
+            "fieldPath": "joystickSensitivity",
+            "columnName": "joystickSensitivity",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "5"
+          },
+          {
+            "fieldPath": "joystickDeadZone",
+            "columnName": "joystickDeadZone",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "3"
+          },
+          {
+            "fieldPath": "joystickCenterPitch",
+            "columnName": "joystickCenterPitch",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "joystickCenterRoll",
+            "columnName": "joystickCenterRoll",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "enabledGesturesJson",
+            "columnName": "enabledGesturesJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "gabai_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` TEXT NOT NULL, `stateJson` TEXT NOT NULL, `formJson` TEXT NOT NULL, `completed` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stateJson",
+            "columnName": "stateJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formJson",
+            "columnName": "formJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a9b327b07051c6a1ad1ae503b10fc6bd')"
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 package com.pwde.app.sensors.voice
 
+import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.data.model.VoiceShortcut
@@ -36,6 +37,12 @@ object StandardCommands {
 
     val all = listOf(BACK, HOME, NEXT, SKIP, SETTINGS, MENU, CLOSE)
 
+    /** "play <game>" from anywhere in PWDe launches that game with its last-played profile. */
+    val playGames = Game.entries.map { VoiceCommand("play:${it.id}", listOf("play ${it.displayName}"), CommandScope.GLOBAL) }
+
+    fun gameToPlay(command: VoiceCommand): Game? =
+        command.id.takeIf { it.startsWith("play:") }?.let { Game.byId(it.removePrefix("play:")) }
+
     fun shortcutId(shortcut: VoiceShortcut) = "shortcut:${shortcut.name}"
 
     fun shortcutOf(command: VoiceCommand): VoiceShortcut? =
@@ -48,6 +55,37 @@ object StandardCommands {
         }
 }
 
+/**
+ * Spoken assignment, e.g. naming a button or setting its voice trigger: "assign <words>" or
+ * "use <words>" assigns the words; "retry" redoes the last assignment. Anything else isn't an
+ * assignment, so stray speech never renames a button.
+ */
+object Dictation {
+    val PREFIXES = listOf("assign", "use")
+    val RETRY = listOf("retry", "reassign", "try again")
+
+    sealed interface Parsed {
+        data class Assign(val words: String) : Parsed
+        object Retry : Parsed
+    }
+
+    fun parse(text: String): Parsed? {
+        val heard = CommandMatcher.normalize(text)
+        if (heard in RETRY) return Parsed.Retry
+        val prefix = PREFIXES.firstOrNull { heard.startsWith("$it ") } ?: return null
+        return heard.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }?.let(Parsed::Assign)
+    }
+
+    /**
+     * True as soon as an utterance starts like an assignment, even as a partial transcript, so
+     * the words being assigned ("use move left") can't fire commands on the way.
+     */
+    fun isAssignment(text: String): Boolean {
+        val first = CommandMatcher.normalize(text).substringBefore(' ')
+        return first in PREFIXES
+    }
+}
+
 /** Matches heard text against commands. Pure, so every rule here is unit-tested. */
 object CommandMatcher {
     fun normalize(text: String): String =
@@ -58,8 +96,9 @@ object CommandMatcher {
             .replace(Regex("\\s+"), " ")
 
     /**
-     * Screen commands are tried before global ones; within a group the longest matching phrase
-     * wins, so "next page" beats "next". Each speech hypothesis is tried in order.
+     * Screen commands are tried before global ones, unless a global phrase is strictly longer
+     * ("play mobile legends" beats a screen's "mobile legends"); within a group the longest
+     * matching phrase wins, so "next page" beats "next". Each speech hypothesis is tried in order.
      */
     fun match(hypotheses: List<String>, commands: List<VoiceCommand>, mode: VoiceMatchMode): VoiceCommand? {
         val screen = commands.filter { it.scope == CommandScope.SCREEN }
@@ -67,7 +106,14 @@ object CommandMatcher {
         for (hypothesis in hypotheses) {
             val heard = normalize(hypothesis)
             if (heard.isEmpty()) continue
-            (bestMatch(heard, screen, mode) ?: bestMatch(heard, global, mode))?.let { return it }
+            val onScreen = bestMatch(heard, screen, mode)
+            val everywhere = bestMatch(heard, global, mode)
+            val best = when {
+                onScreen == null -> everywhere
+                everywhere != null && everywhere.second > onScreen.second -> everywhere
+                else -> onScreen
+            }
+            best?.let { return it.first }
         }
         return null
     }
@@ -75,7 +121,8 @@ object CommandMatcher {
     fun match(text: String, commands: List<VoiceCommand>, mode: VoiceMatchMode): VoiceCommand? =
         match(listOf(text), commands, mode)
 
-    private fun bestMatch(heard: String, commands: List<VoiceCommand>, mode: VoiceMatchMode): VoiceCommand? {
+    /** The best command and the length of the phrase that matched. */
+    private fun bestMatch(heard: String, commands: List<VoiceCommand>, mode: VoiceMatchMode): Pair<VoiceCommand, Int>? {
         var best: VoiceCommand? = null
         var bestLength = -1
         for (command in commands) {
@@ -92,7 +139,7 @@ object CommandMatcher {
                 }
             }
         }
-        return best
+        return best?.let { it to bestLength }
     }
 }
 

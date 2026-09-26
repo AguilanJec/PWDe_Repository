@@ -134,13 +134,17 @@ class GameDetailViewModel(profileRepository: ProfileRepository, game: Game) : Vi
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
-/** D3 Game detail: play with a saved game profile (or without one), edit one, or make one with GabAI. */
+/**
+ * D3 Game detail: play the real game with a saved game profile (or without one), test a profile on
+ * the simulated preview, edit one, or make one with GabAI.
+ */
 @Composable
 fun GameDetailScreen(
     game: Game,
     viewModel: GameDetailViewModel,
     onBack: () -> Unit,
     onPlay: (profileId: Long?) -> Unit,
+    onTestProfile: (profileId: Long) -> Unit,
     onEditProfile: (profileId: Long) -> Unit,
     onSetUpWithGabAi: () -> Unit,
 ) {
@@ -173,6 +177,7 @@ fun GameDetailScreen(
                     Text(profile.profileName, style = MaterialTheme.typography.titleMedium, color = colors.text)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 8.dp)) {
                         PwdeButton("Play", { onPlay(profile.id) }, icon = Icons.Outlined.SportsEsports, modifier = Modifier.weight(1f))
+                        PwdeButton("Test", { onTestProfile(profile.id) }, style = ButtonStyle.SECONDARY, modifier = Modifier.weight(1f))
                         PwdeButton("Edit", { onEditProfile(profile.id) }, style = ButtonStyle.SECONDARY, modifier = Modifier.weight(1f))
                     }
                 }
@@ -186,8 +191,8 @@ fun GameDetailScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         InfoNote(
-            "Play opens PWDe's live overlay over your game screenshot (or a simulated arena) — your head, face and " +
-                    "voice really drive it, but the real game isn't launched.",
+            "Play opens ${game.displayName} and keeps PWDe running on top of it, with a notification to pause or stop. " +
+                    "Test tries a profile on its screenshot inside PWDe first.",
             icon = Icons.Outlined.Info,
         )
     }

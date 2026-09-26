@@ -5,6 +5,7 @@ import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.data.model.VoiceShortcut
 import com.pwde.app.sensors.voice.CommandMatcher
 import com.pwde.app.sensors.voice.CommandScope
+import com.pwde.app.sensors.voice.Dictation
 import com.pwde.app.sensors.voice.StandardCommands
 import com.pwde.app.sensors.voice.VoiceActivationGate
 import com.pwde.app.sensors.voice.VoiceCommand
@@ -37,6 +38,14 @@ class CommandMatcherTest {
     fun screenCommandsBeatGlobalOnes() {
         // "next page" (screen) and "next page" (global NEXT phrase) both match; the screen wins.
         assertEquals(nextPage, CommandMatcher.match("next page please", commands, VoiceMatchMode.WORD_ANYWHERE))
+    }
+
+    @Test
+    fun aLongerGlobalPhraseBeatsAShorterScreenOne() {
+        val openGame = VoiceCommand("game:mobile_legends", "mobile legends", scope = CommandScope.SCREEN)
+        val play = StandardCommands.playGames.first { it.id == "play:mobile_legends" }
+        assertEquals(play, CommandMatcher.match("play mobile legends", listOf(openGame) + StandardCommands.playGames, VoiceMatchMode.WORD_ANYWHERE))
+        assertEquals(openGame, CommandMatcher.match("mobile legends", listOf(openGame) + StandardCommands.playGames, VoiceMatchMode.WORD_ANYWHERE))
     }
 
     @Test
@@ -104,5 +113,36 @@ class VoiceActivationGateTest {
         val gate = VoiceActivationGate()
         gate.offer(attack, isFinal = false, mode = VoiceActivationMode.AFTER_FINISH)
         assertNull(gate.offer(null, isFinal = true, mode = VoiceActivationMode.AFTER_FINISH))
+    }
+}
+
+class DictationTest {
+    @Test
+    fun assignAndUseAssignTheRestOfTheUtterance() {
+        assertEquals(Dictation.Parsed.Assign("skill one"), Dictation.parse("Assign skill one"))
+        assertEquals(Dictation.Parsed.Assign("move left"), Dictation.parse("use move left!"))
+    }
+
+    @Test
+    fun retryWordsRedo() {
+        assertEquals(Dictation.Parsed.Retry, Dictation.parse("Retry"))
+        assertEquals(Dictation.Parsed.Retry, Dictation.parse("reassign"))
+        assertEquals(Dictation.Parsed.Retry, Dictation.parse("try again"))
+    }
+
+    @Test
+    fun otherSpeechIsNotAnAssignment() {
+        assertNull(Dictation.parse("skill one"))
+        assertNull(Dictation.parse("assign"))
+        assertNull(Dictation.parse("user interface"))
+        assertNull(Dictation.parse("reassign skill"))
+    }
+
+    @Test
+    fun partialTranscriptsAreRecognisedEarly() {
+        assertEquals(true, Dictation.isAssignment("use"))
+        assertEquals(true, Dictation.isAssignment("assign move"))
+        assertEquals(false, Dictation.isAssignment("move left"))
+        assertEquals(false, Dictation.isAssignment("user"))
     }
 }

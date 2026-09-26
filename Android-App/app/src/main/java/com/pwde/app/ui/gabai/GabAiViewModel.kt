@@ -11,32 +11,43 @@ import com.pwde.app.data.gabai.GabAiRepository
 import com.pwde.app.data.gabai.GabAiSession
 import com.pwde.app.data.gabai.GabAiState
 import com.pwde.app.data.gabai.HudDetector
+import com.pwde.app.data.gabai.detectedToButtons
 import com.pwde.app.data.local.CalibrationProfile
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.GameProfile
 import com.pwde.app.data.local.ProfileRepository
+import com.pwde.app.data.local.enabledGestures
 import com.pwde.app.data.local.toCalibrationProfile
 import com.pwde.app.data.model.ButtonTrigger
 import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
+import com.pwde.app.data.model.isEnabledBy
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.TriggerType
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
 import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
+import com.pwde.app.sensors.voice.Dictation
 import com.pwde.app.sensors.voice.VoiceCommandManager
 import com.pwde.app.ui.common.FaceTrackingViewModel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -63,7 +74,7 @@ data class GabAiUiState(
     val resumable: GabAiSession? = null,
     val screenshot: ImageBitmap? = null,
     val selectedButtonId: Int? = null,
-    /** Waiting for the next thing the user says to become the selected button's name. */
+    /** Prompting the user to say "assign <name>" for the selected button. */
     val capturingLabel: Boolean = false,
     /** The screenshot is being sent to the backend to find its buttons. */
     val detectingButtons: Boolean = false,
@@ -97,6 +108,20 @@ class GabAiViewModel(
     val gameProfiles: StateFlow<List<GameProfile>> = profileRepository.gameProfiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Gesture sensitivities from the working controls, so the gesture test can tune them live. */
+    val gestureSensitivity: StateFlow<Map<FacialGesture, Int>> = controlsRepository.config
+        .map { it.gestureSensitivity }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Gestures a button can use: those the chosen calibration's gesture test enabled. */
+    val triggerGestures: StateFlow<List<FacialGesture>> = combine(
+        _ui.map { it.form.calibrationProfileId }.distinctUntilChanged(),
+        calibrationProfiles,
+    ) { id, profiles ->
+        val enabled = profiles.firstOrNull { it.id == id }?.enabledGestures
+        FacialGesture.curated.filter { it.isEnabledBy(enabled) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FacialGesture.curated)
+
     private val _navigation = Channel<GabAiNavigation>(Channel.BUFFERED)
     val navigation: Flow<GabAiNavigation> = _navigation.receiveAsFlow()
 
@@ -121,15 +146,32 @@ class GabAiViewModel(
             }
         }
         viewModelScope.launch {
-            // "Rename by voice": the next thing said becomes the selected button's name.
+            // "assign <words>" / "use <words>" names the selected button or sets the voice trigger; "retry" undoes it.
             voiceCommandManager.results.collect { result ->
-                if (!result.isFinal || !_ui.value.capturingLabel) return@collect
-                val id = _ui.value.selectedButtonId ?: return@collect
-                val label = result.transcript.trim().replaceFirstChar { it.uppercase() }
-                _ui.update { it.copy(capturingLabel = false) }
-                renameButton(id, label)
+                if (!result.isFinal) return@collect
+                when (val parsed = Dictation.parse(result.transcript)) {
+                    is Dictation.Parsed.Assign -> assignByVoice(parsed.words)
+                    Dictation.Parsed.Retry -> retryAssignment()
+                    null -> Unit
+                }
             }
         }
+        viewModelScope.launch {
+            // Watch the camera only while a gesture test step is showing.
+            _ui.map { it.state as? GabAiState.CalibrationGestureTest }.distinctUntilChanged().collectLatest { test ->
+                if (test != null) awaitGesture(test)
+            }
+        }
+        viewModelScope.launch {
+            _ui.map { dictationTarget(it) != null }.distinctUntilChanged().collect {
+                voiceCommandManager.setDictating(this@GabAiViewModel, it)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        voiceCommandManager.setDictating(this, false)
+        super.onCleared()
     }
 
     // ---- Welcome ----
@@ -253,18 +295,62 @@ class GabAiViewModel(
         }
     }
 
+    fun voiceDone() = go(GabAiFlow.voiceDone(_ui.value.form))
+
+    /**
+     * Passes the gesture once the user performs it, then moves on. The gesture must start while
+     * this step is showing, so a move still held from the previous step doesn't count.
+     */
+    private suspend fun awaitGesture(test: GabAiState.CalibrationGestureTest) {
+        val gesture = GabAiState.GESTURE_TEST[test.index]
+        if (gesture in _ui.value.form.passedGestures) return
+        var released = false
+        faceTracking.state.first { face ->
+            val active = gesture in face.gesture.active
+            if (!active) released = true
+            active && released
+        }
+        updateForm { it.copy(passedGestures = it.passedGestures + gesture) }
+        // Long enough to see "Got it!" before the next gesture.
+        delay(GESTURE_PASSED_PAUSE_MS)
+        val session = _ui.value.session ?: return
+        if (session.state == test) go(GabAiFlow.gestureTested(test, session.form))
+    }
+
+    /** Next gesture; one not performed yet stays off. */
+    fun nextGesture() {
+        val session = _ui.value.session ?: return
+        val test = session.state as? GabAiState.CalibrationGestureTest ?: return
+        go(GabAiFlow.gestureTested(test, session.form))
+    }
+
+    fun skipRemainingGestures() = go(GabAiFlow.gestureTestEnded())
+
+    fun retryMissedGestures() = go(GabAiFlow.retryMissedGestures(_ui.value.form))
+
+    fun setGestureSensitivity(gesture: FacialGesture, level: Int) {
+        viewModelScope.launch { controlsRepository.setGestureSensitivity(gesture, level) }
+    }
+
     fun setCalibrationName(name: String) = updateForm { it.copy(calibrationName = name) }
 
     fun saveCalibration() = viewModelScope.launch {
         val form = _ui.value.form
         val name = form.calibrationName.trim().ifEmpty { defaultCalibrationName(form) }
-        val config = controlsRepository.config.first().copy(
+        val current = controlsRepository.config.first()
+        val config = current.copy(
             cursor = form.cursor,
             joystick = form.joystick,
             voiceEnabled = form.voiceEnabled,
             voiceMatchMode = form.matchMode,
             voiceActivationMode = form.activationMode,
-        )
+            enabledGestures = form.passedGestures,
+        ).let { config ->
+            // An action mapped to a gesture the user couldn't perform would never fire; unmap it.
+            config.copy(gestureAssignments = config.gestureAssignments.filterValues(config::isGestureEnabled))
+        }
+        // It's the active setup from now on, gestures included.
+        controlsRepository.replace(config)
         val inputMode = if (form.calibrationMode == FaceOutputMode.JOYSTICK) InputMode.JOYSTICK else InputMode.HEAD_FACE
         val id = profileRepository.saveCalibrationProfile(config.toCalibrationProfile(name, inputMode, id = form.savedCalibrationId ?: 0))
         updateForm { it.copy(calibrationName = name, savedCalibrationId = id, calibrationProfileId = id) }
@@ -307,6 +393,7 @@ class GabAiViewModel(
             val current = controlsRepository.config.first()
             val updated = session.form.copy(
                 continueToGame = true,
+                passedGestures = emptySet(),
                 cursor = current.cursor,
                 joystick = current.joystick,
                 voiceEnabled = current.voiceEnabled,
@@ -342,15 +429,11 @@ class GabAiViewModel(
                 message("No buttons found on this screenshot — you can place them yourself next.")
                 return
             }
-            val counts = mutableMapOf<String, Int>()
-            val buttons = detected.sortedWith(compareBy({ it.y }, { it.x })).map { d ->
-                val base = d.className.replace('_', ' ').replaceFirstChar { it.uppercase() }
-                val n = (counts[base] ?: 0) + 1
-                counts[base] = n
-                MappedButton(nextButtonId++, if (n == 1) base else "$base $n", d.x, d.y)
-            }
+            val buttons = detectedToButtons(detected, nextButtonId)
+            nextButtonId += buttons.size
             editButtons { buttons }
-            message("Found ${buttons.size} button${if (buttons.size == 1) "" else "s"}. Check them on the next step.")
+            val stick = if (buttons.any { it.trigger == ButtonTrigger.MOVEMENT }) ", including the movement joystick" else ""
+            message("Found ${buttons.size} button${if (buttons.size == 1) "" else "s"}$stick. Check them on the next step.")
         }.onFailure {
             message("Couldn't reach button detection — you can place buttons yourself next.")
         }
@@ -406,6 +489,65 @@ class GabAiViewModel(
             return
         }
         _ui.update { it.copy(capturingLabel = true) }
+        message("Say \"assign\" and the name, like \"assign skill one\".")
+    }
+
+    // ---- Spoken assignment ----
+
+    /** What "assign <words>" would change right now, if anything. */
+    private sealed interface DictationTarget {
+        data class Label(val buttonId: Int) : DictationTarget
+        data class Trigger(val buttonIndex: Int) : DictationTarget
+    }
+
+    /** What the last spoken assignment replaced, so "retry" can put it back. */
+    private sealed interface Assignment {
+        data class Label(val buttonId: Int, val previous: String) : Assignment
+        data class Trigger(val buttonIndex: Int, val previous: ButtonTrigger?) : Assignment
+    }
+
+    private var lastAssignment: Assignment? = null
+
+    private fun dictationTarget(ui: GabAiUiState): DictationTarget? = when (val state = ui.state) {
+        is GabAiState.ButtonMapping -> ui.selectedButtonId?.let { DictationTarget.Label(it) }
+        is GabAiState.TriggerAssignment -> DictationTarget.Trigger(state.buttonIndex)
+        else -> null
+    }
+
+    private fun assignByVoice(words: String) {
+        val buttons = _ui.value.form.buttons
+        when (val target = dictationTarget(_ui.value) ?: return) {
+            is DictationTarget.Label -> {
+                val button = buttons.firstOrNull { it.id == target.buttonId } ?: return
+                lastAssignment = Assignment.Label(button.id, button.label)
+                val label = words.replaceFirstChar { it.uppercase() }
+                renameButton(button.id, label)
+                _ui.update { it.copy(capturingLabel = false) }
+                message("Named it \"$label\". Say \"retry\" to try again.")
+            }
+            is DictationTarget.Trigger -> {
+                val button = buttons.getOrNull(target.buttonIndex) ?: return
+                lastAssignment = Assignment.Trigger(target.buttonIndex, button.trigger)
+                setTrigger(target.buttonIndex, ButtonTrigger(TriggerType.VOICE, words))
+                message("Say \"$words\" to press ${button.label}. Say \"retry\" to try again.")
+            }
+        }
+    }
+
+    private fun retryAssignment() {
+        val target = dictationTarget(_ui.value) ?: return
+        when (val last = lastAssignment) {
+            is Assignment.Label -> if (target == DictationTarget.Label(last.buttonId)) renameButton(last.buttonId, last.previous)
+            is Assignment.Trigger -> if (target == DictationTarget.Trigger(last.buttonIndex)) setTrigger(last.buttonIndex, last.previous)
+            null -> Unit
+        }
+        lastAssignment = null
+        if (target is DictationTarget.Label) {
+            _ui.update { it.copy(capturingLabel = true) }
+            message("Listening again — say \"assign\" and the name.")
+        } else {
+            message("Listening again — say \"assign\" and what you'll say to press it.")
+        }
     }
 
     fun buttonsDone() {
@@ -519,6 +661,10 @@ class GabAiViewModel(
             val bitmap = gabAiRepository.loadScreenshot(path)?.asImageBitmap()
             if (loadedScreenshotPath == path) _ui.update { it.copy(screenshot = bitmap) }
         }
+    }
+
+    private companion object {
+        const val GESTURE_PASSED_PAUSE_MS = 1_200L
     }
 
     private fun defaultCalibrationName(form: GabAiForm): String =

@@ -6,6 +6,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pwde.app.data.local.ControlsRepository
+import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.VoiceShortcut
 import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.prefs.SettingsRepository
@@ -70,6 +71,10 @@ class VoiceViewModel(
     private val _navigation = Channel<VoiceNavigation>(Channel.BUFFERED)
     val navigation: Flow<VoiceNavigation> = _navigation.receiveAsFlow()
 
+    /** "play <game>": the NavHost starts the real game (it can ask for permissions; this can't). */
+    private val _playRequests = Channel<Game>(Channel.BUFFERED)
+    val playRequests: Flow<Game> = _playRequests.receiveAsFlow()
+
     private val handlers = LinkedHashMap<Any, Pair<List<VoiceCommand>, (VoiceCommand) -> Unit>>()
 
     override val hasMicPermission: Boolean get() = voiceCommandManager.hasMicPermission
@@ -111,7 +116,7 @@ class VoiceViewModel(
             StandardCommands.BACK.id, StandardCommands.CLOSE.id -> _navigation.send(VoiceNavigation.BACK)
             StandardCommands.HOME.id, StandardCommands.MENU.id -> _navigation.send(VoiceNavigation.HOME)
             StandardCommands.SETTINGS.id -> _navigation.send(VoiceNavigation.SETTINGS)
-            else -> when (StandardCommands.shortcutOf(command)) {
+            else -> StandardCommands.gameToPlay(command)?.let { _playRequests.send(it) } ?: when (StandardCommands.shortcutOf(command)) {
                 VoiceShortcut.CURSOR_MODE -> switchInput(InputMode.HEAD_FACE, "Switched to cursor mode")
                 VoiceShortcut.JOYSTICK_MODE -> switchInput(InputMode.JOYSTICK, "Switched to joystick mode")
                 VoiceShortcut.SWITCH_PROFILE -> switchCalibrationProfile()

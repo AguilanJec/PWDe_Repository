@@ -113,11 +113,16 @@ class FaceFrameProcessor {
         cursor = CursorPosition.CENTER
     }
 
-    /** Tilt and nod also steer the joystick, so in joystick mode they don't fire actions. (Shake uses yaw, which the joystick ignores.) */
-    fun actionableStarts(state: FaceState): Set<FacialGesture> =
-        if (state.outputMode == FaceOutputMode.JOYSTICK) {
-            state.gesture.started - setOf(FacialGesture.TILT_LEFT, FacialGesture.TILT_RIGHT, FacialGesture.NOD)
+    /**
+     * Gestures that fire actions this frame. Only gestures the calibration enabled count. Tilt and nod
+     * also steer the joystick, so in joystick mode they don't fire actions. (Shake uses yaw, which the joystick ignores.)
+     */
+    fun actionableStarts(state: FaceState, controls: ControlConfig): Set<FacialGesture> {
+        val enabled = state.gesture.started.filterTo(mutableSetOf(), controls::isGestureEnabled)
+        return if (state.outputMode == FaceOutputMode.JOYSTICK) {
+            enabled - setOf(FacialGesture.TILT_LEFT, FacialGesture.TILT_RIGHT, FacialGesture.NOD)
         } else {
-            state.gesture.started
+            enabled
         }
+    }
 }

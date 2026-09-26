@@ -37,6 +37,18 @@ object ControlJson {
             if (gesture != null && level != null) gesture to level else null
         }.toMap()
 
+    /** A set of gestures as a JSON list of names; null stays null ("never tested"). */
+    fun encodeGestureSet(set: Set<FacialGesture>?): String? = set?.let { gestures -> gson.toJson(gestures.map { it.name }) }
+
+    /** Unknown names are dropped; null or unreadable JSON decodes to null. */
+    fun decodeGestureSet(json: String?): Set<FacialGesture>? {
+        if (json.isNullOrBlank()) return null
+        val names = runCatching { gson.fromJson<List<String>>(json, stringListType) }.getOrNull() ?: return null
+        return names.mapNotNull { name -> FacialGesture.entries.firstOrNull { it.name == name } }.toSet()
+    }
+
+    private val stringListType = object : TypeToken<List<String>>() {}.type
+
     fun encodeShortcuts(map: Map<VoiceShortcut, String>): String =
         gson.toJson(map.entries.associate { (shortcut, phrase) -> shortcut.name to phrase })
 

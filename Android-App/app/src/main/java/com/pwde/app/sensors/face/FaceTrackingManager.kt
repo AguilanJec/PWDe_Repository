@@ -5,10 +5,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.Display
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -35,6 +37,7 @@ import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ProducerScope
@@ -49,6 +52,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -89,7 +93,7 @@ interface FaceTrackingManager {
  * landmarker with blendshapes. Unlike GameFace there is no AccessibilityService: tracking only
  * drives PWDe's own screens.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class MediaPipeFaceTrackingManager(
     context: Context,
     private val controlsRepository: ControlsRepository,
@@ -209,9 +213,28 @@ class MediaPipeFaceTrackingManager(
             .build()
         var lastFrameMs = 0L
 
+        // Frames are turned upright for the display's current rotation, so a nod stays a nod when a
+        // game switches to landscape. The use cases start with whatever rotation they were built in.
+        val displayManager = appContext.getSystemService(DisplayManager::class.java)
+        fun syncRotation() {
+            val rotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: return
+            analysis.targetRotation = rotation
+            preview.targetRotation = rotation
+        }
+        val rotationListener = object : DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId == Display.DEFAULT_DISPLAY) syncRotation()
+            }
+
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+        }
+
         // CameraX use-case wiring and binding must happen on the main thread.
         val bound = withContext(Dispatchers.Main) {
             runCatching {
+                syncRotation()
+                displayManager.registerDisplayListener(rotationListener, mainHandler)
                 preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
                 analysis.setAnalyzer(executor) { image ->
                     val now = SystemClock.uptimeMillis()
@@ -224,21 +247,39 @@ class MediaPipeFaceTrackingManager(
                     }
                 }
                 owner.start()
-                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+                // Tracking needs only the analysis stream. The preview is added while a screen shows it:
+                // CameraX delivers no frames at all while a bound preview has no surface, which is the
+                // case whenever PWDe runs in the background over a game.
+                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
             }.onFailure { Log.e(TAG, "Couldn't open the front camera", it) }.isSuccess
         }
 
         if (bound) {
+            launch(Dispatchers.Main) {
+                _surfaceRequest.subscriptionCount
+                    .map { it > 0 }
+                    .distinctUntilChanged()
+                    // Screen changes briefly drop the count to zero; don't restart the preview for that.
+                    .debounce { shown -> if (shown) 0L else PREVIEW_RELEASE_DELAY_MS }
+                    .collect { shown ->
+                        runCatching {
+                            provider.unbind(preview)
+                            _surfaceRequest.value = null
+                            if (shown) provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview)
+                        }.onFailure { Log.w(TAG, "Couldn't ${if (shown) "show" else "hide"} the camera preview", it) }
+                    }
+            }
             launch(Dispatchers.Default) {
                 for ((result, timestamp) in results) {
+                    val frameTuning = tuningState.value
                     val next = processor.process(
                         pose = result.headPose(),
                         blendshapes = result.blendshapeScores(),
                         timestampMs = timestamp,
-                        tuning = tuningState.value,
+                        tuning = frameTuning,
                         base = base.copy(landmarks = result.landmarkArray(), confidence = result.presence()),
                     )
-                    processor.actionableStarts(next).forEach { _gestureEvents.tryEmit(it) }
+                    processor.actionableStarts(next, frameTuning.controls).forEach { _gestureEvents.tryEmit(it) }
                     send(next)
                 }
             }
@@ -250,6 +291,7 @@ class MediaPipeFaceTrackingManager(
             results.close()
             if (activeProcessor === processor) activeProcessor = null
             mainHandler.post {
+                displayManager.unregisterDisplayListener(rotationListener)
                 analysis.clearAnalyzer()
                 owner.destroy()
                 runCatching { provider.unbind(preview, analysis) }
@@ -272,8 +314,9 @@ class MediaPipeFaceTrackingManager(
         val tuningState = tuning.stateIn(this)
         send(base)
         orientation.poses().collect { (pose, timestamp) ->
-            val next = processor.process(pose, emptyMap(), timestamp, tuningState.value, base)
-            processor.actionableStarts(next).forEach { _gestureEvents.tryEmit(it) }
+            val frameTuning = tuningState.value
+            val next = processor.process(pose, emptyMap(), timestamp, frameTuning, base)
+            processor.actionableStarts(next, frameTuning.controls).forEach { _gestureEvents.tryEmit(it) }
             send(next)
         }
     }
@@ -306,6 +349,9 @@ class MediaPipeFaceTrackingManager(
 
         /** ~30 FPS. */
         private const val FRAME_INTERVAL_MS = 33L
+
+        /** How long no screen may show the preview before it's detached. */
+        private const val PREVIEW_RELEASE_DELAY_MS = 500L
     }
 }
 

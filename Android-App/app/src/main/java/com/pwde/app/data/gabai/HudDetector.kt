@@ -1,6 +1,8 @@
 package com.pwde.app.data.gabai
 
 import com.google.gson.Gson
+import com.pwde.app.data.model.ButtonTrigger
+import com.pwde.app.data.model.MappedButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -75,3 +77,27 @@ class CloudHudDetector(baseUrl: String) : HudDetector {
         val BACKEND_GAMES = mapOf("mobile_legends" to "mlbb", "clash_royale" to "clash_royale")
     }
 }
+
+/**
+ * Detected HUD elements → GabAI buttons, top to bottom, numbered when a class repeats ("Skill button 2").
+ * The model's joystick becomes the game's movement joystick: named so, and already set to be held
+ * and steered by the head joystick, so the user doesn't have to set it up by hand.
+ */
+fun detectedToButtons(detected: List<DetectedButton>, firstId: Int): List<MappedButton> {
+    val counts = mutableMapOf<String, Int>()
+    var id = firstId
+    var movementAssigned = false
+    return detected.sortedWith(compareBy({ it.y }, { it.x })).map { d ->
+        if (d.className == JOYSTICK_CLASS && !movementAssigned) {
+            movementAssigned = true
+            return@map MappedButton(id++, "Movement joystick", d.x, d.y, ButtonTrigger.MOVEMENT)
+        }
+        val base = d.className.replace('_', ' ').replaceFirstChar { it.uppercase() }
+        val n = (counts[base] ?: 0) + 1
+        counts[base] = n
+        MappedButton(id++, if (n == 1) base else "$base $n", d.x, d.y)
+    }
+}
+
+/** calibration-backend's class name for a game's movement joystick (app/constants.py). */
+const val JOYSTICK_CLASS = "joystick"

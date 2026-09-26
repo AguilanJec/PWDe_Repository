@@ -37,6 +37,16 @@ interface GameProfileDao {
     @Query("SELECT * FROM game_profiles WHERE id = :id")
     suspend fun getById(id: Long): GameProfile?
 
+    /** The profile played most recently for [gameId], else the newest one. */
+    @Query(
+        "SELECT * FROM game_profiles WHERE gameId = :gameId " +
+            "ORDER BY lastPlayedAt IS NULL, lastPlayedAt DESC, createdAt DESC LIMIT 1",
+    )
+    suspend fun lastPlayedFor(gameId: String): GameProfile?
+
+    @Query("UPDATE game_profiles SET lastPlayedAt = :playedAt WHERE id = :id")
+    suspend fun markPlayed(id: Long, playedAt: Long)
+
     @Insert
     suspend fun insert(profile: GameProfile): Long
 
