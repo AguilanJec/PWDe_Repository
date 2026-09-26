@@ -32,7 +32,7 @@ com.pwde.app
 │                          SherpaWakeWordEngine + SherpaInGameVoiceEngine (sherpa-onnx KWS), KeywordTokenizer
 └── ui/
     ├── theme/             PwdeTheme + ThemeViewModel (drives the whole app from settings)
-    ├── components/        design-system components (buttons, cards, steppers, voice bar…)
+    ├── components/        design-system components (buttons, cards, steppers, mic overlay…)
     ├── navigation/        Routes, PwdeNavHost, ScreenReaderViewModel
     └── <feature>/         one screen + ViewModel per feature
 ```
@@ -69,10 +69,11 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 - Matching is exact phrase or word-anywhere. Activation is right away (on partial results) or after you finish.
 - Standard commands work everywhere: back, home, next, skip, settings, menu, close. So do your shortcuts (cursor mode, joystick mode, switch profile).
 - Each screen adds its own commands, usually the names on its cards and buttons.
+- Every `PwdeScreen` shows the same floating mic (`VoiceMicOverlay`). Tap it to turn voice on or off. Nothing is shown while idle; what PWDe heard and the command it matched pop up beside the mic for a few seconds and are announced to screen readers. A screen's `voiceHint` is read out with the mic button.
 
 **Fallbacks (never a crash, never a block).**
 - No camera permission or no front camera: the phone's motion sensors stand in for your head. Every place this is active shows **"Demo Mode: Simulated Head Tracking"**.
-- No mic permission or no recognition service: the voice bar's keyboard button takes typed commands. They go through the same matching and command catalog.
+- No mic permission: tapping the floating mic asks for it. No recognition service: the mic shows as off and every screen still works by touch. There is no typed-command box on app screens (`VoiceCommandManager.submitText` remains as an API with no UI caller); gameplay keeps its own typed fallback.
 
 **In-game voice (button activations).** During gameplay only, voice goes through the `InGameVoiceEngine` interface. It recognizes just the active game profile's button triggers plus back/pause/menu, resume, select and recenter. This covers both the in-app playing view and PWDe running over the real game.
 - The implementation is `SherpaInGameVoiceEngine`: on-device [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) keyword spotting with the English GigaSpeech 3.3M KWS model, listening for exactly those phrases. App navigation (`VoiceCommandManager`) and GabAI's "assign/use" dictation stay on Android `SpeechRecognizer`, because they need free-form speech.
@@ -97,6 +98,29 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 - Its **Wake word** panel runs its own sherpa-onnx spotter: type any phrase, press **Start listening**, and watch detections, mic level and model load.
 - **Tune** beside a phrase steps its `boost` and `threshold`; **Spotter defaults** steps the four spotter-wide values. **Apply & restart** pushes them into the panel's spotter, and gameplay's button voice picks them up the next time it starts or reloads its commands. **Reset** puts everything back on the shipped values.
 - To tune a button's voice trigger, add the same phrase here.
+
+## Back navigation
+
+The back arrow, the system back gesture and voice "back" always do the same thing: return to the screen you actually came from.
+- Every route in `PwdeNavHost` passes `::back`, which pops the real back stack. No screen navigates to a fixed "parent" on back.
+- Wizards (Setup, Voice tutorial, GabAI, Testing Station pages) step back through their own steps first, then leave. Their `BackHandler` and back arrow call the same function.
+- Voice "back" goes through the `OnBackPressedDispatcher`, so it follows the same rules. On a root screen it does nothing rather than close the app.
+- GabAI opened mid-flow (a new or edited game profile from Game Detail, Profile or Controls) leaves for that screen when you back out of its first step. It doesn't show GabAI's Welcome, which you never came through. Finishing with **Play** replaces GabAI on the stack, so back from the preview returns to where GabAI was opened.
+- `GabAiPersistenceTest` covers GabAI's back behaviour; `SetupViewModelTest` covers Setup's.
+
+**Manual QA** (repeat each with the back arrow, the system back gesture, and saying "back"):
+- [ ] Dashboard → Games tab → game → Test profile (Playing) → back → Game Detail → back → Games → back → Dashboard
+- [ ] Profile → game profile Test → back → Profile
+- [ ] Dashboard → Controls → Gestures → choose a gesture → back → Gestures → back → Controls → back → Dashboard
+- [ ] Profile → Controls → Voice → back → Controls → back → Profile
+- [ ] Dashboard → Voice (config) → back → Dashboard
+- [ ] Game Detail → Set up with GabAI → back → Game Detail
+- [ ] Game Detail → Edit profile (GabAI, placing buttons) → Done → back → placing buttons → back → Game Detail
+- [ ] Dashboard → GabAI → start calibration → back → GabAI Welcome → back → Dashboard
+- [ ] GabAI game profile → save → Play → back → the screen GabAI was opened from
+- [ ] Setup step 3 → back → step 2 → back → step 1 → back → Welcome; Voice tutorial likewise
+- [ ] Profile → Edit appearance → back → Profile
+- [ ] On Dashboard, saying "back" does nothing (the app stays open)
 
 ## Real vs. placeholder in this build
 

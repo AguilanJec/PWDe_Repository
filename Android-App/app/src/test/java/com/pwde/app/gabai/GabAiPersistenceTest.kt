@@ -30,12 +30,14 @@ import com.pwde.app.sensors.voice.VoiceResult
 import com.pwde.app.sensors.voice.VoiceState
 import com.pwde.app.ui.FakeSettingsRepository
 import com.pwde.app.ui.MainDispatcherRule
+import com.pwde.app.ui.gabai.GabAiNavigation
 import com.pwde.app.ui.gabai.GabAiStart
 import com.pwde.app.ui.gabai.GabAiViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -247,5 +249,57 @@ class GabAiPersistenceTest {
         val all = runBlocking { profiles.gameProfiles.first() }
         assertEquals(1, all.size)
         assertEquals("Deploy", ControlJson.decodeButtons(all.single().buttonMappingsJson).single().label)
+    }
+
+    /** The next navigation request, or null if none arrives. */
+    private fun GabAiViewModel.nextNavigation(): GabAiNavigation? =
+        runBlocking { withTimeoutOrNull(200) { navigation.first() } }
+
+    private fun savedGameProfileId(): Long {
+        val vm = newViewModel()
+        vm.startGameProfile("clash_royale")
+        settle()
+        vm.useBlankScreen()
+        vm.addButton(0.5f, 0.5f)
+        vm.buttonsDone()
+        vm.setTrigger(0, ButtonTrigger(TriggerType.GESTURE, FacialGesture.SMILE.name))
+        vm.triggerDone()
+        vm.saveGameProfile()
+        settle()
+        return runBlocking { profiles.gameProfiles.first().single().id }
+    }
+
+    @Test
+    fun backFromTheStepAnotherScreenOpenedLeavesGabAi() {
+        val editor = newViewModel(GabAiStart.EditGameProfile(savedGameProfileId()))
+        settle()
+        assertEquals(GabAiState.ButtonMapping(1), editor.ui.value.state)
+        editor.back()
+        // Straight back to Game Detail / Profile, not GabAI's Welcome, which the user never saw.
+        assertEquals(GabAiNavigation.Exit, editor.nextNavigation())
+    }
+
+    @Test
+    fun backStepsThroughVisitedStepsBeforeLeaving() {
+        val editor = newViewModel(GabAiStart.EditGameProfile(savedGameProfileId()))
+        settle()
+        editor.buttonsDone()
+        editor.back()
+        assertEquals(GabAiState.ButtonMapping::class, editor.ui.value.state::class)
+        assertNull(editor.nextNavigation())
+        editor.back()
+        assertEquals(GabAiNavigation.Exit, editor.nextNavigation())
+    }
+
+    @Test
+    fun backInAFlowStartedFromWelcomeReturnsToWelcomeFirst() {
+        val vm = newViewModel()
+        vm.startCalibration()
+        settle()
+        vm.back()
+        assertNull(vm.ui.value.session)
+        assertNull(vm.nextNavigation())
+        vm.back()
+        assertEquals(GabAiNavigation.Exit, vm.nextNavigation())
     }
 }

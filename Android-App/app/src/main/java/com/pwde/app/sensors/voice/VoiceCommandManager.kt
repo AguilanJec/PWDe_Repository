@@ -55,7 +55,7 @@ data class VoiceState(
     /** Another subsystem (gameplay, or the Testing Station's wake-word engine) has the microphone. */
     val pausedForOtherInput: Boolean = false,
 ) {
-    /** Typed commands take over when the mic can't be used. */
+    /** The mic can't be used (no permission, or no recognizer); app screens are then touch-only. */
     val usesTextFallback: Boolean get() = availability != MicAvailability.AVAILABLE
 }
 
@@ -73,7 +73,10 @@ interface VoiceCommandManager {
 
     fun refreshPermissions()
 
-    /** Typed fallback: same matching, same command catalog. */
+    /**
+     * Text in place of speech: same matching, same command catalog. Kept as an API (tests, future
+     * input methods) but no app screen calls it: the typed-command box was removed with the voice bar.
+     */
     fun submitText(text: String)
 
     /** Commands for whatever [owner] (a screen) is showing. Replaces that owner's previous list. */

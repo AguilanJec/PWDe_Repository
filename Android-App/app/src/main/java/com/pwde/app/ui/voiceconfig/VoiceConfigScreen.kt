@@ -271,7 +271,7 @@ private fun MicLevel(voice: VoiceState, levels: List<Float>) {
             Text("Mic level", style = MaterialTheme.typography.titleMedium, color = colors.text, modifier = Modifier.weight(1f))
             StatusPill(
                 when {
-                    voice.usesTextFallback -> "Typing only"
+                    voice.usesTextFallback -> "Unavailable"
                     !voice.enabled -> "Off"
                     voice.listening -> "Listening"
                     else -> "Starting"
@@ -298,7 +298,7 @@ private fun MicLevel(voice: VoiceState, levels: List<Float>) {
         }
         Text(
             when {
-                voice.usesTextFallback -> "${voice.availability.label}. Use the keyboard button in the voice bar to type commands."
+                voice.usesTextFallback -> "${voice.availability.label}. Every screen still works by touch."
                 voice.lastTranscript != null -> "Heard: \"${voice.lastTranscript}\"" + (voice.lastCommand?.let { " · last command: ${it.label}" } ?: "")
                 voice.enabled -> "Say something — what PWDe hears appears here."
                 else -> "Voice control is off."

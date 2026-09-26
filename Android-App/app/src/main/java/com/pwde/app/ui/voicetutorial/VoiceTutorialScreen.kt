@@ -63,7 +63,7 @@ fun VoiceTutorialScreen(viewModel: VoiceTutorialViewModel, onExit: () -> Unit, o
     BackHandler { if (!viewModel.back()) onExit() }
 
     val (title, subtitle) = when (state.step) {
-        0 -> "Say the button name" to "Every button has a name. Say it to press it."
+        0 -> "Practice Voice " to "Every button has a name. Say it to press it."
         1 -> "Everything is voice controlled" to "Menus, settings and games — all by voice."
         else -> "Read the screen aloud" to "PWDe can read what's on screen to you."
     }

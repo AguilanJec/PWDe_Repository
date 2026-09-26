@@ -1,22 +1,29 @@
 package com.pwde.app.ui.testingstation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.Hearing
@@ -30,15 +37,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +81,7 @@ import com.pwde.app.ui.components.SegmentedToggle
 import com.pwde.app.ui.controls.GestureCatalog
 import com.pwde.app.ui.components.CursorPad
 import com.pwde.app.ui.components.DemoModeBanner
+import com.pwde.app.ui.components.FooterActions
 import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
 import com.pwde.app.ui.components.IconBadge
@@ -79,6 +92,7 @@ import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeTextField
 import com.pwde.app.ui.components.StatusPill
+import com.pwde.app.ui.components.StepProgress
 import com.pwde.app.ui.components.VoiceCommandsEffect
 import com.pwde.app.ui.components.fmt
 import com.pwde.app.ui.components.voiceCommand
@@ -250,206 +264,310 @@ fun TestingStationScreen(viewModel: TestingStationViewModel, onBack: () -> Unit)
     val newWakeWord by viewModel.newWakeWord.collectAsStateWithLifecycle()
     val buttonOverlay by viewModel.buttonOverlay.collectAsStateWithLifecycle()
     val hitTime = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-    val colors = PwdeTheme.colors
-    PwdeScreen(
-        title = "Testing Station",
-        subtitle = "See exactly what PWDe picks up from you.",
-        onBack = onBack,
-        voiceHint = "Say \"swap gesture\", or anything — it shows up in the Voice panel",
-    ) {
-        DemoModeBanner(face)
-        CameraFeed(
-            faceState = face,
-            surfaceRequest = surface,
-            canRequestCamera = viewModel.canRequestCamera,
-            onCameraPermissionResult = viewModel::onCameraPermissionResult,
-            showLandmarks = true,
-        )
-        GesturesPanel(face)
-        Panel("Mapped buttons in game", Icons.Outlined.TouchApp) {
-            SwitchRow(
-                "Show mapped buttons",
-                buttonOverlay.shown,
-                viewModel::setButtonOverlayShown,
-                description = "While playing, draws each button where PWDe taps it. A press flashes green when " +
-                    "Android made the tap, amber when it went with the held joystick, red when it failed.",
-            )
-            val level = (buttonOverlay.opacity * 10).roundToInt().coerceIn(1, 10)
-            LevelSlider(
-                "Overlay opacity",
-                level,
-                { viewModel.setButtonOverlayOpacity(it / 10f) },
-                valueLabel = "${level * 10}%",
-                enabled = buttonOverlay.shown,
-            )
-        }
-        FacePanel(face)
-        Panel("Voice", Icons.Outlined.Mic) {
-            Reading("State", when {
-                voice.usesTextFallback -> voice.availability.label
-                !voice.enabled -> "Off"
-                voice.listening -> "Listening (level ${fmt(voice.level)})"
-                else -> "Starting"
-            })
-            Reading("Match / activation", "${voice.matchMode.label} · ${voice.activationMode.label}")
-            Reading("Transcript", lastResult?.let { "\"${it.transcript}\" (${if (it.isFinal) "final" else "partial"}, ${it.source.name.lowercase()})" } ?: "—")
-            Reading("Matched command", lastResult?.command?.let { "${it.label} [${it.scope.name.lowercase()}]" } ?: "—")
-        }
-        Panel("Wake word", Icons.Outlined.Hearing) {
-            Reading("Engine", SherpaInGameVoiceEngine.MODEL_LABEL)
-            Reading(
-                "Status",
-                when {
-                    wakeWord.running -> "Listening for ${wakeWord.phrases.size} phrase(s)"
-                    wakeWord.canListen -> "Stopped"
-                    else -> wakeWord.availability.label
-                },
-            )
-            Reading("Detections", wakeWord.detections.toString())
-            Reading("Mic level", if (wakeWord.running) fmt(wakeWord.level) else "—")
-            Reading(
-                "Model load",
-                if (wakeWord.running) {
-                    val percent = (wakeWord.realTimeFactor * 100).toInt()
-                    "$percent% of real time" + if (percent >= 100) " — dropping audio" else ""
-                } else {
-                    "—"
-                },
-            )
-            Reading("Last hit", wakeWordLog.firstOrNull()?.let { "${hitTime.format(Date(it.atMs))} · \"${it.phrase}\"" } ?: "—")
-            wakeWord.error?.let { Reading("Error", it) }
-            if (wakeWord.unsupported.isNotEmpty()) {
-                Reading("Can't spot", wakeWord.unsupported.joinToString(", ") { "\"$it\"" })
-            }
-            PwdeTextField(
-                "Wake phrase",
-                newWakeWord,
-                viewModel::onNewWakeWordChange,
-                helper = "Any English phrase, e.g. hey pwde",
-            )
-            PwdeButton(
-                "Add phrase",
-                viewModel::addWakeWord,
-                enabled = newWakeWord.isNotBlank(),
-                icon = Icons.Outlined.Add,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text("Listening for", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
-            selectedWakeWords.forEach { phrase ->
-                // A phrase starts on a preset; opening Tune exposes the by-hand numbers behind it.
-                val tuning = wakeTuning[WakeWordTuningStore.key(phrase)] ?: WakeWordTuningStore.DEFAULT_PHRASE_TUNING
-                var tuningOpen by rememberSaveable(phrase) { mutableStateOf(false) }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { tuningOpen = !tuningOpen },
-                ) {
-                    Text(
-                        phrase,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.text,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        if (tuningOpen) "Hide" else "Tune",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.primary,
-                    )
-                    IconButton(onClick = { viewModel.removeWakeWord(phrase) }) {
-                        Icon(Icons.Outlined.Close, contentDescription = "Stop listening for $phrase")
+
+    var page by rememberSaveable { mutableStateOf(TestingPage.CAMERA_GESTURES) }
+    val isLastPage = page.ordinal == TestingPage.entries.lastIndex
+    fun next() {
+        if (isLastPage) onBack() else page = TestingPage.entries[page.ordinal + 1]
+    }
+    fun previous() {
+        if (page.ordinal == 0) onBack() else page = TestingPage.entries[page.ordinal - 1]
+    }
+    VoiceCommandsEffect(PAGE_COMMANDS) { id -> if (id == "next_page") next() else previous() }
+    BackHandler { previous() }
+    // Keeps each page's own saveable state (gesture position, open Tune rows) while it is off-screen.
+    val pageState = rememberSaveableStateHolder()
+
+    // Keyed so every page starts scrolled to the top.
+    key(page) {
+        PwdeScreen(
+            title = "Testing Station",
+            subtitle = "See exactly what PWDe picks up from you.",
+            onBack = { previous() },
+            voiceHint = page.voiceHint,
+            footer = {
+                FooterActions(
+                    primaryText = if (isLastPage) "Done" else "Next",
+                    onPrimary = { next() },
+                    primaryIcon = if (isLastPage) Icons.Outlined.Check else Icons.AutoMirrored.Outlined.ArrowForward,
+                    secondaryText = if (page.ordinal > 0) "Previous" else null,
+                    onSecondary = { previous() },
+                    secondaryIcon = Icons.AutoMirrored.Outlined.ArrowBack,
+                )
+            },
+        ) {
+            StepProgress(page.ordinal + 1, TestingPage.entries.size, page.label)
+            pageState.SaveableStateProvider(page.name) {
+                when (page) {
+                    TestingPage.CAMERA_GESTURES -> {
+                        DemoModeBanner(face)
+                        CameraFeed(
+                            faceState = face,
+                            surfaceRequest = surface,
+                            canRequestCamera = viewModel.canRequestCamera,
+                            onCameraPermissionResult = viewModel::onCameraPermissionResult,
+                            showLandmarks = true,
+                        )
+                        GesturesPanel(face)
+                        FacePanel(face)
+                    }
+                    TestingPage.VOICE -> {
+                        VoicePanel(voice, lastResult)
+                        WakeWordPanel(
+                            viewModel = viewModel,
+                            wakeWord = wakeWord,
+                            wakeWordLog = wakeWordLog,
+                            selectedWakeWords = selectedWakeWords,
+                            wakeTuning = wakeTuning,
+                            spotterTuning = spotterTuning,
+                            newWakeWord = newWakeWord,
+                            hitTime = hitTime,
+                        )
+                    }
+                    TestingPage.CURSOR_JOYSTICK -> {
+                        CursorPanel(face)
+                        JoystickPanel(face)
+                        MappedButtonsPanel(buttonOverlay, viewModel)
                     }
                 }
-                if (tuningOpen) {
-                    SegmentedToggle(
-                        WakeWordSensitivity.entries,
-                        WakeWordSensitivity.presetFor(tuning),
-                        { it.label },
-                        { viewModel.setSensitivity(phrase, it) },
-                    )
-                    TuningSteppers(
-                        boost = tuning.boost,
-                        threshold = tuning.threshold,
-                        inherited = spotterTuning,
-                        onTuning = { viewModel.setTuning(phrase, it) },
-                    )
-                }
             }
-            Text("Spotter defaults", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
-            TuningSteppers(
-                boost = spotterTuning.score,
-                threshold = spotterTuning.threshold,
-                inherited = spotterTuning,
-                onTuning = { edited ->
-                    viewModel.setSpotterTuning(
-                        spotterTuning.copy(
-                            score = edited.boost ?: spotterTuning.score,
-                            threshold = edited.threshold ?: spotterTuning.threshold,
-                        ),
-                    )
-                },
-            )
-            ValueStepper(
-                "Trailing blanks",
-                spotterTuning.trailingBlanks.toString(),
-                { direction ->
-                    viewModel.setSpotterTuning(
-                        spotterTuning.copy(trailingBlanks = spotterTuning.trailingBlanks + direction),
-                    )
-                },
-                canDecrease = spotterTuning.trailingBlanks > WakeWordSpotterTuning.TRAILING_BLANKS_RANGE.start,
-                canIncrease = spotterTuning.trailingBlanks < WakeWordSpotterTuning.TRAILING_BLANKS_RANGE.endInclusive,
-            )
-            ValueStepper(
-                "Active paths",
-                spotterTuning.activePaths.toString(),
-                { direction ->
-                    viewModel.setSpotterTuning(
-                        spotterTuning.copy(activePaths = spotterTuning.activePaths + direction),
-                    )
-                },
-                canDecrease = spotterTuning.activePaths > WakeWordSpotterTuning.ACTIVE_PATHS_RANGE.start,
-                canIncrease = spotterTuning.activePaths < WakeWordSpotterTuning.ACTIVE_PATHS_RANGE.endInclusive,
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PwdeButton("Apply & restart", viewModel::applyWakeWordTuning, modifier = Modifier.weight(1f))
-                PwdeButton(
-                    "Reset",
-                    viewModel::resetWakeWordTuning,
-                    style = ButtonStyle.SECONDARY,
+        }
+    }
+}
+
+/** The Testing Station's pages, in order. */
+private enum class TestingPage(val label: String, val voiceHint: String) {
+    CAMERA_GESTURES(
+        "Camera, gestures & face",
+        "Say \"swap gesture\", \"previous gesture\", \"mediapipe\" or \"next page\"",
+    ),
+    VOICE(
+        "Voice",
+        "Say anything — it shows up in the Voice panel. \"next page\" or \"previous page\" to move",
+    ),
+    CURSOR_JOYSTICK(
+        "Cursor & joystick",
+        "Move your head to drive the cursor and joystick. Say \"previous page\" to go back",
+    ),
+}
+
+private val PAGE_COMMANDS = listOf(
+    voiceCommand("next_page", "next page", "next"),
+    voiceCommand("previous_page", "previous page", "back", "go back"),
+)
+
+@Composable
+private fun MappedButtonsPanel(buttonOverlay: ButtonOverlay, viewModel: TestingStationViewModel) {
+    Panel("Mapped buttons in game", Icons.Outlined.TouchApp) {
+        SwitchRow(
+            "Show mapped buttons",
+            buttonOverlay.shown,
+            viewModel::setButtonOverlayShown,
+            description = "While playing, draws each button where PWDe taps it. A press flashes green when " +
+                    "Android made the tap, amber when it went with the held joystick, red when it failed.",
+        )
+        val level = (buttonOverlay.opacity * 10).roundToInt().coerceIn(1, 10)
+        LevelSlider(
+            "Overlay opacity",
+            level,
+            { viewModel.setButtonOverlayOpacity(it / 10f) },
+            valueLabel = "${level * 10}%",
+            enabled = buttonOverlay.shown,
+        )
+    }
+}
+
+@Composable
+private fun VoicePanel(voice: VoiceState, lastResult: VoiceResult?) {
+    Panel("Voice", Icons.Outlined.Mic) {
+        Reading("State", when {
+            voice.usesTextFallback -> voice.availability.label
+            !voice.enabled -> "Off"
+            voice.listening -> "Listening (level ${fmt(voice.level)})"
+            else -> "Starting"
+        })
+        Reading("Match / activation", "${voice.matchMode.label} · ${voice.activationMode.label}")
+        Reading("Transcript", lastResult?.let { "\"${it.transcript}\" (${if (it.isFinal) "final" else "partial"}, ${it.source.name.lowercase()})" } ?: "—")
+        Reading("Matched command", lastResult?.command?.let { "${it.label} [${it.scope.name.lowercase()}]" } ?: "—")
+    }
+}
+
+@Composable
+private fun WakeWordPanel(
+    viewModel: TestingStationViewModel,
+    wakeWord: WakeWordState,
+    wakeWordLog: List<WakeWordDetection>,
+    selectedWakeWords: List<String>,
+    wakeTuning: Map<String, WakeWordTuning>,
+    spotterTuning: WakeWordSpotterTuning,
+    newWakeWord: String,
+    hitTime: SimpleDateFormat,
+) {
+    val colors = PwdeTheme.colors
+    Panel("Wake word", Icons.Outlined.Hearing) {
+        Reading("Engine", SherpaInGameVoiceEngine.MODEL_LABEL)
+        Reading(
+            "Status",
+            when {
+                wakeWord.running -> "Listening for ${wakeWord.phrases.size} phrase(s)"
+                wakeWord.canListen -> "Stopped"
+                else -> wakeWord.availability.label
+            },
+        )
+        Reading("Detections", wakeWord.detections.toString())
+        Reading("Mic level", if (wakeWord.running) fmt(wakeWord.level) else "—")
+        Reading(
+            "Model load",
+            if (wakeWord.running) {
+                val percent = (wakeWord.realTimeFactor * 100).toInt()
+                "$percent% of real time" + if (percent >= 100) " — dropping audio" else ""
+            } else {
+                "—"
+            },
+        )
+        Reading("Last hit", wakeWordLog.firstOrNull()?.let { "${hitTime.format(Date(it.atMs))} · \"${it.phrase}\"" } ?: "—")
+        wakeWord.error?.let { Reading("Error", it) }
+        if (wakeWord.unsupported.isNotEmpty()) {
+            Reading("Can't spot", wakeWord.unsupported.joinToString(", ") { "\"$it\"" })
+        }
+        PwdeTextField(
+            "Wake phrase",
+            newWakeWord,
+            viewModel::onNewWakeWordChange,
+            helper = "Any English phrase, e.g. hey pwde",
+        )
+        PwdeButton(
+            "Add phrase",
+            viewModel::addWakeWord,
+            enabled = newWakeWord.isNotBlank(),
+            icon = Icons.Outlined.Add,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("Listening for", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
+        selectedWakeWords.forEach { phrase ->
+            // A phrase starts on a preset; opening Tune exposes the by-hand numbers behind it.
+            val tuning = wakeTuning[WakeWordTuningStore.key(phrase)] ?: WakeWordTuningStore.DEFAULT_PHRASE_TUNING
+            var tuningOpen by rememberSaveable(phrase) { mutableStateOf(false) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { tuningOpen = !tuningOpen },
+            ) {
+                Text(
+                    phrase,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.text,
                     modifier = Modifier.weight(1f),
                 )
+                Text(
+                    if (tuningOpen) "Hide" else "Tune",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.primary,
+                )
+                IconButton(onClick = { viewModel.removeWakeWord(phrase) }) {
+                    Icon(Icons.Outlined.Close, contentDescription = "Stop listening for $phrase")
+                }
             }
+            if (tuningOpen) {
+                SegmentedToggle(
+                    WakeWordSensitivity.entries,
+                    WakeWordSensitivity.presetFor(tuning),
+                    { it.label },
+                    { viewModel.setSensitivity(phrase, it) },
+                )
+                TuningSteppers(
+                    boost = tuning.boost,
+                    threshold = tuning.threshold,
+                    inherited = spotterTuning,
+                    onTuning = { viewModel.setTuning(phrase, it) },
+                )
+            }
+        }
+        Text("Spotter defaults", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
+        TuningSteppers(
+            boost = spotterTuning.score,
+            threshold = spotterTuning.threshold,
+            inherited = spotterTuning,
+            onTuning = { edited ->
+                viewModel.setSpotterTuning(
+                    spotterTuning.copy(
+                        score = edited.boost ?: spotterTuning.score,
+                        threshold = edited.threshold ?: spotterTuning.threshold,
+                    ),
+                )
+            },
+        )
+        ValueStepper(
+            "Trailing blanks",
+            spotterTuning.trailingBlanks.toString(),
+            { direction ->
+                viewModel.setSpotterTuning(
+                    spotterTuning.copy(trailingBlanks = spotterTuning.trailingBlanks + direction),
+                )
+            },
+            canDecrease = spotterTuning.trailingBlanks > WakeWordSpotterTuning.TRAILING_BLANKS_RANGE.start,
+            canIncrease = spotterTuning.trailingBlanks < WakeWordSpotterTuning.TRAILING_BLANKS_RANGE.endInclusive,
+        )
+        ValueStepper(
+            "Active paths",
+            spotterTuning.activePaths.toString(),
+            { direction ->
+                viewModel.setSpotterTuning(
+                    spotterTuning.copy(activePaths = spotterTuning.activePaths + direction),
+                )
+            },
+            canDecrease = spotterTuning.activePaths > WakeWordSpotterTuning.ACTIVE_PATHS_RANGE.start,
+            canIncrease = spotterTuning.activePaths < WakeWordSpotterTuning.ACTIVE_PATHS_RANGE.endInclusive,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PwdeButton("Apply & restart", viewModel::applyWakeWordTuning, modifier = Modifier.weight(1f))
+            PwdeButton(
+                "Reset",
+                viewModel::resetWakeWordTuning,
+                style = ButtonStyle.SECONDARY,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        ExpandableSection("How tuning works") {
             Reading("Easier to hit", "Higher boost keeps a keyword alive through beam search; lower threshold fires on weaker evidence. Both raise the false-alarm rate, so they are set per phrase — Normal / High / Max in one tap, or open Tune to step the numbers by hand.")
             Reading("Tuning", "A phrase's Tune numbers are written into its own keyword line; Spotter defaults are what an untuned phrase uses (score, threshold, trailing blanks and active paths are exactly sherpa-onnx's keywordsScore, keywordsThreshold, numTrailingBlanks and maxActivePaths). Values are clamped to what the model accepts, and both halves are pushed to the engine by Apply & restart.")
             Reading("Gameplay", "Mapped buttons are pressed by voice with this same spotter, and it uses the tuning set here. Tune a button's exact voice trigger by adding it as a phrase. App navigation still uses Google speech.")
             Reading("Heads up", "While this listens, PWDe's app-wide voice commands stand down.")
-            if (wakeWord.running) {
-                PwdeButton(
-                    "Stop listening",
-                    viewModel::toggleWakeWordListening,
-                    style = ButtonStyle.SECONDARY,
-                    icon = Icons.Outlined.Hearing,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                PwdeButton(
-                    "Start listening",
-                    viewModel::toggleWakeWordListening,
-                    enabled = selectedWakeWords.isNotEmpty(),
-                    icon = Icons.Outlined.Hearing,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
         }
-        Panel("Cursor", Icons.Outlined.Mouse) {
-            Reading("Position", "x ${fmt(face.cursor.x)}, y ${fmt(face.cursor.y)}")
-            Reading("Output mode", face.outputMode.label)
-            CursorPad(face.cursor, active = face.hasFace)
+        if (wakeWord.running) {
+            PwdeButton(
+                "Stop listening",
+                viewModel::toggleWakeWordListening,
+                style = ButtonStyle.SECONDARY,
+                icon = Icons.Outlined.Hearing,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            PwdeButton(
+                "Start listening",
+                viewModel::toggleWakeWordListening,
+                enabled = selectedWakeWords.isNotEmpty(),
+                icon = Icons.Outlined.Hearing,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
-        Panel("Joystick", Icons.Outlined.Gamepad) {
-            Reading("X / Y", "${fmt(face.joystick.x)} / ${fmt(face.joystick.y)}")
-            Reading("Direction", face.joystick.direction.label)
-            JoystickView(face.joystick, Modifier.fillMaxWidth(0.6f).align(Alignment.CenterHorizontally), active = face.hasFace)
-        }
+    }
+}
+
+@Composable
+private fun CursorPanel(face: FaceState) {
+    Panel("Cursor", Icons.Outlined.Mouse) {
+        Reading("Position", "x ${fmt(face.cursor.x)}, y ${fmt(face.cursor.y)}")
+        Reading("Output mode", face.outputMode.label)
+        CursorPad(face.cursor, active = face.hasFace)
+    }
+}
+
+@Composable
+private fun JoystickPanel(face: FaceState) {
+    Panel("Joystick", Icons.Outlined.Gamepad) {
+        Reading("X / Y", "${fmt(face.joystick.x)} / ${fmt(face.joystick.y)}")
+        Reading("Direction", face.joystick.direction.label)
+        JoystickView(face.joystick, Modifier.fillMaxWidth(0.6f).align(Alignment.CenterHorizontally), active = face.hasFace)
     }
 }
 
@@ -567,7 +685,7 @@ private fun FacePanel(face: FaceState) {
 }
 
 @Composable
-private fun Panel(title: String, icon: ImageVector, content: @Composable () -> Unit) {
+private fun Panel(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
     GradientCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             IconBadge(icon)
@@ -575,6 +693,26 @@ private fun Panel(title: String, icon: ImageVector, content: @Composable () -> U
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
+}
+
+/** A tappable header that shows or hides [content]; starts collapsed. */
+@Composable
+private fun ExpandableSection(title: String, content: @Composable () -> Unit) {
+    val colors = PwdeTheme.colors
+    var open by rememberSaveable(title) { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = MinTouchTarget)
+            .clip(PwdeShapes.button)
+            .clickable(role = Role.Button) { open = !open }
+            .semantics { stateDescription = if (open) "Expanded" else "Collapsed" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.labelMedium, color = colors.textMuted, modifier = Modifier.weight(1f))
+        Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null, tint = colors.primary)
+    }
+    if (open) content()
 }
 
 @Composable

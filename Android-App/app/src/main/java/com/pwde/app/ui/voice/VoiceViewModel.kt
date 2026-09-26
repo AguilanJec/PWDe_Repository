@@ -35,13 +35,12 @@ enum class VoiceNavigation { BACK, HOME, SETTINGS }
 interface VoiceController {
     val state: StateFlow<VoiceState>
 
-    /** Short feedback such as "Switched to joystick", shown in the voice bar. */
+    /** Short feedback such as "Switched to joystick", shown in the mic overlay's pop-up. */
     val notice: StateFlow<String?>
     val hasMicPermission: Boolean
 
     fun setVoiceEnabled(enabled: Boolean)
     fun onMicPermissionResult()
-    fun submitText(text: String)
 
     /** While registered, saying one of [commands] calls [onCommand]. */
     fun register(owner: Any, commands: List<VoiceCommand>, onCommand: (VoiceCommand) -> Unit)
@@ -94,8 +93,6 @@ class VoiceViewModel(
     }
 
     override fun onMicPermissionResult() = voiceCommandManager.refreshPermissions()
-
-    override fun submitText(text: String) = voiceCommandManager.submitText(text)
 
     override fun register(owner: Any, commands: List<VoiceCommand>, onCommand: (VoiceCommand) -> Unit) {
         handlers[owner] = commands to onCommand

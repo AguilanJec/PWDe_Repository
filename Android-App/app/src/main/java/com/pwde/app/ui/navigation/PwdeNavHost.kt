@@ -1,6 +1,7 @@
 package com.pwde.app.ui.navigation
 
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -87,11 +88,14 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         voice.playRequests.collect { game -> if (inMainApp()) playGame(game, null) }
     }
 
-    // Standard voice commands. Voice "back" never closes the app from the root screen.
+    // Standard voice commands. Voice "back" goes through the same dispatcher as the system back
+    // gesture, so wizard screens step back first; with nothing to handle it (the root screen) it
+    // does nothing rather than close the app.
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     LaunchedEffect(voice) {
         voice.navigation.collect { request ->
             when (request) {
-                VoiceNavigation.BACK -> navController.popBackStack()
+                VoiceNavigation.BACK -> backDispatcher?.takeIf { it.hasEnabledCallbacks() }?.onBackPressed()
                 VoiceNavigation.HOME -> if (inMainApp()) navController.popBackStack(Routes.DASHBOARD, inclusive = false)
                 VoiceNavigation.SETTINGS -> if (inMainApp()) navController.navigate(Routes.CONTROLS) { launchSingleTop = true }
             }
@@ -339,8 +343,10 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                 onTab = ::openTab,
                 onDashboard = { if (!navController.popBackStack(Routes.DASHBOARD, inclusive = false)) enterMainApp() },
                 onPlay = { gameId, profileId ->
+                    // The finished GabAI conversation leaves the stack, so back from the preview
+                    // returns to wherever GabAI was opened from (Game Detail, Controls, Dashboard…).
                     navController.navigate(Routes.playing(gameId, profileId)) {
-                        popUpTo(Routes.DASHBOARD) { inclusive = false }
+                        popUpTo(Routes.GABAI) { inclusive = true }
                     }
                 },
             )

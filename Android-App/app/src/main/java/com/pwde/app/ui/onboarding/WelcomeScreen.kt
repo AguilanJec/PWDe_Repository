@@ -50,7 +50,7 @@ fun WelcomeScreen(onContinueAsGuest: () -> Unit, onHaveAccount: () -> Unit) {
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                "Play mobile games with your head, face or voice. No account needed — everything works as a guest.",
+                "Play mobile games with your head, face or voice.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = colors.textMuted,
                 textAlign = TextAlign.Center,

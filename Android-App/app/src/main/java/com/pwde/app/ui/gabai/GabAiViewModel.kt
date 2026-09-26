@@ -133,6 +133,14 @@ class GabAiViewModel(
     /** Screenshots are sent to the detection backend to pre-place buttons. */
     val autoDetectsButtons: Boolean get() = hudDetector.isAvailable
 
+    /**
+     * The step GabAI was opened on when another screen started it mid-flow (new or edited game
+     * profile). Backing out of that step leaves GabAI for that screen instead of showing Welcome,
+     * which the user never came through. Null when GabAI was opened on Welcome.
+     */
+    private var entryStep: GabAiState? = null
+    private val openedMidFlow = start !is GabAiStart.Welcome
+
     private var loadedScreenshotPath: String? = null
     private var nextButtonId = 1
 
@@ -223,6 +231,7 @@ class GabAiViewModel(
     private fun begin(state: GabAiState, form: GabAiForm) {
         _ui.value.resumable?.let { old -> write { gabAiRepository.complete(old.id) } }
         val session = GabAiSession(gabAiRepository.newSessionId(), state, form)
+        if (openedMidFlow && entryStep == null) entryStep = state
         _ui.update { it.copy(session = session, resumable = null, selectedButtonId = null, message = null) }
         onSessionLoaded(form)
         write { gabAiRepository.save(session) }
@@ -240,8 +249,12 @@ class GabAiViewModel(
             _navigation.trySend(GabAiNavigation.Exit)
             return
         }
+        val atEntry = entryStep?.let { it::class == session.state::class } == true
         val previous = GabAiFlow.back(session.state, session.form)
-        if (previous == null || previous == GabAiState.Welcome) {
+        if (openedMidFlow && (atEntry || previous == null || previous == GabAiState.Welcome)) {
+            // The session stays saved, so GabAI's Welcome offers to continue it next time.
+            _navigation.trySend(GabAiNavigation.Exit)
+        } else if (previous == null || previous == GabAiState.Welcome) {
             // The session stays saved, so Welcome offers to continue it.
             _ui.update { it.copy(session = null, resumable = if (session.state == GabAiState.ProfileSaved) null else session) }
         } else {

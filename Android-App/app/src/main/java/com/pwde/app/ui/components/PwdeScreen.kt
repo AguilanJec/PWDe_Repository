@@ -47,8 +47,9 @@ import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 
 /**
- * Standard PWDe screen: header, scrollable content, docked voice bar, footer actions, optional
- * bottom nav. In Easy reach layout mode the content is pushed to the lower half of the screen.
+ * Standard PWDe screen: header, scrollable content with the floating mic overlay, footer actions,
+ * optional bottom nav. [voiceHint] goes to the mic overlay (read out, not shown). In Easy reach
+ * layout mode the content is pushed to the lower half of the screen.
  */
 @Composable
 fun PwdeScreen(
@@ -79,18 +80,22 @@ fun PwdeScreen(
                 Modifier
                     .fillMaxWidth()
                     .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                    .padding(horizontal = spacing.screenMargin, vertical = spacing.itemGap),
+                    .padding(horizontal = spacing.screenMargin)
+                    // Extra room at the end so the floating mic never hides the last item.
+                    .padding(top = spacing.itemGap, bottom = spacing.itemGap + MicOverlayClearance),
                 verticalArrangement = Arrangement.spacedBy(spacing.itemGap),
                 content = content,
             )
+            VoiceMicOverlay(
+                hint = voiceHint,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = spacing.screenMargin, bottom = spacing.itemGap, start = spacing.screenMargin),
+            )
         }
-        if (voiceHint != null || footer != null) {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = spacing.screenMargin, vertical = spacing.itemGap),
-                verticalArrangement = Arrangement.spacedBy(spacing.itemGap),
-            ) {
-                if (voiceHint != null) VoiceHintBar(voiceHint)
-                footer?.invoke()
+        if (footer != null) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = spacing.screenMargin, vertical = spacing.itemGap)) {
+                footer()
             }
         }
         if (bottomBar != null) bottomBar()
