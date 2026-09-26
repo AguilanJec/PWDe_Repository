@@ -34,6 +34,12 @@ object Routes {
     const val CONTROLS_JOYSTICK = "controls/joystick"
     const val VOICE_CONFIG = "voice_config"
 
+    /** Eye control: calibrate the gaze engine and check it is pointing where the user looks. */
+    const val EYE_CONTROL = "eye_control"
+
+    /** SeeSo/Eyedid SDK diagnostics. Debug builds only — it reports raw frames, not a user flow. */
+    const val EYE_TRACKING = "eye_tracking"
+
     // F · Testing, tutorial
     const val TESTING_STATION = "testing_station"
     const val WATCH_TUTORIAL = "watch_tutorial"
@@ -70,6 +76,7 @@ object Routes {
         CONTROLS_CURSOR -> "Cursor speed"
         CONTROLS_JOYSTICK -> "Joystick"
         VOICE_CONFIG -> "Voice"
+        EYE_TRACKING -> "Eye tracking"
         TESTING_STATION -> "Testing station"
         WATCH_TUTORIAL -> "Tutorial video"
         GABAI -> "GabAI setup"

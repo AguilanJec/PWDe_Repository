@@ -19,6 +19,7 @@ import com.pwde.app.play.GameInput
 import com.pwde.app.play.LivePlay
 import com.pwde.app.play.applyProfileCalibration
 import com.pwde.app.sensors.face.FaceTrackingManager
+import com.pwde.app.sensors.face.GazeDwell
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.InGameVoiceEngine
 import com.pwde.app.sensors.voice.InGameVoiceState
@@ -106,6 +107,7 @@ class GameplayViewModel(
         }
         viewModelScope.launch { voiceEngine.results.collect { onVoice(it.commandId, it.rawText) } }
         viewModelScope.launch { faceTracking.gestureEvents.collect(::onGesture) }
+        viewModelScope.launch { faceTracking.dwellEvents.collect(::onDwell) }
     }
 
     private suspend fun loadProfile(profile: GameProfile, controlsRepository: ControlsRepository) {
@@ -186,6 +188,16 @@ class GameplayViewModel(
         execute(command)
     }
 
+    /** Eye control presses by holding the gaze on a button, so the button is resolved from where the
+     * gaze settled rather than from a gesture. */
+    private fun onDwell(dwell: GazeDwell) {
+        val command = GameInput.fromGaze(dwell, _ui.value.buttons)
+        if (_paused.value && !GameInput.worksWhilePaused(command)) {
+            return post("Looked away — paused", OverlayEvent.Kind.IGNORED)
+        }
+        execute(command)
+    }
+
     private fun execute(command: GameCommand) {
         when (command) {
             is GameCommand.Press -> post("Pressed ${command.button.label}", OverlayEvent.Kind.BUTTON, command.button.id)
@@ -209,6 +221,7 @@ class GameplayViewModel(
             GameCommand.Drop -> post("Drop (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.CursorMode -> post("Cursor mode (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.JoystickMode -> post("Joystick mode (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.EyeMode -> post("Eye control (in the real game only)", OverlayEvent.Kind.ACTION)
             is GameCommand.Ignored -> post(command.reason, OverlayEvent.Kind.IGNORED)
         }
     }

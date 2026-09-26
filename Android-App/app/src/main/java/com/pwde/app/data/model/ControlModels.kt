@@ -146,6 +146,9 @@ enum class VoiceShortcut(val label: String, val defaultPhrase: String) {
     SWITCH_PROFILE("Switch profiles", "switch profile"),
     CURSOR_MODE("Cursor mode", "cursor mode"),
     JOYSTICK_MODE("Joystick mode", "joystick mode"),
+
+    /** Spoken because a user relying on eye control may not be able to tap the input picker. */
+    EYE_MODE("Eye control mode", "eye control mode"),
 }
 
 /** Levels are 1–10 everywhere, matching [com.pwde.app.ui.components.LevelStepper]. */

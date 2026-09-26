@@ -116,6 +116,7 @@ class VoiceViewModel(
             else -> StandardCommands.gameToPlay(command)?.let { _playRequests.send(it) } ?: when (StandardCommands.shortcutOf(command)) {
                 VoiceShortcut.CURSOR_MODE -> switchInput(InputMode.HEAD_FACE, "Switched to cursor mode")
                 VoiceShortcut.JOYSTICK_MODE -> switchInput(InputMode.JOYSTICK, "Switched to joystick mode")
+                VoiceShortcut.EYE_MODE -> switchInput(InputMode.EYE, "Switched to eye control")
                 VoiceShortcut.SWITCH_PROFILE -> switchCalibrationProfile()
                 null -> showNotice("\"${command.label}\" doesn't do anything on this screen")
             }

@@ -5,6 +5,7 @@ import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.data.model.TriggerType
+import com.pwde.app.sensors.face.GazeDwell
 import com.pwde.app.sensors.face.JoystickDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -86,5 +87,57 @@ class GameInputTest {
         assertFalse(GameInput.worksWhilePaused(GameCommand.Press(skill)))
         assertFalse(GameInput.worksWhilePaused(GameCommand.Select))
         assertFalse(GameInput.worksWhilePaused(GameCommand.Back))
+    }
+
+    // ---- eye control: a held gaze presses the button it settles on --------------------------------------
+
+    @Test
+    fun aGazeOnAButtonPressesIt() {
+        assertEquals(GameCommand.Press(attack), GameInput.fromGaze(GazeDwell(0.9f, 0.8f), buttons))
+    }
+
+    @Test
+    fun aGazeNearAButtonStillCountsIt() {
+        // Just inside the tolerance of "Attack" at (0.9, 0.8).
+        assertEquals(GameCommand.Press(attack), GameInput.fromGaze(GazeDwell(0.85f, 0.75f), buttons))
+    }
+
+    @Test
+    fun aGazeBetweenTwoButtonsTakesTheNearerOne() {
+        // (0.82, 0.8) is nearer Attack (0.9, 0.8) than Skill (0.8, 0.7).
+        assertEquals(GameCommand.Press(attack), GameInput.fromGaze(GazeDwell(0.82f, 0.8f), buttons))
+    }
+
+    @Test
+    fun aGazeOnNothingIsExplainedRatherThanIgnored() {
+        // Holding still on empty screen and having nothing happen is indistinguishable from eye
+        // control being broken, so it has to say so.
+        val command = GameInput.fromGaze(GazeDwell(0.5f, 0.5f), buttons)
+        assertTrue(command is GameCommand.Ignored)
+    }
+
+    @Test
+    fun aProfileWithNoButtonsSaysSo() {
+        val command = GameInput.fromGaze(GazeDwell(0.5f, 0.5f), emptyList())
+        assertTrue(command is GameCommand.Ignored)
+        assertEquals("This game has no mapped buttons yet", (command as GameCommand.Ignored).reason)
+    }
+
+    @Test
+    fun aButtonWithNoTriggerIsNotAGazeTarget() {
+        val unbound = MappedButton(9, "Unbound", 0.5f, 0.5f, trigger = null)
+        assertNull(GameInput.buttonAt(listOf(unbound), 0.5f, 0.5f))
+    }
+
+    @Test
+    fun theMovementStickIsSteeredNotTapped() {
+        val stick = MappedButton(4, "Move", 0.2f, 0.8f, ButtonTrigger.MOVEMENT)
+        assertNull(GameInput.buttonAt(listOf(stick), 0.2f, 0.8f))
+    }
+
+    @Test
+    fun eyeModeCanBeSpokenAndWorksWhilePaused() {
+        assertEquals(GameCommand.EyeMode, GameInput.fromVoice(GameInput.EYE_MODE, "eye mode", buttons))
+        assertTrue(GameInput.worksWhilePaused(GameCommand.EyeMode))
     }
 }

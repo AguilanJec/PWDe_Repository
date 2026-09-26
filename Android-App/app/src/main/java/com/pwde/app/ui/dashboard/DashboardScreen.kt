@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.OndemandVideo
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material3.Icon
@@ -300,5 +301,6 @@ private fun EntryCard(
 fun InputMode.icon(): ImageVector = when (this) {
     InputMode.HEAD_FACE -> Icons.Outlined.Face
     InputMode.JOYSTICK -> Icons.Outlined.Gamepad
+    InputMode.EYE -> Icons.Outlined.RemoveRedEye
     InputMode.VOICE -> Icons.Outlined.Mic
 }

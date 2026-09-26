@@ -12,6 +12,9 @@ plugins {
 //   pwde.firebase.projectId=...
 // Optional GabAI button auto-detection (calibration-backend on Cloud Run):
 //   pwde.detection.url=https://<service>-<hash>.<region>.run.app
+// SeeSo/Eyedid eye-tracking licence key, from https://manage.seeso.io (Console -> SDK).
+// A dev_... key is bound to this debug package name + signing certificate. Blank = eye tracking off.
+//   pwde.eyedid.licenseKey=...
 val localProps = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) file.inputStream().use { load(it) }
@@ -37,6 +40,8 @@ android {
         buildConfigField("String", "FIREBASE_APP_ID", "\"${localProp("pwde.firebase.appId")}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${localProp("pwde.firebase.projectId")}\"")
         buildConfigField("String", "DETECTION_URL", "\"${localProp("pwde.detection.url")}\"")
+        // Never hardcoded: local.properties is git-ignored (see the repo root .gitignore).
+        buildConfigField("String", "EYEDID_LICENSE_KEY", "\"${localProp("pwde.eyedid.licenseKey")}\"")
     }
 
     buildTypes {
@@ -103,6 +108,8 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.compose)
     implementation(libs.mediapipe.tasks.vision)
+    // SeeSo/Eyedid eye tracking. Pulls eyedid-nativelib (the .so files) in transitively.
+    implementation(libs.eyedid.gazetracker)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

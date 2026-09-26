@@ -49,6 +49,12 @@ enum class LayoutMode(val label: String, val description: String) {
 enum class InputMode(val label: String, val description: String) {
     HEAD_FACE("Head & face", "Tilt your head; use face gestures to press"),
     JOYSTICK("Joystick", "On-screen joystick you steer with your head or tilt"),
+
+    /**
+     * The SeeSo/Eyedid gaze engine: the pointer follows where the eyes look, and holding the gaze on
+     * a mapped button presses it. Needs a calibration first, and a licence key in `local.properties`.
+     */
+    EYE("Eye control", "Look at a button and hold your gaze there to press it"),
     VOICE("Voice", "Say a button's name to press it"),
 }
 

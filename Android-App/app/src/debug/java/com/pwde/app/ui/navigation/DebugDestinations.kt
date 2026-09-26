@@ -3,6 +3,8 @@ package com.pwde.app.ui.navigation
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import com.pwde.app.ui.common.pwdeViewModel
+import com.pwde.app.ui.eyetracking.EyeTrackingScreen
+import com.pwde.app.ui.eyetracking.EyeTrackingViewModel
 import com.pwde.app.ui.testingstation.TestingStationScreen
 import com.pwde.app.ui.testingstation.TestingStationViewModel
 
@@ -24,6 +26,14 @@ fun NavGraphBuilder.debugDestinations(onBack: () -> Unit) {
                     it.buttonOverlayPrefs,
                 )
             },
+            onBack = onBack,
+        )
+    }
+    // The gaze SDK diagnostics rig is a development tool: it reports raw SDK frames, and in release
+    // builds the user has the calibration screen instead.
+    composable(Routes.EYE_TRACKING) {
+        EyeTrackingScreen(
+            viewModel = pwdeViewModel { EyeTrackingViewModel(it.eyeControlManager) },
             onBack = onBack,
         )
     }

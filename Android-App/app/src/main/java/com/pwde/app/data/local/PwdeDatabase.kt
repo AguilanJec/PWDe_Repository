@@ -7,6 +7,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.pwde.app.BuildConfig
 
 @Database(
     entities = [CalibrationProfile::class, GameProfile::class, ControlSettingsEntity::class, GabAiSessionEntity::class],
@@ -47,9 +48,22 @@ abstract class PwdeDatabase : RoomDatabase() {
             }
         }
 
-        fun create(context: Context): PwdeDatabase =
-            Room.databaseBuilder(context, PwdeDatabase::class.java, "pwde.db")
+        fun create(context: Context): PwdeDatabase {
+            val builder = Room.databaseBuilder(context, PwdeDatabase::class.java, "pwde.db")
                 .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
-                .build()
+            // Installing a build older than the one already on the device asks Room to walk the
+            // schema *down*, and there is no migration for that here: this file only ever moves
+            // forward. Without a fallback the app dies on the splash screen with
+            // "A migration from N to N-1 was required but not found", which points at Room rather
+            // than at the actual cause (a rolled-back install) and is miserable to diagnose.
+            //
+            // Debug only, on purpose. On a dev device a wiped database costs a re-run of setup; in
+            // release it would silently delete the user's calibration and game profiles, so a
+            // release build keeps failing loudly instead.
+            if (BuildConfig.DEBUG) {
+                builder.fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
+            }
+            return builder.build()
+        }
     }
 }

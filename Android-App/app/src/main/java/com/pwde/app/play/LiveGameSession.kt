@@ -10,6 +10,7 @@ import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
+import com.pwde.app.sensors.face.GazeDwell
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.InGameVoiceEngine
 import com.pwde.app.data.prefs.InputMode
@@ -71,6 +72,10 @@ class LiveGameSession(
                     faceTracking.state.map { it.joystick.direction }.distinctUntilChanged().collect(::onJoystickDirection)
                 }
                 launch { faceTracking.gestureEvents.collect(::onGesture) }
+                // Eye control presses by holding the gaze on a button, which is a different kind of
+                // event from a gesture: it carries where the user was looking, so the button has to
+                // be resolved here, against the profile actually in use.
+                launch { faceTracking.dwellEvents.collect(::onDwell) }
                 launch {
                     voiceEngine.results.collect {
                         showHeard(it.rawText, matched = it.commandId != null)
@@ -111,6 +116,9 @@ class LiveGameSession(
     private fun onGesture(gesture: FacialGesture) =
         runUnlessPaused(GameInput.fromGesture(gesture, livePlay.state.value.buttons, config))
 
+    private fun onDwell(dwell: GazeDwell) =
+        runUnlessPaused(GameInput.fromGaze(dwell, livePlay.state.value.buttons))
+
     private fun runUnlessPaused(command: GameCommand) {
         if (livePlay.state.value.paused && !GameInput.worksWhilePaused(command)) {
             Log.i(TAG, "Dropped $command: paused")
@@ -138,6 +146,7 @@ class LiveGameSession(
             }
             GameCommand.CursorMode -> switchMode(InputMode.HEAD_FACE, "Cursor mode")
             GameCommand.JoystickMode -> switchMode(InputMode.JOYSTICK, "Joystick mode")
+            GameCommand.EyeMode -> switchMode(InputMode.EYE, "Eye control")
             GameCommand.StartDrag -> {
                 livePlay.update { it.copy(dragging = true) }
                 livePlay.perform(command)

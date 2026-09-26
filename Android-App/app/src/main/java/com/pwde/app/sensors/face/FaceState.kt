@@ -7,6 +7,23 @@ import com.pwde.app.data.model.FacialGesture
 /** Where head data comes from. [SIMULATED] is the phone's motion sensors, never shown as real tracking. */
 enum class TrackingSource { CAMERA, SIMULATED }
 
+/**
+ * A gaze that rested on one spot long enough to count as a press, at that spot in screen fractions.
+ *
+ * This is an *event*, not a per-frame value: it fires once per dwell, so a button is pressed once
+ * however many frames the user keeps looking at it. Only eye control produces these — the head
+ * controls press through [FaceState.gesture] instead, so they never emit one.
+ */
+data class GazeDwell(val x: Float, val y: Float)
+
+/**
+ * How far a resting gaze has settled toward firing, for the ring the UI draws at [x], [y].
+ *
+ * Deliberately separate from [FaceState.cursor]: the cursor keeps drifting with the eyes, while the
+ * ring stays pinned to the spot the dwell started on, so the user can see the target they are on.
+ */
+data class DwellProgress(val x: Float, val y: Float, val progress: Float)
+
 sealed interface TrackingStatus {
     /** Nobody is watching tracking right now, so the camera is off. */
     data object Idle : TrackingStatus
@@ -31,6 +48,8 @@ data class FaceState(
     val cursor: CursorPosition = CursorPosition.CENTER,
     val joystick: JoystickState = JoystickState(),
     val outputMode: FaceOutputMode = FaceOutputMode.CURSOR,
+    /** Non-null while an eye-control gaze is resting somewhere, to draw the "hold to press" ring. */
+    val dwell: DwellProgress? = null,
     val fps: Float = 0f,
 ) {
     val isSimulated: Boolean get() = source == TrackingSource.SIMULATED
@@ -43,7 +62,7 @@ data class FaceState(
         return source == other.source && status == other.status && fallbackReason == other.fallbackReason &&
             pose == other.pose && landmarks.contentEquals(other.landmarks) && confidence == other.confidence &&
             gesture == other.gesture && cursor == other.cursor && joystick == other.joystick &&
-            outputMode == other.outputMode && fps == other.fps
+            outputMode == other.outputMode && dwell == other.dwell && fps == other.fps
     }
 
     override fun hashCode(): Int {
@@ -54,6 +73,7 @@ data class FaceState(
         result = 31 * result + gesture.hashCode()
         result = 31 * result + cursor.hashCode()
         result = 31 * result + joystick.hashCode()
+        result = 31 * result + (dwell?.hashCode() ?: 0)
         return result
     }
 }

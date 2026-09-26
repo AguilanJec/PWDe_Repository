@@ -19,6 +19,9 @@ import com.pwde.app.data.remote.SyncRepository
 import com.pwde.app.data.speech.SpeechOutput
 import com.pwde.app.data.prefs.ButtonOverlayPrefs
 import com.pwde.app.play.LivePlay
+import com.pwde.app.sensors.eyedid.EyedidCalibrationStore
+import com.pwde.app.sensors.eyedid.EyedidFaceTrackingManager
+import com.pwde.app.sensors.eyedid.EyeControlFaceTrackingManager
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.MediaPipeFaceTrackingManager
 import com.pwde.app.sensors.voice.AndroidVoiceCommandManager
@@ -36,6 +39,10 @@ private val Context.settingsDataStore by preferencesDataStore(name = "user_setti
 
 /** Manual DI: app-wide singletons, created lazily. Lives on [com.pwde.app.PwdeApplication]. */
 class AppContainer(private val context: Context) {
+
+    /** Application context, for pieces that need one when they are constructed or first used. */
+    val appContext: Context get() = context
+
     private val database by lazy { PwdeDatabase.create(context) }
 
     val settingsRepository: SettingsRepository by lazy { DataStoreSettingsRepository(context.settingsDataStore) }
@@ -47,10 +54,29 @@ class AppContainer(private val context: Context) {
     val syncRepository: SyncRepository by lazy { NoOpSyncRepository(authRepository) }
     val speechOutput by lazy { SpeechOutput(context) }
 
-    /** Camera + MediaPipe head/face tracking (motion-sensor demo mode when the camera can't be used). */
-    val faceTrackingManager: FaceTrackingManager by lazy {
-        MediaPipeFaceTrackingManager(context, controlsRepository, settingsRepository)
+    /**
+     * The SeeSo/Eyedid gaze engine behind eye control. Created once because `GazeTracker` is a
+     * process-wide singleton that owns the front camera — a second instance could not coexist with
+     * this one, so nothing else in the app is allowed to build its own.
+     */
+    val eyes: EyedidFaceTrackingManager by lazy {
+        EyedidFaceTrackingManager(context, EyedidCalibrationStore(context), BuildConfig.EYEDID_LICENSE_KEY)
     }
+
+    /**
+     * Camera + face tracking, with eye control handed to the gaze engine when that mode is selected.
+     * Nothing above this depends on which engine is running.
+     */
+    val eyeControlManager: EyeControlFaceTrackingManager by lazy {
+        EyeControlFaceTrackingManager(
+            camera = MediaPipeFaceTrackingManager(context, controlsRepository, settingsRepository),
+            eyes = eyes,
+            settingsRepository = settingsRepository,
+        )
+    }
+
+    /** The one tracking manager the whole app depends on: head/face, or eyes. */
+    val faceTrackingManager: FaceTrackingManager get() = eyeControlManager
 
     /** Makes sure gameplay's voice engine and the app-wide one never listen at the same time. */
     private val micArbiter by lazy { MicArbiter() }

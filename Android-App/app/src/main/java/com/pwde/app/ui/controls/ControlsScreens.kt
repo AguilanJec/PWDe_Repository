@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
@@ -76,12 +77,16 @@ import com.pwde.app.ui.components.fmt
 import com.pwde.app.ui.components.levelWord
 import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.dashboard.icon
+import com.pwde.app.ui.navigation.TESTING_STATION_AVAILABLE
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 import com.pwde.app.ui.theme.iconSizeFor
 import com.pwde.app.ui.theme.scaled
 
-enum class ControlsDestination { INPUT, GESTURES, CURSOR, JOYSTICK, VOICE, CUSTOM_BUTTONS }
+enum class ControlsDestination { INPUT, GESTURES, CURSOR, JOYSTICK, VOICE, CUSTOM_BUTTONS, EYE_CONTROL, EYE_TRACKING }
+
+/** The SDK diagnostics rig ships in debug builds only, like the Testing Station. */
+private val showEyeDiagnostics = TESTING_STATION_AVAILABLE
 
 private val HUB_COMMANDS = listOf(
     voiceCommand(ControlsDestination.INPUT.name, "input", "input mode"),
@@ -90,7 +95,8 @@ private val HUB_COMMANDS = listOf(
     voiceCommand(ControlsDestination.JOYSTICK.name, "joystick"),
     voiceCommand(ControlsDestination.VOICE.name, "voice"),
     voiceCommand(ControlsDestination.CUSTOM_BUTTONS.name, "custom buttons"),
-)
+    voiceCommand(ControlsDestination.EYE_CONTROL.name, "eye control", "eyes", "eye tracking"),
+) + if (showEyeDiagnostics) listOf(voiceCommand(ControlsDestination.EYE_TRACKING.name, "eye diagnostics")) else emptyList()
 
 /** E1 Controls hub: six compact cards. */
 @Composable
@@ -102,18 +108,24 @@ fun ControlsHubScreen(onBack: () -> Unit, onOpen: (ControlsDestination) -> Unit)
         onBack = onBack,
         voiceHint = "Say a card's name, like \"joystick\"",
     ) {
-        NavCard("Input", "Head, joystick or voice", Icons.Outlined.Face, { onOpen(ControlsDestination.INPUT) })
+        NavCard("Input", "Head, eye, joystick or voice", Icons.Outlined.Face, { onOpen(ControlsDestination.INPUT) })
         NavCard("Gestures", "Which face move does what", Icons.Outlined.TouchApp, { onOpen(ControlsDestination.GESTURES) })
         NavCard("Cursor speed", "How fast the pointer moves", Icons.Outlined.Mouse, { onOpen(ControlsDestination.CURSOR) })
         NavCard("Joystick", "Size, sensitivity, dead zone", Icons.Outlined.Gamepad, { onOpen(ControlsDestination.JOYSTICK) })
         NavCard("Voice", "Commands and matching", Icons.Outlined.RecordVoiceOver, { onOpen(ControlsDestination.VOICE) })
+        NavCard("Eye control", "Calibrate your eyes, then look to press", Icons.Outlined.RemoveRedEye, { onOpen(ControlsDestination.EYE_CONTROL) })
         NavCard("Custom buttons", "Map a game's buttons with GabAI", Icons.Outlined.Dashboard, { onOpen(ControlsDestination.CUSTOM_BUTTONS) })
+        if (showEyeDiagnostics) {
+            // A development tool: it reports the raw SDK frames and is not part of the user's flow.
+            NavCard("Eye diagnostics", "What the SeeSo / Eyedid SDK reports", Icons.Outlined.CenterFocusStrong, { onOpen(ControlsDestination.EYE_TRACKING) })
+        }
     }
 }
 
 internal val INPUT_COMMANDS = listOf(
     voiceCommand(InputMode.HEAD_FACE.name, "head", "head and face", "face"),
     voiceCommand(InputMode.JOYSTICK.name, "joystick"),
+    voiceCommand(InputMode.EYE.name, "eye control", "eyes"),
     voiceCommand(InputMode.VOICE.name, "voice"),
 )
 
@@ -126,7 +138,7 @@ fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
         title = "Input",
         subtitle = "Your main way to control games. Saved automatically.",
         onBack = onBack,
-        voiceHint = "Say \"head\", \"joystick\" or \"voice\"",
+        voiceHint = "Say \"head\", \"joystick\", \"eye control\" or \"voice\"",
     ) {
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             InputMode.entries.forEach { mode ->
@@ -141,15 +153,22 @@ fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
             }
         }
         selected?.let { mode ->
+            // Only the head modes move the pointer *with the head*; eye control moves it with the
+            // eyes, so claiming "head movement drives" there would be plainly wrong.
             val output = mode.faceOutputMode()
-            StatusPill(
-                "Head movement drives: ${output.label}",
-                icon = if (output == FaceOutputMode.JOYSTICK) Icons.Outlined.Gamepad else Icons.Outlined.Mouse,
-            )
+            when (mode) {
+                InputMode.EYE -> StatusPill("Your eyes move the pointer", icon = Icons.Outlined.RemoveRedEye)
+                else -> StatusPill(
+                    "Head movement drives: ${output.label}",
+                    icon = if (output == FaceOutputMode.JOYSTICK) Icons.Outlined.Gamepad else Icons.Outlined.Mouse,
+                )
+            }
         }
         InfoNote(
-            "Head & face and Voice move a pointer with your head. Joystick turns head tilt into an 8-way joystick. " +
-                    "Switch any time by saying \"cursor mode\" or \"joystick mode\".",
+            "Head & face and Voice move a pointer with your head. Joystick turns head tilt into an 8-way " +
+                "joystick. Eye control follows your gaze and presses a button you hold your gaze on, once " +
+                "it has been calibrated from the Eye control card. Switch any time by saying \"cursor " +
+                "mode\", \"joystick mode\" or \"eye mode\".",
         )
     }
 }

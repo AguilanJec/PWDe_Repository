@@ -6,6 +6,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
 import android.text.SpannableStringBuilder
@@ -34,6 +36,8 @@ class CursorOverlayView(context: Context) : View(context) {
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * density; color = Color.WHITE }
     private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000 }
     private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 4f * density }
+    private val dwellPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 4f * density; color = PRIMARY }
+    private val dwellArc = RectF()
     private val location = IntArray(2)
 
     /** Pointer position in display pixels. */
@@ -42,6 +46,11 @@ class CursorOverlayView(context: Context) : View(context) {
     private var active = true
     private var dragging = false
     private var ripple = 1f
+
+    /** Where an eye-control hold started, in display pixels, and how far it has filled. */
+    private var dwellTarget: PointF? = null
+    private var dwellProgress = 0f
+
     private val rippleAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 450
         addUpdateListener { ripple = it.animatedValue as Float; invalidate() }
@@ -51,11 +60,20 @@ class CursorOverlayView(context: Context) : View(context) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    fun update(x: Float, y: Float, active: Boolean, dragging: Boolean) {
+    fun update(
+        x: Float,
+        y: Float,
+        active: Boolean,
+        dragging: Boolean,
+        dwellTarget: PointF? = null,
+        dwellProgress: Float = 0f,
+    ) {
         px = x
         py = y
         this.active = active
         this.dragging = dragging
+        this.dwellTarget = dwellTarget
+        this.dwellProgress = dwellProgress
         invalidate()
     }
 
@@ -76,6 +94,17 @@ class CursorOverlayView(context: Context) : View(context) {
             ripplePaint.color = color
             ripplePaint.alpha = ((1f - ripple) * 255).toInt()
             canvas.drawCircle(cx, cy, (24f + 50f * ripple) * density, ripplePaint)
+        }
+        // Eye control has no gesture to fire a press, so this ring is the only thing telling the user
+        // that holding still is working. It sits on the spot the hold *started* on, not on the
+        // cursor, which keeps drifting with the eyes while the ring fills.
+        dwellTarget?.let { target ->
+            val tx = target.x - location[0]
+            val ty = target.y - location[1]
+            val radius = 26f * density
+            canvas.drawCircle(tx, ty, radius, ring)
+            dwellArc.set(tx - radius, ty - radius, tx + radius, ty + radius)
+            canvas.drawArc(dwellArc, -90f, 360f * dwellProgress.coerceIn(0f, 1f), false, dwellPaint)
         }
         canvas.drawCircle(cx, cy, 16f * density, shadow)
         fill.color = color
@@ -217,11 +246,19 @@ class SpeechCaptionView(context: Context) : TextView(context) {
     /**
      * [heard] is null until the first result. A new [seq] briefly lights the border: teal for a
      * matched command, amber for speech that matched nothing.
+     *
+     * [notice] is the session's own last word — "Pressed Skill 1", or why something was ignored. It
+     * is shown here because this is the only place over the game that can show it: without it, a
+     * dwell that landed on nothing looked exactly like eye control being broken.
      */
-    fun update(model: String?, heard: String?, matched: Boolean, seq: Int) {
+    fun update(model: String?, heard: String?, matched: Boolean, seq: Int, notice: String? = null) {
         val said = if (heard == null) "Listening…" else "“$heard”" + if (matched) "" else "  (no match)"
-        text = SpannableStringBuilder(said).append("\n")
-            .append(model ?: "Unknown engine", ForegroundColorSpan(MUTED), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        val text = SpannableStringBuilder(said).append("\n")
+        if (!notice.isNullOrBlank()) {
+            text.append(notice, ForegroundColorSpan(WARNING), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE).append("\n")
+        }
+        text.append(model ?: "Unknown engine", ForegroundColorSpan(MUTED), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        this.text = text
         if (heard != null && seq != lastSeq) {
             lastSeq = seq
             frame.setStroke((2.5f * density).toInt(), if (matched) PRIMARY else WARNING)

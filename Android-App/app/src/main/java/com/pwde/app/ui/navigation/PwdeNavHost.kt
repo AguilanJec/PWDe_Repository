@@ -35,6 +35,9 @@ import com.pwde.app.ui.controls.JoystickViewModel
 import com.pwde.app.ui.dashboard.DashboardDestination
 import com.pwde.app.ui.dashboard.DashboardScreen
 import com.pwde.app.ui.dashboard.DashboardViewModel
+import com.pwde.app.sensors.eyedid.EyedidCalibrationStore
+import com.pwde.app.ui.eyetracking.EyeControlScreen
+import com.pwde.app.ui.eyetracking.EyeControlViewModel
 import com.pwde.app.ui.gabai.GabAiScreen
 import com.pwde.app.ui.gabai.GabAiStart
 import com.pwde.app.ui.gabai.GabAiViewModel
@@ -272,6 +275,8 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                         ControlsDestination.JOYSTICK -> Routes.CONTROLS_JOYSTICK
                         ControlsDestination.VOICE -> Routes.VOICE_CONFIG
                         ControlsDestination.CUSTOM_BUTTONS -> Routes.gabai(newGameProfile = true)
+                        ControlsDestination.EYE_CONTROL -> Routes.EYE_CONTROL
+                        ControlsDestination.EYE_TRACKING -> Routes.EYE_TRACKING
                     },
                 )
             }
@@ -307,6 +312,12 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
         }
         composable(Routes.VOICE_CONFIG) {
             VoiceConfigScreen(pwdeViewModel { VoiceConfigViewModel(it.controlsRepository, it.voiceCommandManager) }, onBack = ::back)
+        }
+        composable(Routes.EYE_CONTROL) {
+            EyeControlScreen(
+                viewModel = pwdeViewModel { EyeControlViewModel(it.eyeControlManager, it.settingsRepository) },
+                onBack = ::back,
+            )
         }
 
         // F · Testing Station (debug builds only — see debug/ and release/ source sets), tutorial video

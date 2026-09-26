@@ -435,12 +435,32 @@ private fun CursorLayer(face: FaceState, active: Boolean, lastEvent: OverlayEven
     }
     Canvas(
         Modifier.fillMaxSize().semantics {
-            contentDescription = "Pointer at ${(face.cursor.x * 100).toInt()} percent across, ${(face.cursor.y * 100).toInt()} percent down"
+            contentDescription = buildString {
+                append("Pointer at ${(face.cursor.x * 100).toInt()} percent across, ${(face.cursor.y * 100).toInt()} percent down")
+                if (face.dwell != null) append(", holding your gaze to press")
+                append(".")
+            }
         },
     ) {
         val center = Offset(face.cursor.x * size.width, face.cursor.y * size.height)
         if (ripple.value < 1f) {
             drawCircle(colors.primary.copy(alpha = 1f - ripple.value), radius = 24.dp.toPx() + 50.dp.toPx() * ripple.value, center = center, style = Stroke(4.dp.toPx()))
+        }
+        // Eye control has no gesture to fire a press, so the ring is the only thing telling the user
+        // that holding still is working. It sits on the spot the hold started on rather than on the
+        // cursor, which keeps drifting with the eyes while the ring fills.
+        face.dwell?.let { dwell ->
+            val target = Offset(dwell.x * size.width, dwell.y * size.height)
+            val radius = 26.dp.toPx()
+            drawArc(
+                color = colors.primary,
+                startAngle = -90f,
+                sweepAngle = 360f * dwell.progress.coerceIn(0f, 1f),
+                useCenter = false,
+                topLeft = Offset(target.x - radius, target.y - radius),
+                size = Size(radius * 2, radius * 2),
+                style = Stroke(width = 4.dp.toPx()),
+            )
         }
         drawCircle(Color.Black.copy(alpha = 0.4f), radius = 16.dp.toPx(), center = center)
         drawCircle(if (active) colors.primary else colors.textMuted, radius = 12.dp.toPx(), center = center)

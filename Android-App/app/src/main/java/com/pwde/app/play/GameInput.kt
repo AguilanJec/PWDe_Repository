@@ -5,8 +5,10 @@ import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.MappedButton
 import com.pwde.app.data.model.TriggerType
+import com.pwde.app.sensors.face.GazeDwell
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.VoiceCommandBinding
+import kotlin.math.hypot
 
 /** What one piece of in-game input (a voice command, gesture or joystick move) asks for. */
 sealed interface GameCommand {
@@ -29,6 +31,8 @@ sealed interface GameCommand {
     object Drop : GameCommand
     object CursorMode : GameCommand
     object JoystickMode : GameCommand
+    /** Eye control: the pointer follows the gaze and a held gaze presses. */
+    object EyeMode : GameCommand
     /** Leave the game and go back to PWDe. */
     object Exit : GameCommand
     object HideOverlay : GameCommand
@@ -67,7 +71,18 @@ object GameInput {
     const val DROP = "game_drop"
     const val CURSOR_MODE = "game_cursor_mode"
     const val JOYSTICK_MODE = "game_joystick_mode"
+    const val EYE_MODE = "game_eye_mode"
     private const val SCROLL = "game_scroll:"
+
+    /**
+     * How close the gaze must be to a mapped button's centre to count as looking at it, as a fraction
+     * of the screen. Deliberately generous: a gaze reading is accurate to a couple of degrees at
+     * best, and a button the user cannot reliably hit is worse than no button at all.
+     *
+     * Wider than `EyedidDwellTracker.DEFAULT_RADIUS`, so a gaze that settles anywhere within a button
+     * is still settled *inside* it — otherwise the ring could fill while the press found nothing.
+     */
+    const val GAZE_HIT_TOLERANCE = 0.09f
 
     fun buttonCommandId(buttonId: Int) = "button:$buttonId"
 
@@ -99,6 +114,7 @@ object GameInput {
         VoiceCommandBinding(DROP, listOf("drop", "let go")),
         VoiceCommandBinding(CURSOR_MODE, listOf("cursor mode")),
         VoiceCommandBinding(JOYSTICK_MODE, listOf("joystick mode")),
+        VoiceCommandBinding(EYE_MODE, listOf("eye mode", "eye control")),
     ) + ScrollDirection.entries.map { VoiceCommandBinding(SCROLL + it.name, listOf("scroll ${it.name.lowercase()}")) }
 
     /** The standard commands plus each button's own voice trigger. */
@@ -129,6 +145,7 @@ object GameInput {
         DROP -> GameCommand.Drop
         CURSOR_MODE -> GameCommand.CursorMode
         JOYSTICK_MODE -> GameCommand.JoystickMode
+        EYE_MODE -> GameCommand.EyeMode
         else -> ScrollDirection.entries.firstOrNull { commandId == SCROLL + it.name }?.let { GameCommand.Scroll(it) } ?: buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let { GameCommand.Press(it) }
     }
 
@@ -153,11 +170,42 @@ object GameInput {
         if (direction == JoystickDirection.CENTER) null
         else buttonFor(buttons, TriggerType.JOYSTICK, direction.name)?.let { GameCommand.Press(it) }
 
+    /**
+     * The mapped button the gaze is resting on, or null when it is resting on nothing pressable.
+     *
+     * The nearest button inside [tolerance] wins, so overlapping or closely-spaced buttons resolve to
+     * the one the user is most likely aiming at. Buttons with no trigger are skipped — there is
+     * nothing for them to do — and so is the movement stick, which is steered rather than tapped.
+     */
+    fun buttonAt(
+        buttons: List<MappedButton>,
+        x: Float,
+        y: Float,
+        tolerance: Float = GAZE_HIT_TOLERANCE,
+    ): MappedButton? = buttons
+        .filter { it.trigger != null && it.trigger.type != TriggerType.MOVEMENT }
+        .map { it to hypot(it.x - x, it.y - y) }
+        .filter { (_, distance) -> distance <= tolerance }
+        .minByOrNull { (_, distance) -> distance }
+        ?.first
+
+    /**
+     * A gaze that has settled long enough to count as a press. Presses the button under it, or says
+     * that there is nothing there — a hold that silently does nothing is indistinguishable from eye
+     * control being broken, which is the one thing the user cannot debug for themselves.
+     */
+    fun fromGaze(dwell: GazeDwell, buttons: List<MappedButton>): GameCommand =
+        buttonAt(buttons, dwell.x, dwell.y)?.let { GameCommand.Press(it) }
+            ?: GameCommand.Ignored(
+                if (buttons.isEmpty()) "This game has no mapped buttons yet"
+                else "No button there — look straight at a button and hold",
+            )
+
     /** While paused only commands that control PWDe itself still work. */
     fun worksWhilePaused(command: GameCommand): Boolean = when (command) {
         GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause, GameCommand.Recenter, GameCommand.Exit,
         GameCommand.HideOverlay, GameCommand.ShowOverlay, GameCommand.ShowControls, GameCommand.HideControls, GameCommand.CursorMode, GameCommand.JoystickMode,
-        GameCommand.Drop, is GameCommand.Ignored -> true
+        GameCommand.EyeMode, GameCommand.Drop, is GameCommand.Ignored -> true
         else -> false
     }
 

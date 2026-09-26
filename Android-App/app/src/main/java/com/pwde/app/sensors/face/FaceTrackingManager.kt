@@ -72,6 +72,13 @@ interface FaceTrackingManager {
     /** Gestures that just started and may trigger an action (tilt/nod excluded in joystick mode). */
     val gestureEvents: SharedFlow<FacialGesture>
 
+    /**
+     * Eye control only: a gaze that settled long enough to count as a press, at the spot it settled
+     * on. The head and simulated engines have no gaze, so the default never emits and they need not
+     * know it exists.
+     */
+    val dwellEvents: SharedFlow<GazeDwell> get() = NoDwell
+
     /** Live camera preview for the UI, or null while the camera is off. */
     val surfaceRequest: StateFlow<SurfaceRequest?>
 
@@ -84,6 +91,14 @@ interface FaceTrackingManager {
 
     /** Saves the current head pose as the joystick's (and tilt/nod's) neutral. False if no head is seen. */
     suspend fun captureJoystickCenter(): Boolean
+
+    companion object {
+        /**
+         * Shared so every gaze-less engine returns the same flow. A `MutableSharedFlow` nobody emits
+         * into is the honest "this engine has no gaze" value: collectors simply never resume.
+         */
+        private val NoDwell = MutableSharedFlow<GazeDwell>()
+    }
 }
 
 /*

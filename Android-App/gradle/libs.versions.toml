@@ -20,6 +20,8 @@ androidxTestCore = "1.7.0"
 coroutinesTest = "1.10.2"
 camerax = "1.6.2"
 mediapipe = "0.10.35"
+# SeeSo/Eyedid eye-tracking SDK (beta). Published to the vendor's own JFrog repo — see settings.gradle.kts.
+eyedid = "1.0.0-beta5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -51,6 +53,8 @@ androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", 
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "camerax" }
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipe" }
+# Two artifacts, but eye-tracking pulls eyedid-nativelib in transitively, so only this one is needed.
+eyedid-gazetracker = { group = "camp.visual.eyedid.android.gazetracker", name = "eyedid-gazetracker", version.ref = "eyedid" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }

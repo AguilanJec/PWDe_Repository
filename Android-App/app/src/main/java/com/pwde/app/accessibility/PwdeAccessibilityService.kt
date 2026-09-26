@@ -110,7 +110,15 @@ class PwdeAccessibilityService : AccessibilityService() {
         } else {
             val view = cursorView ?: CursorOverlayView(this).takeIf { addOverlay(it, cursorParams()) }?.also { cursorView = it }
             val point = toScreen(face.cursor.x, face.cursor.y)
-            view?.update(point.x, point.y, active = face.hasFace && !state.paused, dragging = state.dragging)
+            val dwell = face.dwell
+            view?.update(
+                point.x,
+                point.y,
+                active = face.hasFace && !state.paused,
+                dragging = state.dragging,
+                dwellTarget = dwell?.let { toScreen(it.x, it.y) },
+                dwellProgress = dwell?.progress ?: 0f,
+            )
         }
         if (state.overlayHidden) {
             removeView(bubbleView)
@@ -121,7 +129,13 @@ class PwdeAccessibilityService : AccessibilityService() {
             val view = bubbleView ?: createBubble(livePlay)
             view?.update(if (joystick) "Joystick" else "Cursor", state.paused)
             val heard = state.heard
-            (captionView ?: createCaption())?.update(state.voiceModel, heard?.text, heard?.matched == true, heard?.seq ?: 0)
+            (captionView ?: createCaption())?.update(
+                state.voiceModel,
+                heard?.text,
+                heard?.matched == true,
+                heard?.seq ?: 0,
+                notice = state.message,
+            )
         }
     }
 
