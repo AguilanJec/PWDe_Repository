@@ -5,10 +5,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.Display
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -211,9 +213,28 @@ class MediaPipeFaceTrackingManager(
             .build()
         var lastFrameMs = 0L
 
+        // Frames are turned upright for the display's current rotation, so a nod stays a nod when a
+        // game switches to landscape. The use cases start with whatever rotation they were built in.
+        val displayManager = appContext.getSystemService(DisplayManager::class.java)
+        fun syncRotation() {
+            val rotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: return
+            analysis.targetRotation = rotation
+            preview.targetRotation = rotation
+        }
+        val rotationListener = object : DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId == Display.DEFAULT_DISPLAY) syncRotation()
+            }
+
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+        }
+
         // CameraX use-case wiring and binding must happen on the main thread.
         val bound = withContext(Dispatchers.Main) {
             runCatching {
+                syncRotation()
+                displayManager.registerDisplayListener(rotationListener, mainHandler)
                 preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
                 analysis.setAnalyzer(executor) { image ->
                     val now = SystemClock.uptimeMillis()
@@ -250,14 +271,15 @@ class MediaPipeFaceTrackingManager(
             }
             launch(Dispatchers.Default) {
                 for ((result, timestamp) in results) {
+                    val frameTuning = tuningState.value
                     val next = processor.process(
                         pose = result.headPose(),
                         blendshapes = result.blendshapeScores(),
                         timestampMs = timestamp,
-                        tuning = tuningState.value,
+                        tuning = frameTuning,
                         base = base.copy(landmarks = result.landmarkArray(), confidence = result.presence()),
                     )
-                    processor.actionableStarts(next).forEach { _gestureEvents.tryEmit(it) }
+                    processor.actionableStarts(next, frameTuning.controls).forEach { _gestureEvents.tryEmit(it) }
                     send(next)
                 }
             }
@@ -269,6 +291,7 @@ class MediaPipeFaceTrackingManager(
             results.close()
             if (activeProcessor === processor) activeProcessor = null
             mainHandler.post {
+                displayManager.unregisterDisplayListener(rotationListener)
                 analysis.clearAnalyzer()
                 owner.destroy()
                 runCatching { provider.unbind(preview, analysis) }
@@ -291,8 +314,9 @@ class MediaPipeFaceTrackingManager(
         val tuningState = tuning.stateIn(this)
         send(base)
         orientation.poses().collect { (pose, timestamp) ->
-            val next = processor.process(pose, emptyMap(), timestamp, tuningState.value, base)
-            processor.actionableStarts(next).forEach { _gestureEvents.tryEmit(it) }
+            val frameTuning = tuningState.value
+            val next = processor.process(pose, emptyMap(), timestamp, frameTuning, base)
+            processor.actionableStarts(next, frameTuning.controls).forEach { _gestureEvents.tryEmit(it) }
             send(next)
         }
     }

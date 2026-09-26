@@ -4,6 +4,7 @@ import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
 import com.pwde.app.data.model.ControlConfig
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.prefs.SettingsRepository
@@ -96,10 +97,7 @@ class LiveGameSession(
             GameCommand.Pause -> setPaused(true)
             GameCommand.Resume -> setPaused(false)
             GameCommand.TogglePause -> setPaused(!livePlay.state.value.paused)
-            GameCommand.Recenter -> {
-                faceTracking.recenterCursor()
-                message("Recentered")
-            }
+            GameCommand.Recenter -> recenterForMode()
             GameCommand.Exit -> onExit()
             GameCommand.HideOverlay -> livePlay.update { it.copy(overlayHidden = true) }
             GameCommand.ShowOverlay -> livePlay.update { it.copy(overlayHidden = false) }
@@ -122,6 +120,17 @@ class LiveGameSession(
             }
             GameCommand.Select, GameCommand.TouchHold, GameCommand.Back, GameCommand.Home,
             GameCommand.Notifications, GameCommand.AllApps, GameCommand.Recents, is GameCommand.Scroll -> livePlay.perform(command)
+        }
+    }
+
+    /** Cursor mode: the pointer back to the middle. Joystick mode: where the head is now becomes the stick's neutral. */
+    private fun recenterForMode() {
+        if (livePlay.state.value.face.outputMode != FaceOutputMode.JOYSTICK) {
+            faceTracking.recenterCursor()
+            return message("Recentered")
+        }
+        scope?.launch {
+            message(if (faceTracking.captureJoystickCenter()) "Joystick recentered" else "Can't see your face — look at the camera and try again")
         }
     }
 

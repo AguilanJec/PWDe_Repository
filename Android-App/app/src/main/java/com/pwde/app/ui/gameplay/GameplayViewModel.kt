@@ -9,6 +9,7 @@ import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.GameProfile
 import com.pwde.app.data.local.ProfileRepository
 import com.pwde.app.data.model.ControlConfig
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.MappedButton
@@ -202,9 +203,16 @@ class GameplayViewModel(
         }
     }
 
+    /** Cursor mode: the pointer back to the middle. Joystick mode: where the head is now becomes the stick's neutral. */
     private fun recenter() {
-        recenterCursor()
-        post("Recentered", OverlayEvent.Kind.ACTION)
+        if (faceState.value.outputMode != FaceOutputMode.JOYSTICK) {
+            recenterCursor()
+            return post("Recentered", OverlayEvent.Kind.ACTION)
+        }
+        viewModelScope.launch {
+            val saved = faceTracking.captureJoystickCenter()
+            post(if (saved) "Joystick recentered" else "Can't see your face — look at the camera and try again", OverlayEvent.Kind.ACTION)
+        }
     }
 
     private fun post(text: String, kind: OverlayEvent.Kind, buttonId: Int? = null) {

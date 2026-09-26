@@ -74,7 +74,7 @@ object GameInput {
         VoiceCommandBinding(RESUME, listOf("resume", "continue game", "unpause")),
         VoiceCommandBinding(EXIT, listOf("exit", "exit game", "quit", "exit to pwde", "stop pwde")),
         VoiceCommandBinding(SELECT, listOf("select", "tap", "click")),
-        VoiceCommandBinding(RECENTER, listOf("recenter", "center")),
+        VoiceCommandBinding(RECENTER, listOf("recenter", "center", "recenter joystick", "center joystick")),
         VoiceCommandBinding(HIDE_OVERLAY, listOf("hide overlay", "hide panel")),
         VoiceCommandBinding(SHOW_OVERLAY, listOf("show overlay", "show panel")),
         VoiceCommandBinding(HOME, listOf("go home", "home screen")),

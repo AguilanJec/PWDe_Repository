@@ -18,10 +18,13 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import com.pwde.app.PwdeApplication
 import com.pwde.app.data.model.FaceOutputMode
+import com.pwde.app.data.model.TriggerType
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.LivePlay
 import com.pwde.app.play.LivePlayState
+import com.pwde.app.play.MovementStick
 import com.pwde.app.play.ScrollDirection
+import com.pwde.app.sensors.face.JoystickDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,6 +45,9 @@ class PwdeAccessibilityService : AccessibilityService() {
     private var bubbleView: ModeBubbleView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var drag: ContinuousStroke? = null
+
+    /** The finger holding the game's movement joystick, while the head joystick is deflected. */
+    private var stick: ContinuousStroke? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -68,6 +74,8 @@ class PwdeAccessibilityService : AccessibilityService() {
         scope = null
         drag?.release()
         drag = null
+        stick?.release()
+        stick = null
         removeOverlays()
     }
 
@@ -77,11 +85,14 @@ class PwdeAccessibilityService : AccessibilityService() {
         if (!state.active) {
             drag?.release()
             drag = null
+            stick?.release()
+            stick = null
             removeOverlays()
             return
         }
         val face = state.face
         val joystick = face.outputMode == FaceOutputMode.JOYSTICK
+        steerStick(state, livePlay)
         if (joystick) {
             removeView(cursorView)
             cursorView = null
@@ -166,6 +177,40 @@ class PwdeAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    // ---- Movement joystick ----
+
+    /**
+     * In joystick mode, holds the game's movement joystick (the button marked "Movement") and drags
+     * it the way the head joystick points; lets go when the head is back in the dead zone.
+     */
+    private fun steerStick(state: LivePlayState, livePlay: LivePlay) {
+        val face = state.face
+        val movement = state.buttons.firstOrNull { it.trigger?.type == TriggerType.MOVEMENT }
+        val deflected = movement != null && face.outputMode == FaceOutputMode.JOYSTICK && face.hasFace &&
+            !state.paused && face.joystick.direction != JoystickDirection.CENTER
+        if (!deflected || movement == null) {
+            stick?.release()
+            stick = null
+            return
+        }
+        if (stick?.isHeld == true) return
+        val center = toScreen(movement.x, movement.y)
+        stick = ContinuousStroke(
+            this,
+            target = {
+                val current = livePlay.state.value
+                val (width, height) = displaySize()
+                val reach = MovementStick.REACH * minOf(width, height)
+                val button = current.buttons.firstOrNull { it.trigger?.type == TriggerType.MOVEMENT }
+                val c = button?.let { toScreen(it.x, it.y) } ?: center
+                PointF(
+                    (c.x + current.face.joystick.x * reach).coerceIn(1f, width - 2f),
+                    (c.y + current.face.joystick.y * reach).coerceIn(1f, height - 2f),
+                )
+            },
+        ).also { it.press(center) }
+    }
+
     // ---- Actions ----
 
     private fun perform(command: GameCommand, livePlay: LivePlay) {
@@ -205,6 +250,12 @@ class PwdeAccessibilityService : AccessibilityService() {
     }
 
     private fun tap(point: PointF, durationMs: Long) {
+        // A new gesture would lift a held finger, so taps ride along with it instead.
+        val held = stick?.takeIf { it.isHeld } ?: drag?.takeIf { it.isHeld }
+        if (held != null) {
+            Log.d(TAG, "Tap at $point rides on the held ${if (held === stick) "joystick" else "drag"}")
+            return held.tap(point, durationMs)
+        }
         val path = Path().apply { moveTo(point.x, point.y) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))

@@ -69,6 +69,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.BuildConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.TriggerType
+import com.pwde.app.play.MovementStick
+import com.pwde.app.sensors.face.JoystickState
 import com.pwde.app.sensors.voice.InGameVoiceState
 import com.pwde.app.sensors.face.FaceState
 import com.pwde.app.sensors.face.TrackingStatus
@@ -115,13 +118,17 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
         } else {
             SimulatedBackground()
         }
-        ProfileButtons(ui.buttons, lastEvent, shot)
         val active = face.hasFace && !paused
+        val joystickMode = face.outputMode == FaceOutputMode.JOYSTICK
+        // In joystick mode the game's movement joystick (if mapped) shows the head joystick where it really is.
+        val hasMovementStick = ui.buttons.any { it.trigger?.type == TriggerType.MOVEMENT }
+        ProfileButtons(ui.buttons, lastEvent, shot, stick = face.joystick.takeIf { joystickMode }, stickActive = active)
         val screenWidth = maxWidth
-        if (face.outputMode == FaceOutputMode.JOYSTICK) {
-            SimulatedAvatar(face, active)
-        } else {
+        if (!joystickMode) {
             CursorLayer(face, active, lastEvent)
+        } else if (shot == null) {
+            // Only the plain simulated arena gets a character to walk around.
+            SimulatedAvatar(face, active)
         }
 
         Column(
@@ -150,7 +157,7 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
                 PwdeButton("Turn on camera", requestCamera, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.Videocam)
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (face.outputMode == FaceOutputMode.JOYSTICK) {
+                if (joystickMode && !hasMovementStick) {
                     JoystickView(
                         face.joystick,
                         Modifier.align(Alignment.BottomStart).size(screenWidth * face.joystick.radius * 2f),
@@ -239,9 +246,18 @@ private fun GameCommandField(reason: String, onSend: (String) -> Unit) {
     }
 }
 
-/** The game profile's mapped buttons; the one just pressed lights up. */
+/**
+ * The game profile's mapped buttons; the one just pressed lights up. With [stick] (joystick mode),
+ * the movement joystick is drawn as the head joystick at the reach PWDe drags it in the real game.
+ */
 @Composable
-private fun ProfileButtons(buttons: List<MappedButton>, lastEvent: OverlayEvent?, screenshot: ImageBitmap?) {
+private fun ProfileButtons(
+    buttons: List<MappedButton>,
+    lastEvent: OverlayEvent?,
+    screenshot: ImageBitmap?,
+    stick: JoystickState?,
+    stickActive: Boolean,
+) {
     if (buttons.isEmpty()) return
     val colors = PwdeTheme.colors
     val flash = remember { Animatable(0f) }
@@ -292,6 +308,17 @@ private fun ProfileButtons(buttons: List<MappedButton>, lastEvent: OverlayEvent?
         val diameter = 48.dp
         Box(Modifier.offset(viewportLeft, viewportTop).size(viewportWidth, viewportHeight)) {
             buttons.forEach { button ->
+                if (stick != null && button.trigger?.type == TriggerType.MOVEMENT) {
+                    val size = minOf(viewportWidth, viewportHeight) * MovementStick.REACH * 2f + diameter
+                    JoystickView(
+                        stick,
+                        Modifier
+                            .offset(x = viewportWidth * button.x - size / 2, y = viewportHeight * button.y - size / 2)
+                            .size(size),
+                        active = stickActive,
+                    )
+                    return@forEach
+                }
                 val pressed = button.id == pressedId && flash.value > 0f
                 Box(
                     Modifier
