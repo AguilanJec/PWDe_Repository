@@ -20,12 +20,14 @@ import android.view.accessibility.AccessibilityEvent
 import com.pwde.app.PwdeApplication
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.prefs.ButtonOverlay
+import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.LivePlay
 import com.pwde.app.play.LivePlayState
 import com.pwde.app.play.MovementStick
 import com.pwde.app.play.ScrollDirection
+import com.pwde.app.play.hasJoystickConfig
 import com.pwde.app.sensors.face.JoystickDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +104,16 @@ class PwdeAccessibilityService : AccessibilityService() {
             return
         }
         val face = state.face
-        val joystick = face.outputMode == FaceOutputMode.JOYSTICK
+        // Joystick mode/overlay only appears if the currently opened app has a joystick configuration
+        val joystick = face.outputMode == FaceOutputMode.JOYSTICK && state.hasJoystickConfig()
+
+        // If in Joystick mode but current app lacks joystick configuration, automatically revert to CURSOR mode
+        if (face.outputMode == FaceOutputMode.JOYSTICK && !state.hasJoystickConfig()) {
+            scope?.launch {
+                (application as PwdeApplication).container.settingsRepository.setInputMode(InputMode.HEAD_FACE)
+            }
+        }
+
         steerStick(state, livePlay)
         if (joystick) {
             removeView(cursorView)
@@ -154,8 +165,13 @@ class PwdeAccessibilityService : AccessibilityService() {
             this,
             onTap = { livePlay.request(GameCommand.TogglePause) },
             onLongPress = {
-                val joystick = livePlay.state.value.face.outputMode == FaceOutputMode.JOYSTICK
-                livePlay.request(if (joystick) GameCommand.CursorMode else GameCommand.JoystickMode)
+                val currentState = livePlay.state.value
+                val joystick = currentState.face.outputMode == FaceOutputMode.JOYSTICK
+                if (!joystick && !currentState.hasJoystickConfig()) {
+                    livePlay.update { it.copy(message = "Joystick mode requires a joystick configuration for this app") }
+                } else {
+                    livePlay.request(if (joystick) GameCommand.CursorMode else GameCommand.JoystickMode)
+                }
             },
             onMove = { dx, dy ->
                 params.x += dx
@@ -246,7 +262,37 @@ class PwdeAccessibilityService : AccessibilityService() {
         PixelFormat.TRANSLUCENT,
     ).apply { gravity = Gravity.TOP or Gravity.START }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    private var currentForegroundPackage: String? = null
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString() ?: return
+            if (pkg != currentForegroundPackage) {
+                currentForegroundPackage = pkg
+                onForegroundPackageChanged(pkg)
+            }
+        }
+    }
+
+    private fun onForegroundPackageChanged(pkg: String) {
+        val container = (application as PwdeApplication).container
+        val liveState = container.livePlay.state.value
+        val gamePkg = liveState.game?.packageName
+        val appPkg = packageName
+
+        if (gamePkg != null && pkg != gamePkg && pkg != appPkg) {
+            // App was closed or switched away from:
+            // 1. Hide button overlay markers so they do not persist
+            removeView(markersView)
+            markersView = null
+            container.livePlay.update { it.copy(controlsShown = false) }
+
+            // 2. Automatically switch navigation mode back to cursor mode
+            scope?.launch {
+                container.settingsRepository.setInputMode(InputMode.HEAD_FACE)
+            }
+        }
+    }
 
     override fun onInterrupt() = Unit
 

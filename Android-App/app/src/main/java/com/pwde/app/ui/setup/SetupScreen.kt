@@ -76,6 +76,7 @@ import com.pwde.app.ui.components.VoiceCommandsEffect
 import com.pwde.app.ui.components.rememberCameraPermissionRequest
 import com.pwde.app.ui.components.rememberMicPermissionRequest
 import com.pwde.app.ui.components.voiceCommand
+import com.pwde.app.ui.voice.LocalVoiceController
 import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
@@ -283,12 +284,14 @@ private fun ColorSchemeTile(option: ColorSchemeOption, selected: Boolean, onClic
 @Composable
 private fun PermissionsStep() {
     val context = LocalContext.current
+    val voiceController = LocalVoiceController.current
     var camera by remember { mutableStateOf(context.isGranted(Manifest.permission.CAMERA)) }
     var mic by remember { mutableStateOf(context.isGranted(Manifest.permission.RECORD_AUDIO)) }
     var denied by rememberSaveable { mutableStateOf(false) }
     LifecycleResumeEffect(Unit) {
         camera = context.isGranted(Manifest.permission.CAMERA)
         mic = context.isGranted(Manifest.permission.RECORD_AUDIO)
+        voiceController?.onMicPermissionResult()
         onPauseOrDispose { }
     }
     val requestCamera = rememberCameraPermissionRequest { granted ->
@@ -297,7 +300,7 @@ private fun PermissionsStep() {
     }
     val requestMic = rememberMicPermissionRequest { granted ->
         mic = granted
-        if (!granted) denied = true
+        if (granted) voiceController?.setVoiceEnabled(true) else denied = true
     }
     val openAppSettings = {
         context.startActivity(

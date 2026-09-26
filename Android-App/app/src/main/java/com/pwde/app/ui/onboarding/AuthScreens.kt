@@ -21,6 +21,22 @@ import com.pwde.app.ui.components.InfoNote
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
 import com.pwde.app.ui.components.PwdeTextField
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.voiceCommand
+
+private val SIGN_IN_COMMANDS = listOf(
+    voiceCommand("sign_in", "sign in", "log in"),
+    voiceCommand("guest", "use as guest", "continue as guest"),
+    voiceCommand("forgot", "forgot password", "reset password"),
+    voiceCommand("create", "create an account", "sign up"),
+)
+
+private val RESET_COMMANDS = listOf(voiceCommand("send", "send link", "send reset link"))
+
+private val CREATE_ACCOUNT_COMMANDS = listOf(
+    voiceCommand("create", "create account", "create my account", "sign up"),
+    voiceCommand("sign_in", "i already have an account", "sign in"),
+)
 
 /** Shown whenever the build has no Firebase config: sign-in is unavailable, guest keeps working. */
 @Composable
@@ -47,6 +63,14 @@ fun SignInScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.completed) { if (state.completed) onSignedIn() }
+    VoiceCommandsEffect(SIGN_IN_COMMANDS) {
+        when (it) {
+            "sign_in" -> viewModel.signIn()
+            "guest" -> onUseAsGuest()
+            "forgot" -> onForgotPassword()
+            "create" -> onCreateAccount()
+        }
+    }
 
     PwdeScreen(
         title = "Sign in",
@@ -76,6 +100,7 @@ fun SignInScreen(
 @Composable
 fun ForgotPasswordScreen(viewModel: AuthViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    VoiceCommandsEffect(RESET_COMMANDS) { viewModel.sendReset() }
     PwdeScreen(
         title = "Reset password",
         subtitle = "We'll email you a link to set a new password.",
@@ -116,6 +141,9 @@ fun CreateAccountScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.completed) { if (state.completed) onCreated() }
+    VoiceCommandsEffect(CREATE_ACCOUNT_COMMANDS) {
+        if (it == "create") viewModel.createAccount() else onHaveAccount()
+    }
 
     PwdeScreen(
         title = "Create your account",

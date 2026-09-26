@@ -34,8 +34,15 @@ object StandardCommands {
     val SETTINGS = VoiceCommand("settings", "settings", "open settings", scope = CommandScope.GLOBAL)
     val MENU = VoiceCommand("menu", "menu", "main menu", scope = CommandScope.GLOBAL)
     val CLOSE = VoiceCommand("close", "close", scope = CommandScope.GLOBAL)
+    val GAMES = VoiceCommand("open_games", "open games", "games", "game library", scope = CommandScope.GLOBAL)
+    val GABAI = VoiceCommand(
+        "open_gabai", "gabai", "gab ai", "gabay", "gabby", "gabby ai", "open gabai", "open gab ai",
+        "open gabay", "open gabby", "talk to gabai", "talk to gab ai", "talk to gabby ai", "talk to gabay",
+        scope = CommandScope.GLOBAL,
+    )
+    val PROFILE = VoiceCommand("open_profile", "open profile", "profile", "my profile", scope = CommandScope.GLOBAL)
 
-    val all = listOf(BACK, HOME, NEXT, SKIP, SETTINGS, MENU, CLOSE)
+    val all = listOf(BACK, HOME, NEXT, SKIP, SETTINGS, MENU, CLOSE, GAMES, GABAI, PROFILE)
 
     /** "play <game>" from anywhere in PWDe launches that game with its last-played profile. */
     val playGames = Game.entries.map { VoiceCommand("play:${it.id}", listOf("play ${it.displayName}"), CommandScope.GLOBAL) }

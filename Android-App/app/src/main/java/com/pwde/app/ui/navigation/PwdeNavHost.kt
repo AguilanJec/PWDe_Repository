@@ -72,7 +72,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
     val activity = LocalActivity.current
     val screenReader = pwdeViewModel { ScreenReaderViewModel(it.settingsRepository, it.speechOutput) }
     val voice = pwdeViewModel {
-        VoiceViewModel(it.voiceCommandManager, it.controlsRepository, it.settingsRepository, it.profileRepository)
+        VoiceViewModel(it.voiceCommandManager, it.controlsRepository, it.settingsRepository, it.profileRepository, it.livePlay)
     }
     // Observing voice state here keeps the recognizer running on every screen while PWDe is visible.
     voice.state.collectAsStateWithLifecycle()
@@ -92,15 +92,6 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
     // gesture, so wizard screens step back first; with nothing to handle it (the root screen) it
     // does nothing rather than close the app.
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    LaunchedEffect(voice) {
-        voice.navigation.collect { request ->
-            when (request) {
-                VoiceNavigation.BACK -> backDispatcher?.takeIf { it.hasEnabledCallbacks() }?.onBackPressed()
-                VoiceNavigation.HOME -> if (inMainApp()) navController.popBackStack(Routes.DASHBOARD, inclusive = false)
-                VoiceNavigation.SETTINGS -> if (inMainApp()) navController.navigate(Routes.CONTROLS) { launchSingleTop = true }
-            }
-        }
-    }
 
     fun back() {
         if (!navController.popBackStack()) activity?.finish()
@@ -117,6 +108,19 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             popUpTo(Routes.DASHBOARD) { saveState = true }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    LaunchedEffect(voice) {
+        voice.navigation.collect { request ->
+            when (request) {
+                VoiceNavigation.BACK -> backDispatcher?.takeIf { it.hasEnabledCallbacks() }?.onBackPressed()
+                VoiceNavigation.HOME -> if (inMainApp()) navController.popBackStack(Routes.DASHBOARD, inclusive = false)
+                VoiceNavigation.SETTINGS -> if (inMainApp()) navController.navigate(Routes.CONTROLS) { launchSingleTop = true }
+                VoiceNavigation.GAMES -> if (inMainApp()) openTab(MainTab.GAMES)
+                VoiceNavigation.GABAI -> if (inMainApp() && navController.currentDestination?.route != Routes.GABAI) openTab(MainTab.GABAI)
+                VoiceNavigation.PROFILE -> if (inMainApp()) openTab(MainTab.PROFILE)
+            }
         }
     }
 

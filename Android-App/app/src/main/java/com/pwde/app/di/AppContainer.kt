@@ -57,7 +57,7 @@ class AppContainer(private val context: Context) {
 
     /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). Navigation everywhere except gameplay. */
     val voiceCommandManager: VoiceCommandManager by lazy {
-        AndroidVoiceCommandManager(context, controlsRepository, settingsRepository, micArbiter)
+        AndroidVoiceCommandManager(context, controlsRepository, micArbiter)
     }
 
     /** sherpa-onnx keyword spotter tuning, edited in the Testing Station and used by gameplay. */

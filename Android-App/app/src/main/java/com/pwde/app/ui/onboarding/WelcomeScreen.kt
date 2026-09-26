@@ -21,11 +21,19 @@ import com.pwde.app.R
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.PwdeButton
 import com.pwde.app.ui.components.PwdeScreen
+import com.pwde.app.ui.components.VoiceCommandsEffect
+import com.pwde.app.ui.components.voiceCommand
 import com.pwde.app.ui.theme.PwdeTheme
+
+private val WELCOME_COMMANDS = listOf(
+    voiceCommand("guest", "get started", "continue as guest", "start setup"),
+    voiceCommand("account", "i have an account", "sign in", "log in"),
+)
 
 /** A2 Welcome. Guest is the primary path; an account is optional and only adds cloud sync. */
 @Composable
 fun WelcomeScreen(onContinueAsGuest: () -> Unit, onHaveAccount: () -> Unit) {
+    VoiceCommandsEffect(WELCOME_COMMANDS) { if (it == "guest") onContinueAsGuest() else onHaveAccount() }
     val colors = PwdeTheme.colors
     PwdeScreen(
         title = null,

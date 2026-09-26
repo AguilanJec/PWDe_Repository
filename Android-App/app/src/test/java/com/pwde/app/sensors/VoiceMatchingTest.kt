@@ -62,6 +62,13 @@ class CommandMatcherTest {
     }
 
     @Test
+    fun gabaiNameVariantsOpenTheAssistant() {
+        listOf("Gab AI", "Gabay", "open GabAI", "talk to Gabby AI").forEach { phrase ->
+            assertEquals(StandardCommands.GABAI, CommandMatcher.match(phrase, StandardCommands.all, VoiceMatchMode.EXACT))
+        }
+    }
+
+    @Test
     fun laterHypothesesAreTriedWhenTheFirstDoesNotMatch() {
         val result = CommandMatcher.match(listOf("a tack", "attack"), commands, VoiceMatchMode.EXACT)
         assertEquals(attack, result)

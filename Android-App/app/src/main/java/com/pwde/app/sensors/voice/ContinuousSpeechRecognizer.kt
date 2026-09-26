@@ -39,6 +39,12 @@ class ContinuousSpeechRecognizer(
         fun onListening(listening: Boolean)
         fun onLevel(level: Float)
 
+        /** A new speech utterance started after any prior result or silence. */
+        fun onUtteranceStarted() = Unit
+
+        /** The speech recognizer detected silence after the current utterance. */
+        fun onUtteranceEnded() = Unit
+
         /** Recognition hypotheses, best first, with confidence scores when the recognizer reports them. */
         fun onHeard(hypotheses: List<String>, confidences: FloatArray?, isFinal: Boolean)
 
@@ -164,12 +170,15 @@ class ContinuousSpeechRecognizer(
 
     private val callbacks = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) = listener.onListening(true)
-        override fun onBeginningOfSpeech() = Unit
+        override fun onBeginningOfSpeech() = listener.onUtteranceStarted()
 
         // Typical rmsdB runs from about -2 (silence) to 10 (loud speech).
         override fun onRmsChanged(rmsdB: Float) = listener.onLevel(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
         override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onEndOfSpeech() = listener.onLevel(0f)
+        override fun onEndOfSpeech() {
+            listener.onLevel(0f)
+            listener.onUtteranceEnded()
+        }
         override fun onError(error: Int) = this@ContinuousSpeechRecognizer.onError(error)
 
         override fun onResults(results: Bundle?) {

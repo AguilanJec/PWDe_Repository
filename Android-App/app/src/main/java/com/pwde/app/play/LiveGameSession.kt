@@ -4,6 +4,7 @@ import android.util.Log
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
+import com.pwde.app.data.local.inputModeOrDefault
 import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
@@ -18,6 +19,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -98,6 +100,25 @@ class LiveGameSession(
     }
 
     private fun onVoice(commandId: String?, rawText: String?) {
+        val isJoystickMode = livePlay.state.value.face.outputMode == FaceOutputMode.JOYSTICK
+        if (isJoystickMode) {
+            // In joystick mode, voice commands are strictly limited to: cursor mode and switch profile.
+            val text = rawText?.lowercase() ?: ""
+            val isCursorMode = commandId == GameInput.CURSOR_MODE || text.contains("cursor mode")
+            val isSwitchProfile = text.contains("switch profile") || text.contains("change profile")
+
+            if (isCursorMode) {
+                execute(GameCommand.CursorMode)
+            } else if (isSwitchProfile) {
+                scope?.launch { switchCalibrationProfile() }
+            } else {
+                Log.i(TAG, "Voice command dropped in joystick mode: $rawText ($commandId)")
+                message("In joystick mode, voice commands are limited to cursor mode and switch profile")
+            }
+            return
+        }
+
+        // In cursor mode, all voice controls for navigation work normally
         val command = GameInput.fromVoice(commandId, rawText, livePlay.state.value.buttons)
         Log.i(TAG, "Voice \"$rawText\" ($commandId) -> $command")
         command?.let(::runUnlessPaused)
@@ -137,7 +158,13 @@ class LiveGameSession(
                 message("Pressed ${command.button.label}")
             }
             GameCommand.CursorMode -> switchMode(InputMode.HEAD_FACE, "Cursor mode")
-            GameCommand.JoystickMode -> switchMode(InputMode.JOYSTICK, "Joystick mode")
+            GameCommand.JoystickMode -> {
+                if (!livePlay.state.value.hasJoystickConfig()) {
+                    message("Joystick mode requires a joystick configuration for this app")
+                } else {
+                    switchMode(InputMode.JOYSTICK, "Joystick mode")
+                }
+            }
             GameCommand.StartDrag -> {
                 livePlay.update { it.copy(dragging = true) }
                 livePlay.perform(command)
@@ -183,6 +210,19 @@ class LiveGameSession(
     private fun switchMode(mode: InputMode, label: String) {
         scope?.launch { settingsRepository.setInputMode(mode) }
         message(label)
+    }
+
+    private suspend fun switchCalibrationProfile() {
+        val profiles = profileRepository.calibrationProfiles.first()
+        if (profiles.isEmpty()) {
+            return message("No saved calibration profiles yet")
+        }
+        val currentInputMode = settingsRepository.settings.first().inputMode
+        val index = profiles.indexOfFirst { it.inputModeOrDefault == currentInputMode }
+        val next = profiles[(if (index >= 0) index + 1 else 0) % profiles.size]
+        controlsRepository.applyCalibration(next)
+        settingsRepository.setInputMode(next.inputModeOrDefault)
+        message("Switched to \"${next.name}\"")
     }
 
     private fun setPaused(paused: Boolean) {

@@ -5,10 +5,11 @@ import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.VoiceActivationMode
 import com.pwde.app.data.model.VoiceMatchMode
-import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -94,7 +95,6 @@ interface VoiceCommandManager {
 class AndroidVoiceCommandManager(
     context: Context,
     private val controlsRepository: ControlsRepository,
-    private val settingsRepository: SettingsRepository,
     private val micArbiter: MicArbiter,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : VoiceCommandManager {
@@ -105,18 +105,60 @@ class AndroidVoiceCommandManager(
     private val screenCommands = MutableStateFlow<Map<Any, List<VoiceCommand>>>(emptyMap())
     private val dictationOwners = MutableStateFlow<Set<Any>>(emptySet())
     private val gate = VoiceActivationGate()
+    private var historyClearJob: Job? = null
+
+    /**
+     * Google keeps one recognition session open across short pauses, and every partial carries the
+     * whole session's transcript. Words before this index were already acted on (a command fired)
+     * or went stale (silence), so they are never shown or matched again.
+     */
+    private var consumedWords = 0
+    private var latestWordCount = 0
     private var config = ControlConfig()
 
     private val recognizer = ContinuousSpeechRecognizer(appContext, scope, object : ContinuousSpeechRecognizer.Listener {
         override fun onListening(listening: Boolean) = _state.update { it.copy(listening = listening) }
         override fun onLevel(level: Float) = _state.update { it.copy(level = level) }
-        override fun onUtteranceAborted() = gate.reset()
+        override fun onUtteranceStarted() {
+            consumedWords = 0
+            latestWordCount = 0
+            clearRecognitionHistory()
+        }
+        override fun onUtteranceEnded() = scheduleHistoryClear()
+        override fun onUtteranceAborted() {
+            gate.reset()
+            consumedWords = 0
+            latestWordCount = 0
+            scheduleHistoryClear()
+        }
         override fun onUnavailable(reason: MicAvailability) = _state.update { it.copy(availability = reason) }
 
         override fun onHeard(hypotheses: List<String>, confidences: FloatArray?, isFinal: Boolean) {
-            val match = if (isDictation(hypotheses.first())) null else CommandMatcher.match(hypotheses, allCommands(), config.voiceMatchMode)
+            val words = hypotheses.map(::words)
+            latestWordCount = words.first().size
+            val fresh = words.map { it.drop(consumedWords) }
+            if (fresh.first().isEmpty()) {
+                if (isFinal) consumedWords = 0
+                return
+            }
+            val segment = fresh.first().joinToString(" ")
+            val dictating = isDictation(segment)
+            // Outside dictation, only the tail can still become a command: leading words that matched
+            // nothing are dropped so they don't pile up in the bubble.
+            val window = if (dictating) fresh else fresh.map { it.takeLast(matchWindowWords()) }
+            val shown = window.first().joinToString(" ")
+            val match = if (dictating) null else CommandMatcher.match(window.map { it.joinToString(" ") }, allCommands(), config.voiceMatchMode)
             val fired = gate.offer(match, isFinal, config.voiceActivationMode)
-            publish(hypotheses.first(), isFinal, fired, VoiceInputSource.MIC)
+            publish(if (dictating) segment else shown, isFinal, fired, VoiceInputSource.MIC)
+            when {
+                isFinal -> consumedWords = 0
+                fired != null -> {
+                    // The command's words are spent; what's said next starts a fresh segment.
+                    consumedWords = latestWordCount
+                    gate.reset()
+                }
+                else -> scheduleHistoryClear()
+            }
         }
     })
 
@@ -140,9 +182,8 @@ class AndroidVoiceCommandManager(
                         permissionTick,
                         screenCommands,
                         micArbiter.busy,
-                        settingsRepository.settings.map { it.pwdeEnabled }.distinctUntilChanged(),
-                    ) { config, _, screens, micBusy, pwdeEnabled -> ListenInputs(config, screens, micBusy, pwdeEnabled) }
-                        .collect { (latest, screens, micBusy, pwdeEnabled) ->
+                    ) { config, _, screens, micBusy -> ListenInputs(config, screens, micBusy) }
+                        .collect { (latest, screens, micBusy) ->
                             config = latest
                             val availability = recognizer.availability()
                             _state.update {
@@ -155,8 +196,8 @@ class AndroidVoiceCommandManager(
                                     pausedForOtherInput = micBusy,
                                 )
                             }
-                            // The home screen's master switch wins: PWDe off means nothing listens.
-                            val listen = pwdeEnabled && latest.voiceEnabled && availability == MicAvailability.AVAILABLE && !micBusy
+                            // In-app navigation stays available before the separate accessibility service is enabled.
+                            val listen = latest.voiceEnabled && availability == MicAvailability.AVAILABLE && !micBusy
                             if (listen) recognizer.start() else stopListening()
                         }
                 } finally {
@@ -174,6 +215,7 @@ class AndroidVoiceCommandManager(
     override fun submitText(text: String) {
         if (text.isBlank()) return
         scope.launch {
+            clearRecognitionHistory()
             val command = if (isDictation(text)) null else CommandMatcher.match(text, allCommands(), config.voiceMatchMode)
             publish(text.trim(), isFinal = true, command = command, source = VoiceInputSource.TEXT)
         }
@@ -200,18 +242,49 @@ class AndroidVoiceCommandManager(
 
     private fun stopListening() {
         recognizer.stop()
-        gate.reset()
+        clearRecognitionHistory()
     }
 
     private fun publish(transcript: String, isFinal: Boolean, command: VoiceCommand?, source: VoiceInputSource) {
         _state.update { it.copy(lastTranscript = transcript, lastCommand = command ?: it.lastCommand) }
         _results.tryEmit(VoiceResult(transcript, isFinal, command, source))
+        if (isFinal || source == VoiceInputSource.TEXT) scheduleHistoryClear()
     }
+
+    private fun clearRecognitionHistory() {
+        historyClearJob?.cancel()
+        historyClearJob = null
+        gate.reset()
+        _state.update { it.copy(lastTranscript = null, lastCommand = null) }
+    }
+
+    private fun scheduleHistoryClear() {
+        historyClearJob?.cancel()
+        historyClearJob = scope.launch {
+            delay(RECOGNITION_HISTORY_MS)
+            // Silence: whatever was heard so far in this recognizer session is stale.
+            consumedWords = latestWordCount
+            gate.reset()
+            _state.update { it.copy(lastTranscript = null, lastCommand = null) }
+            historyClearJob = null
+        }
+    }
+
+    private fun words(text: String) = text.trim().split(WHITESPACE).filter { it.isNotEmpty() }
+
+    /** Longest phrase in words, plus slack for filler like "please" or a misheard word. */
+    private fun matchWindowWords() =
+        (allCommands().flatMap { it.phrases }.maxOfOrNull { words(it).size } ?: 1) + MATCH_WINDOW_SLACK_WORDS
 
     private data class ListenInputs(
         val config: ControlConfig,
         val screens: Map<Any, List<VoiceCommand>>,
         val micBusy: Boolean,
-        val pwdeEnabled: Boolean,
     )
+
+    private companion object {
+        const val RECOGNITION_HISTORY_MS = 3_000L
+        const val MATCH_WINDOW_SLACK_WORDS = 2
+        val WHITESPACE = Regex("\\s+")
+    }
 }

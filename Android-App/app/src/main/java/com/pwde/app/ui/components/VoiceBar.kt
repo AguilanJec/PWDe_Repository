@@ -90,7 +90,10 @@ fun VoiceMicOverlay(
     var popupVisible by remember { mutableStateOf(false) }
     LaunchedEffect(controller) {
         controller.state.map(::heardLine).distinctUntilChanged().drop(1).collectLatest { line ->
-            if (line == null) return@collectLatest
+            if (line == null) {
+                popupVisible = false
+                return@collectLatest
+            }
             heard = line
             popupVisible = true
             delay(POPUP_MILLIS)

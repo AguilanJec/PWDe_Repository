@@ -2,6 +2,7 @@ package com.pwde.app.play
 
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.TriggerType
 import com.pwde.app.sensors.face.FaceState
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,4 +72,12 @@ class LivePlay {
     internal fun end() {
         _state.value = LivePlayState()
     }
+}
+
+/** True if a game session is active and the currently opened app has a joystick configuration. */
+fun LivePlayState.hasJoystickConfig(): Boolean {
+    if (!active || game == null) return false
+    return buttons.any { b ->
+        b.trigger?.type == TriggerType.MOVEMENT || b.trigger?.type == TriggerType.JOYSTICK
+    } || profileName != null
 }
