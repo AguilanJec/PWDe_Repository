@@ -83,6 +83,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.pwde.app.ui.games.GameThumbnail
+import com.pwde.app.ui.games.GameArt
 
 data class ProfileUiState(
     val auth: AuthState = AuthState.Guest,
@@ -280,20 +282,36 @@ fun ProfileScreen(
                 val open = folder.gameId in openFolders
                 GameFolderCard(folder, open, onToggle = { toggleFolder(folder.gameId) })
                 if (open) folder.profiles.forEach {
-                    ProfileRow(SavedProfile.Game(it), Icons.Outlined.SportsEsports, { p -> dialog = ProfileDialog.Rename(p) }, { p -> dialog = ProfileDialog.Delete(p) }) {
+                    ProfileRow(
+                        profile = SavedProfile.Game(it),
+                        icon = Icons.Outlined.SportsEsports,
+                        onRename = { p -> dialog = ProfileDialog.Rename(p) },
+                        onDelete = { p -> dialog = ProfileDialog.Delete(p) },
+                        game = Game.byId(it.gameId),   // <-- new
+                    ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
                             PwdeButton(
-                                "Play", { onPlayGameProfile(it.gameId, it.id) }, icon = Icons.Outlined.SportsEsports,
-                                modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                                "Play",
+                                { onPlayGameProfile(it.gameId, it.id) },
+                                icon = Icons.Outlined.SportsEsports,
+                                modifier = Modifier.weight(1f),
+                                contentPadding = pairedButtonPadding(),
                             )
                             PwdeButton(
-                                "Test", { onTestGameProfile(it.gameId, it.id) }, style = ButtonStyle.SECONDARY,
-                                modifier = Modifier.weight(1f), contentPadding = pairedButtonPadding(),
+                                "Test",
+                                { onTestGameProfile(it.gameId, it.id) },
+                                style = ButtonStyle.SECONDARY,
+                                modifier = Modifier.weight(1f),
+                                contentPadding = pairedButtonPadding(),
                             )
                         }
                         PwdeButton(
-                            "Edit buttons", { onEditGameProfile(it.id) }, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.AutoAwesome,
-                            modifier = Modifier.fillMaxWidth(), contentPadding = pairedButtonPadding(),
+                            "Edit buttons",
+                            { onEditGameProfile(it.id) },
+                            style = ButtonStyle.SECONDARY,
+                            icon = Icons.Outlined.AutoAwesome,
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = pairedButtonPadding(),
                         )
                     }
                 }
@@ -388,7 +406,12 @@ private fun GameFolderCard(folder: GameFolder, open: Boolean, onToggle: () -> Un
         contentPadding = spacing.screenMargin,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
-            IconBadge(if (open) Icons.Outlined.FolderOpen else Icons.Outlined.Folder)
+            val game = Game.byId(folder.gameId)
+            if (game != null) {
+                GameThumbnail(game, fallbackIcon = if (open) Icons.Outlined.FolderOpen else Icons.Outlined.Folder)
+            } else {
+                IconBadge(if (open) Icons.Outlined.FolderOpen else Icons.Outlined.Folder)
+            }
             Column(Modifier.weight(1f)) {
                 Text(folder.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
                 Text(count, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
@@ -408,14 +431,23 @@ private fun ProfileRow(
     icon: ImageVector,
     onRename: (SavedProfile) -> Unit,
     onDelete: (SavedProfile) -> Unit,
+    game: Game? = null,          // <-- new
     primary: @Composable () -> Unit,
 ) {
     val colors = PwdeTheme.colors
     val spacing = PwdeTheme.spacing
     GradientCard(Modifier.fillMaxWidth(), contentPadding = spacing.screenMargin) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
+
+            // NEW: show the full banner for game profiles, icon badge otherwise
+            if (game != null) {
+                GameArt(game)
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.itemGap)) {
-                IconBadge(icon)
+                if (game == null) {
+                    IconBadge(icon)
+                }
                 Column(Modifier.weight(1f)) {
                     Text(profile.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
                     Text(profile.detail, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)

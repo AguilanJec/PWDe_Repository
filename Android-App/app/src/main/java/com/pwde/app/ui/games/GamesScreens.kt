@@ -69,7 +69,36 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Color
 import com.pwde.app.R
-
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.pwde.app.ui.components.IconBadge
+import androidx.compose.ui.unit.Dp
+/**
+ * Small square game artwork for list rows, matching IconBadge's size and shape.
+ * Falls back to [fallbackIcon] (shown in an IconBadge) when no artwork is bundled.
+ */
+@Composable
+internal fun GameThumbnail(
+    game: Game,
+    fallbackIcon: ImageVector,
+    size: Dp = 40.dp,
+) {
+    val res = gameArtRes(game)
+    if (res == null) {
+        IconBadge(fallbackIcon)
+        return
+    }
+    val shape = RoundedCornerShape(12.dp) // keep in sync with IconBadge
+    Image(
+        painter = painterResource(id = res),
+        contentDescription = "${game.displayName} artwork",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(size)
+            .clip(shape)
+            .border(1.dp, PwdeTheme.colors.borderBrush, shape),
+    )
+}
 /** Which games already have a saved game profile (from Room). */
 class GamesViewModel(profileRepository: ProfileRepository) : ViewModel() {
     val gamesWithProfiles: StateFlow<Set<String>> = profileRepository.gameProfiles
@@ -109,7 +138,7 @@ fun GameCard(game: Game, hasProfile: Boolean, onClick: () -> Unit) {
 }
 
 /** Returns the drawable resource for a game's artwork, or null if none is bundled. */
-private fun gameArtRes(game: Game): Int? = when (game) {
+internal fun gameArtRes(game: Game): Int? = when (game) {
     Game.MOBILE_LEGENDS -> R.drawable.mobile_legends
     Game.CLASH_ROYALE -> R.drawable.clash_royale
     else -> null
@@ -117,7 +146,7 @@ private fun gameArtRes(game: Game): Int? = when (game) {
 
 /** Game artwork with a scrim so the title/status text stays readable. Falls back to a gradient + icon. */
 @Composable
-private fun GameArt(game: Game) {
+internal fun GameArt(game: Game) {
     val colors = PwdeTheme.colors
     val res = gameArtRes(game)
     Box(
