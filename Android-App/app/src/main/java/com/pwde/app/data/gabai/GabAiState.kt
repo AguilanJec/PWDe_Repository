@@ -18,14 +18,20 @@ enum class Axis(val label: String) {
     fun previous(): Axis? = entries.getOrNull(ordinal - 1)
 }
 
+enum class JoystickParameter(val label: String) {
+    SENSITIVITY("Sensitivity"), DEAD_ZONE("Dead zone");
+
+    fun next(): JoystickParameter? = entries.getOrNull(ordinal + 1)
+    fun previous(): JoystickParameter? = entries.getOrNull(ordinal - 1)
+}
+
 /** GabAI is a scripted, resumable conversation. Every screen is exactly one of these states. */
 sealed class GabAiState {
     object Welcome : GabAiState() // New Calibration / New Game Profile / Continue Existing
 
     // --- Calibration branch ---
-    object ChooseCalibrationMode : GabAiState() // Cursor or Joystick
     data class CalibrateCursorAxis(val axis: Axis) : GabAiState() // repeats per direction
-    object CalibrateJoystick : GabAiState() // sensitivity, dead zone, center, radius
+    data class CalibrateJoystick(val parameter: JoystickParameter) : GabAiState()
     object CalibrationVoiceSetup : GabAiState() // voice on/off, matching mode, activation mode
     data class CalibrationGestureTest(val index: Int) : GabAiState() // perform GESTURE_TEST[index], or skip it
     object CalibrationGestureReview : GabAiState() // which gestures are on, retry missed ones, name and save
@@ -50,9 +56,8 @@ sealed class GabAiState {
     val summary: String
         get() = when (this) {
             Welcome -> "Start"
-            ChooseCalibrationMode -> "Calibration: choose cursor or joystick"
             is CalibrateCursorAxis -> "Calibration: cursor ${axis.label.lowercase()}"
-            CalibrateJoystick -> "Calibration: joystick"
+            is CalibrateJoystick -> "Calibration: joystick ${parameter.label.lowercase()}"
             CalibrationVoiceSetup -> "Calibration: voice"
             is CalibrationGestureTest -> "Calibration: gesture ${index + 1} of ${GESTURE_TEST.size}"
             CalibrationGestureReview -> "Calibration: gesture results"
@@ -103,8 +108,7 @@ object GabAiCodec {
         is GabAiState.ButtonMapping -> "ButtonMapping:${state.buttonsPlaced}"
         // Spelled out rather than taken from class names, which minification would rename.
         GabAiState.Welcome -> "Welcome"
-        GabAiState.ChooseCalibrationMode -> "ChooseCalibrationMode"
-        GabAiState.CalibrateJoystick -> "CalibrateJoystick"
+        is GabAiState.CalibrateJoystick -> "CalibrateJoystick:${state.parameter.name}"
         GabAiState.CalibrationVoiceSetup -> "CalibrationVoiceSetup"
         GabAiState.CalibrationGestureReview -> "CalibrationGestureReview"
         GabAiState.CalibrationSaved -> "CalibrationSaved"
@@ -121,10 +125,12 @@ object GabAiCodec {
         val parts = value.orEmpty().split(':')
         return when (parts[0]) {
             "Welcome" -> GabAiState.Welcome
-            "ChooseCalibrationMode" -> GabAiState.ChooseCalibrationMode
+            // Older sessions paused at the removed mode picker resume with cursor calibration.
+            "ChooseCalibrationMode" -> GabAiState.CalibrateCursorAxis(Axis.UP)
             "CalibrateCursorAxis" -> Axis.entries.firstOrNull { it.name == parts.getOrNull(1) }
-                ?.let { GabAiState.CalibrateCursorAxis(it) } ?: GabAiState.ChooseCalibrationMode
-            "CalibrateJoystick" -> GabAiState.CalibrateJoystick
+                ?.let { GabAiState.CalibrateCursorAxis(it) } ?: GabAiState.CalibrateCursorAxis(Axis.UP)
+            "CalibrateJoystick" -> JoystickParameter.entries.firstOrNull { it.name == parts.getOrNull(1) }
+                ?.let { GabAiState.CalibrateJoystick(it) } ?: GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY)
             "CalibrationVoiceSetup" -> GabAiState.CalibrationVoiceSetup
             "CalibrationGestureTest" -> parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in GabAiState.GESTURE_TEST.indices }
                 ?.let { GabAiState.CalibrationGestureTest(it) } ?: GabAiState.CalibrationGestureTest(0)

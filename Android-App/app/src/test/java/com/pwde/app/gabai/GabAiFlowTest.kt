@@ -5,6 +5,7 @@ import com.pwde.app.data.gabai.GabAiCodec
 import com.pwde.app.data.gabai.GabAiFlow
 import com.pwde.app.data.gabai.GabAiForm
 import com.pwde.app.data.gabai.GabAiState
+import com.pwde.app.data.gabai.JoystickParameter
 import com.pwde.app.data.model.ButtonTrigger
 import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.FaceOutputMode
@@ -25,22 +26,20 @@ class GabAiFlowTest {
     )
 
     @Test
-    fun cursorCalibrationVisitsEveryAxisThenVoiceThenSaved() {
+    fun calibrationVisitsCursorAxesThenJoystickThenVoice() {
         val visited = mutableListOf<GabAiState>()
-        var state: GabAiState = GabAiFlow.modeChosen(FaceOutputMode.CURSOR)
+        var state: GabAiState = GabAiFlow.newCalibration()
         while (state is GabAiState.CalibrateCursorAxis) {
             visited += state
             state = GabAiFlow.axisDone(state.axis)
         }
         assertEquals(Axis.entries.map { GabAiState.CalibrateCursorAxis(it) }, visited)
+        assertEquals(GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY), state)
+        state = GabAiFlow.joystickDone(JoystickParameter.SENSITIVITY)
+        assertEquals(GabAiState.CalibrateJoystick(JoystickParameter.DEAD_ZONE), state)
+        state = GabAiFlow.joystickDone(JoystickParameter.DEAD_ZONE)
         assertEquals(GabAiState.CalibrationVoiceSetup, state)
         assertEquals(GabAiState.CalibrationSaved, GabAiFlow.calibrationSaved())
-    }
-
-    @Test
-    fun joystickCalibrationGoesStraightToVoice() {
-        assertEquals(GabAiState.CalibrateJoystick, GabAiFlow.modeChosen(FaceOutputMode.JOYSTICK))
-        assertEquals(GabAiState.CalibrationVoiceSetup, GabAiFlow.joystickDone())
     }
 
     @Test
@@ -107,13 +106,21 @@ class GabAiFlowTest {
     @Test
     fun backWalksEachBranchInReverse() {
         val cursor = GabAiForm(calibrationMode = FaceOutputMode.CURSOR)
-        val joystick = GabAiForm(calibrationMode = FaceOutputMode.JOYSTICK)
         assertNull(GabAiFlow.back(GabAiState.Welcome, cursor))
-        assertEquals(GabAiState.Welcome, GabAiFlow.back(GabAiState.ChooseCalibrationMode, cursor))
-        assertEquals(GabAiState.ChooseCalibrationMode, GabAiFlow.back(GabAiState.CalibrateCursorAxis(Axis.UP), cursor))
+        assertEquals(GabAiState.Welcome, GabAiFlow.back(GabAiState.CalibrateCursorAxis(Axis.UP), cursor))
         assertEquals(GabAiState.CalibrateCursorAxis(Axis.LEFT), GabAiFlow.back(GabAiState.CalibrateCursorAxis(Axis.RIGHT), cursor))
-        assertEquals(GabAiState.CalibrateCursorAxis(Axis.DIAGONAL), GabAiFlow.back(GabAiState.CalibrationVoiceSetup, cursor))
-        assertEquals(GabAiState.CalibrateJoystick, GabAiFlow.back(GabAiState.CalibrationVoiceSetup, joystick))
+        assertEquals(
+            GabAiState.CalibrateCursorAxis(Axis.DIAGONAL),
+            GabAiFlow.back(GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY), cursor),
+        )
+        assertEquals(
+            GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY),
+            GabAiFlow.back(GabAiState.CalibrateJoystick(JoystickParameter.DEAD_ZONE), cursor),
+        )
+        assertEquals(
+            GabAiState.CalibrateJoystick(JoystickParameter.DEAD_ZONE),
+            GabAiFlow.back(GabAiState.CalibrationVoiceSetup, cursor),
+        )
         assertEquals(GabAiState.CalibrationVoiceSetup, GabAiFlow.back(GabAiState.CalibrationGestureTest(0), cursor))
         assertEquals(GabAiState.CalibrationGestureTest(2), GabAiFlow.back(GabAiState.CalibrationGestureTest(3), cursor))
         assertEquals(
@@ -129,18 +136,18 @@ class GabAiFlowTest {
     @Test
     fun calibrationStartedForAGameBacksOutToThatGame() {
         val form = GabAiForm(continueToGame = true, gameId = "clash_royale")
-        assertEquals(GabAiState.ConfirmCalibrationProfile, GabAiFlow.back(GabAiState.ChooseCalibrationMode, form))
+        assertEquals(GabAiState.ConfirmCalibrationProfile, GabAiFlow.back(GabAiState.CalibrateCursorAxis(Axis.UP), form))
     }
 }
 
 class GabAiCodecTest {
     private val allStates: List<GabAiState> = listOf(
-        GabAiState.Welcome, GabAiState.ChooseCalibrationMode, GabAiState.CalibrateJoystick,
+        GabAiState.Welcome,
         GabAiState.CalibrationVoiceSetup, GabAiState.CalibrationSaved, GabAiState.ChooseGame,
         GabAiState.ConfirmCalibrationProfile, GabAiState.UploadScreenshot, GabAiState.NameAndSaveProfile,
         GabAiState.ProfileSaved, GabAiState.ButtonMapping(4), GabAiState.AssignTriggers, GabAiState.TestControls,
         GabAiState.CalibrationGestureTest(3), GabAiState.CalibrationGestureReview,
-    ) + Axis.entries.map { GabAiState.CalibrateCursorAxis(it) }
+    ) + Axis.entries.map { GabAiState.CalibrateCursorAxis(it) } + JoystickParameter.entries.map { GabAiState.CalibrateJoystick(it) }
 
     @Test
     fun everyStateRoundTrips() {
@@ -151,7 +158,16 @@ class GabAiCodecTest {
     fun unreadableStatesFallBackSafely() {
         assertEquals(GabAiState.Welcome, GabAiCodec.decodeState(null))
         assertEquals(GabAiState.Welcome, GabAiCodec.decodeState("SomethingNew"))
-        assertEquals(GabAiState.ChooseCalibrationMode, GabAiCodec.decodeState("CalibrateCursorAxis:SIDEWAYS"))
+        assertEquals(GabAiState.CalibrateCursorAxis(Axis.UP), GabAiCodec.decodeState("CalibrateCursorAxis:SIDEWAYS"))
+        assertEquals(GabAiState.CalibrateCursorAxis(Axis.UP), GabAiCodec.decodeState("ChooseCalibrationMode"))
+        assertEquals(
+            GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY),
+            GabAiCodec.decodeState("CalibrateJoystick"),
+        )
+        assertEquals(
+            GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY),
+            GabAiCodec.decodeState("CalibrateJoystick:UNKNOWN"),
+        )
         // Sessions saved mid one-button-at-a-time assignment resume on the all-buttons screen.
         assertEquals(GabAiState.AssignTriggers, GabAiCodec.decodeState("TriggerAssignment:1:3"))
         assertEquals(GabAiState.CalibrationGestureTest(0), GabAiCodec.decodeState("CalibrationGestureTest:999"))

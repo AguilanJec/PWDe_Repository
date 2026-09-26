@@ -4,12 +4,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -20,7 +23,6 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.SkipNext
@@ -33,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,8 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.data.gabai.Axis
 import com.pwde.app.data.gabai.GabAiState
+import com.pwde.app.data.gabai.JoystickParameter
 import com.pwde.app.data.model.DEFAULT_LEVEL
-import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.MAX_LEVEL
 import com.pwde.app.data.model.MIN_LEVEL
@@ -113,9 +116,8 @@ fun GabAiScreen(
     }
     when (val state = ui.state) {
         GabAiState.Welcome -> WelcomeStep(viewModel, ui, onTab)
-        GabAiState.ChooseCalibrationMode -> ChooseModeStep(viewModel, ui)
         is GabAiState.CalibrateCursorAxis -> CursorAxisStep(viewModel, ui, state.axis)
-        GabAiState.CalibrateJoystick -> JoystickStep(viewModel, ui)
+        is GabAiState.CalibrateJoystick -> JoystickStep(viewModel, ui, state.parameter)
         GabAiState.CalibrationVoiceSetup -> VoiceStep(viewModel, ui)
         is GabAiState.CalibrationGestureTest -> GestureTestStep(viewModel, ui, state)
         GabAiState.CalibrationGestureReview -> GestureReviewStep(viewModel, ui)
@@ -145,6 +147,7 @@ internal fun GabAiStep(
     voiceHint: String,
     footer: (@Composable () -> Unit)? = null,
     bottomBar: (@Composable () -> Unit)? = null,
+    compactSays: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     PwdeScreen(
@@ -162,7 +165,7 @@ internal fun GabAiStep(
         },
         bottomBar = bottomBar,
     ) {
-        GabAiSays(says)
+        GabAiSays(says, compact = compactSays)
         ui.message?.let { StatusPill(it, color = PwdeTheme.colors.warning, modifier = Modifier.fillMaxWidth()) }
         content()
     }
@@ -251,33 +254,6 @@ private fun WelcomeStep(viewModel: GabAiViewModel, ui: GabAiUiState, onTab: (Mai
 
 // ---------------- Calibration branch ----------------
 
-private val MODE_COMMANDS = listOf(
-    voiceCommand(FaceOutputMode.CURSOR.name, "cursor", "pointer"),
-    voiceCommand(FaceOutputMode.JOYSTICK.name, "joystick"),
-)
-
-@Composable
-private fun ChooseModeStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
-    VoiceCommandsEffect(MODE_COMMANDS) { viewModel.chooseMode(FaceOutputMode.valueOf(it)) }
-    GabAiStep(
-        viewModel, ui,
-        title = "Calibration",
-        says = "First, how should your head control things? A cursor you point with, or a joystick you tilt?",
-        voiceHint = "Say \"cursor\" or \"joystick\"",
-    ) {
-        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
-            OptionCard(
-                "Cursor", "Turn your head to move a pointer, like a mouse", ui.form.calibrationMode == FaceOutputMode.CURSOR,
-                { viewModel.chooseMode(FaceOutputMode.CURSOR) }, icon = Icons.Outlined.Mouse, kind = OptionKind.RADIO,
-            )
-            OptionCard(
-                "Joystick", "Tilt your head to steer in 8 directions", ui.form.calibrationMode == FaceOutputMode.JOYSTICK,
-                { viewModel.chooseMode(FaceOutputMode.JOYSTICK) }, icon = Icons.Outlined.Gamepad, kind = OptionKind.RADIO,
-            )
-        }
-    }
-}
-
 private val STEP_COMMANDS = listOf(
     voiceCommand("next", "next", "looks good", "done"),
     voiceCommand("faster", "faster", "more"),
@@ -327,6 +303,7 @@ private fun CursorAxisStep(viewModel: GabAiViewModel, ui: GabAiUiState, axis: Ax
         title = "Cursor: ${axis.label}",
         says = axisSays(axis),
         voiceHint = "Say \"faster\", \"slower\", \"recenter\" or \"next\"",
+        compactSays = true,
         footer = { PwdeButton("Next", { viewModel.axisDone(axis) }, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth()) },
     ) {
         StepProgress(axis.ordinal + 1, Axis.entries.size, "${axis.label} direction")
@@ -336,9 +313,12 @@ private fun CursorAxisStep(viewModel: GabAiViewModel, ui: GabAiUiState, axis: Ax
             surfaceRequest = surface,
             canRequestCamera = viewModel.canRequestCamera,
             onCameraPermissionResult = viewModel::onCameraPermissionResult,
-            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.45f),
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(),
+            feedAspectRatio = 16f / 10f,
+            overlay = {
+                CursorCalibrationOverlay(face.cursor.x, face.cursor.y, face.hasFace, axis)
+            },
         )
-        TargetPad(face.cursor.x, face.cursor.y, face.hasFace, axis)
         PwdeButton("Recenter pointer", viewModel::recenterCursor, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
         LevelSlider(if (axis == Axis.DIAGONAL) "Smoothing" else "Speed moving ${axis.label.lowercase()}", level, ::set)
     }
@@ -354,16 +334,13 @@ private fun targetFor(axis: Axis): Offset = when (axis) {
 }
 
 @Composable
-private fun TargetPad(x: Float, y: Float, active: Boolean, axis: Axis) {
+private fun BoxScope.CursorCalibrationOverlay(x: Float, y: Float, active: Boolean, axis: Axis) {
     val colors = PwdeTheme.colors
     val target = targetFor(axis)
     val onTarget = kotlin.math.hypot(x - target.x, y - target.y) < 0.1f
     Canvas(
         Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 10f)
-            .clip(PwdeShapes.button)
-            .background(colors.surfaceMuted)
+            .fillMaxSize()
             .semantics {
                 contentDescription = if (onTarget) "Pointer is on the target" else "Pointer at ${(x * 100).toInt()}% across, ${(y * 100).toInt()}% down"
             },
@@ -373,45 +350,103 @@ private fun TargetPad(x: Float, y: Float, active: Boolean, axis: Axis) {
         drawCircle(colors.primary, radius = 26.dp.toPx(), center = t, style = Stroke(3.dp.toPx()))
         drawCircle(if (active) colors.secondary else colors.textMuted, radius = 12.dp.toPx(), center = Offset(x * size.width, y * size.height))
     }
-    if (onTarget) StatusPill("On target!", icon = Icons.Outlined.CheckCircle)
+    if (onTarget) {
+        StatusPill(
+            "On target!",
+            icon = Icons.Outlined.CheckCircle,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+        )
+    }
 }
 
-private val JOYSTICK_STEP_COMMANDS = listOf(
+private fun joystickStepCommands(parameter: JoystickParameter) = when (parameter) {
+    JoystickParameter.SENSITIVITY -> listOf(
+        voiceCommand("increase", "increase sensitivity", "more sensitive", "more"),
+        voiceCommand("decrease", "decrease sensitivity", "less sensitive", "less"),
+    )
+    JoystickParameter.DEAD_ZONE -> listOf(
+        voiceCommand("increase", "increase dead zone", "widen dead zone", "more"),
+        voiceCommand("decrease", "decrease dead zone", "narrow dead zone", "less"),
+    )
+} + listOf(
     voiceCommand("next", "next", "looks good", "done"),
-    voiceCommand("center", "set center", "center here"),
+    voiceCommand("center", "set center", "center here", "recenter"),
 )
 
+private fun joystickSays(parameter: JoystickParameter) = when (parameter) {
+    JoystickParameter.SENSITIVITY -> "Tilt your head around and adjust sensitivity until the joystick reaches the outer ring at a comfortable pace."
+    JoystickParameter.DEAD_ZONE -> "Adjust the dead zone until small head movements are ignored, but steering still feels responsive."
+}
+
+private fun joystickVoiceHint(parameter: JoystickParameter) = when (parameter) {
+    JoystickParameter.SENSITIVITY -> "Say \"increase sensitivity\", \"decrease sensitivity\", \"recenter\" or \"next\""
+    JoystickParameter.DEAD_ZONE -> "Say \"increase dead zone\", \"decrease dead zone\", \"recenter\" or \"next\""
+}
+
 @Composable
-private fun JoystickStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
+private fun JoystickStep(viewModel: GabAiViewModel, ui: GabAiUiState, parameter: JoystickParameter) {
     val face by viewModel.faceState.collectAsStateWithLifecycle()
     val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
     val joystick = ui.form.joystick
-    VoiceCommandsEffect(JOYSTICK_STEP_COMMANDS) { id -> if (id == "next") viewModel.joystickDone() else viewModel.setJoystickCenterHere() }
+    val level = when (parameter) {
+        JoystickParameter.SENSITIVITY -> joystick.sensitivity
+        JoystickParameter.DEAD_ZONE -> joystick.deadZone
+    }
+    fun set(value: Int) = viewModel.setJoystick(
+        when (parameter) {
+            JoystickParameter.SENSITIVITY -> joystick.copy(sensitivity = value)
+            JoystickParameter.DEAD_ZONE -> joystick.copy(deadZone = value)
+        },
+    )
+    VoiceCommandsEffect(joystickStepCommands(parameter)) { id ->
+        when (id) {
+            "next" -> viewModel.joystickDone(parameter)
+            "increase" -> set((level + 1).coerceAtMost(MAX_LEVEL))
+            "decrease" -> set((level - 1).coerceAtLeast(MIN_LEVEL))
+            "center" -> viewModel.setJoystickCenterHere()
+        }
+    }
     GabAiStep(
         viewModel, ui,
-        title = "Calibration: Joystick",
-        says = "Hold your head comfortably and set that as the center. Then tilt to steer, and tune it until it feels right.",
-        voiceHint = "Say \"set center\" or \"next\"",
-        footer = { PwdeButton("Next", viewModel::joystickDone, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth()) },
-    ) {
-        DemoModeBanner(face)
-        Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap), verticalAlignment = Alignment.CenterVertically) {
-            CameraFeed(
-                faceState = face,
-                surfaceRequest = surface,
-                canRequestCamera = viewModel.canRequestCamera,
-                onCameraPermissionResult = viewModel::onCameraPermissionResult,
-                modifier = Modifier.weight(1f),
+        title = "Joystick: ${parameter.label}",
+        says = joystickSays(parameter),
+        voiceHint = joystickVoiceHint(parameter),
+        compactSays = true,
+        footer = {
+            PwdeButton(
+                "Next",
+                { viewModel.joystickDone(parameter) },
+                icon = Icons.AutoMirrored.Outlined.ArrowForward,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                JoystickView(face.joystick, Modifier.fillMaxWidth(), active = face.hasFace)
-                StatusPill(face.joystick.direction.label, icon = Icons.Outlined.Gamepad)
-            }
-        }
-        PwdeButton("Set center here", viewModel::setJoystickCenterHere, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
-        LevelSlider("Sensitivity", joystick.sensitivity, { viewModel.setJoystick(joystick.copy(sensitivity = it)) })
-        LevelSlider("Dead zone", joystick.deadZone, { viewModel.setJoystick(joystick.copy(deadZone = it)) })
-        LevelSlider("Size", joystick.size, { viewModel.setJoystick(joystick.copy(size = it)) })
+        },
+    ) {
+        StepProgress(parameter.ordinal + 1, JoystickParameter.entries.size, parameter.label)
+        DemoModeBanner(face)
+        CameraFeed(
+            faceState = face,
+            surfaceRequest = surface,
+            canRequestCamera = viewModel.canRequestCamera,
+            onCameraPermissionResult = viewModel::onCameraPermissionResult,
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(),
+            feedAspectRatio = 16f / 10f,
+            overlay = {
+                JoystickView(face.joystick, Modifier.width(136.dp).align(Alignment.Center), active = face.hasFace)
+                StatusPill(
+                    face.joystick.direction.label,
+                    icon = Icons.Outlined.Gamepad,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                )
+            },
+        )
+        PwdeButton(
+            "Recenter joystick",
+            viewModel::setJoystickCenterHere,
+            style = ButtonStyle.SECONDARY,
+            icon = Icons.Outlined.CenterFocusStrong,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        LevelSlider(parameter.label, level, ::set)
     }
 }
 
@@ -443,7 +478,6 @@ private fun VoiceStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         footer = { PwdeButton("Next", viewModel::voiceDone, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth()) },
     ) {
         SwitchRow("Voice control", form.voiceEnabled, { viewModel.setVoice(enabled = it) }, icon = Icons.Outlined.Mic)
-        SpeechModelCard(viewModel)
         SectionTitle("How words are matched")
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             VoiceMatchMode.entries.forEach { mode ->
@@ -468,7 +502,17 @@ private fun VoiceStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
 private val GESTURE_TEST_COMMANDS = listOf(
     voiceCommand("next", "skip", "next", "can't do it"),
     voiceCommand("finish", "skip the rest", "finish gestures"),
-)
+) + listOf(
+    voiceCommand("sensitivity_up", "increase sensitivity", "raise sensitivity", "more sensitive", "sensitivity up"),
+    voiceCommand("sensitivity_down", "decrease sensitivity", "lower sensitivity", "less sensitive", "sensitivity down"),
+) + (MIN_LEVEL..MAX_LEVEL).map { level ->
+    val spokenLevel = listOf("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")[level - 1]
+    voiceCommand(
+        "sensitivity:$level",
+        "sensitivity $level", "sensitivity $spokenLevel", "set sensitivity to $level", "set sensitivity to $spokenLevel",
+        "level $level", "level $spokenLevel",
+    )
+}
 
 /** One gesture at a time: doing it turns it on (and moves on by itself); skipping leaves it off. */
 @Composable
@@ -478,16 +522,25 @@ private fun GestureTestStep(viewModel: GabAiViewModel, ui: GabAiUiState, test: G
     val sensitivity by viewModel.gestureSensitivity.collectAsStateWithLifecycle()
     val colors = PwdeTheme.colors
     val gesture = GabAiState.GESTURE_TEST[test.index]
+    val commands = remember(gesture) { GESTURE_TEST_COMMANDS }
     val passed = gesture in ui.form.passedGestures
     val level = sensitivity[gesture] ?: DEFAULT_LEVEL
     val measure = face.gesture.measures[gesture]
-    VoiceCommandsEffect(GESTURE_TEST_COMMANDS) { id -> if (id == "next") viewModel.nextGesture() else viewModel.skipRemainingGestures() }
+    VoiceCommandsEffect(commands) { id ->
+        when {
+            id == "next" -> viewModel.nextGesture()
+            id == "finish" -> viewModel.skipRemainingGestures()
+            id == "sensitivity_up" -> viewModel.setGestureSensitivity(gesture, (level + 1).coerceAtMost(MAX_LEVEL))
+            id == "sensitivity_down" -> viewModel.setGestureSensitivity(gesture, (level - 1).coerceAtLeast(MIN_LEVEL))
+            id.startsWith("sensitivity:") -> viewModel.setGestureSensitivity(gesture, id.substringAfter(':').toInt())
+        }
+    }
     GabAiStep(
         viewModel, ui,
         title = "Gesture: ${gesture.label}",
         says = if (passed) "Got it! ${gesture.label} is on."
         else "${gesture.description}. Can't do it comfortably? Skip it — I'll only turn on the gestures you can do.",
-        voiceHint = "Say \"skip\" to move on, or \"skip the rest\" to finish",
+        voiceHint = "Say \"skip\", \"more sensitive\", \"less sensitive\", or a sensitivity level from 1 to 10",
         footer = {
             PwdeButton(
                 if (passed) "Next" else "Skip",
@@ -527,20 +580,6 @@ private fun GestureTestStep(viewModel: GabAiViewModel, ui: GabAiUiState, test: G
             valueLabel = "${levelWord(level)} · fires at ${fmt(GestureThresholds.forGesture(gesture, level))}${gesture.unit()}",
         )
         PwdeButton("Skip the rest", viewModel::skipRemainingGestures, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.SkipNext, modifier = Modifier.fillMaxWidth())
-        SpeechModelCard(viewModel)
-    }
-}
-
-/** Which speech model hears what: GabAI and app navigation, versus mapped buttons in game. */
-@Composable
-private fun SpeechModelCard(viewModel: GabAiViewModel) {
-    val colors = PwdeTheme.colors
-    GradientCard(Modifier.fillMaxWidth()) {
-        Text("Speech models", style = MaterialTheme.typography.titleSmall, color = colors.text)
-        Text("GabAI & navigation", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
-        Text(viewModel.navigationSpeechModel, style = MaterialTheme.typography.bodyMedium, color = colors.text)
-        Text("In-game buttons", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
-        Text(viewModel.buttonSpeechModel, style = MaterialTheme.typography.bodyMedium, color = colors.text)
     }
 }
 

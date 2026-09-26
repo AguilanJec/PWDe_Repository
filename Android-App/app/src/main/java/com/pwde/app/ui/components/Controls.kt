@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -75,38 +76,63 @@ fun LevelSlider(
     valueLabel: String = levelWord(level),
     max: Int = 10,
     enabled: Boolean = true,
+    compact: Boolean = false,
 ) {
     val colors = PwdeTheme.colors
-    Column(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.titleMedium, color = colors.text, modifier = Modifier.weight(1f))
-            Text(valueLabel, style = MaterialTheme.typography.labelMedium, color = colors.primary)
+    val rootModifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f)
+    if (compact) {
+        Row(rootModifier.heightIn(min = MinTouchTarget), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = colors.text)
+                Text(valueLabel, style = MaterialTheme.typography.labelSmall, color = colors.primary)
+            }
+            LevelSliderControl(Modifier.weight(1f), label, level, onLevelChange, valueLabel, max, enabled)
         }
-        Slider(
-            value = level.toFloat(),
-            onValueChange = { value ->
-                val snapped = value.roundToInt().coerceIn(1, max)
-                if (snapped != level) onLevelChange(snapped)
-            },
-            enabled = enabled,
-            valueRange = 1f..max.toFloat(),
-            steps = (max - 2).coerceAtLeast(0),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = MinTouchTarget)
-                .semantics {
-                    contentDescription = label
-                    stateDescription = "$valueLabel, $level of $max"
-                },
-            colors = SliderDefaults.colors(
-                thumbColor = colors.primary,
-                activeTrackColor = colors.primary,
-                inactiveTrackColor = colors.surfaceMuted,
-                activeTickColor = colors.onAccent.copy(alpha = 0.6f),
-                inactiveTickColor = colors.textMuted.copy(alpha = 0.6f),
-            ),
-        )
+    } else {
+        Column(rootModifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = MaterialTheme.typography.titleMedium, color = colors.text, modifier = Modifier.weight(1f))
+                Text(valueLabel, style = MaterialTheme.typography.labelMedium, color = colors.primary)
+            }
+            LevelSliderControl(Modifier.fillMaxWidth(), label, level, onLevelChange, valueLabel, max, enabled)
+        }
     }
+}
+
+@Composable
+private fun LevelSliderControl(
+    modifier: Modifier,
+    label: String,
+    level: Int,
+    onLevelChange: (Int) -> Unit,
+    valueLabel: String,
+    max: Int,
+    enabled: Boolean,
+) {
+    val colors = PwdeTheme.colors
+    Slider(
+        value = level.toFloat(),
+        onValueChange = { value ->
+            val snapped = value.roundToInt().coerceIn(1, max)
+            if (snapped != level) onLevelChange(snapped)
+        },
+        enabled = enabled,
+        valueRange = 1f..max.toFloat(),
+        steps = (max - 2).coerceAtLeast(0),
+        modifier = modifier
+            .heightIn(min = MinTouchTarget)
+            .semantics {
+                contentDescription = label
+                stateDescription = "$valueLabel, $level of $max"
+            },
+        colors = SliderDefaults.colors(
+            thumbColor = colors.primary,
+            activeTrackColor = colors.primary,
+            inactiveTrackColor = colors.surfaceMuted,
+            activeTickColor = colors.onAccent.copy(alpha = 0.6f),
+            inactiveTickColor = colors.textMuted.copy(alpha = 0.6f),
+        ),
+    )
 }
 
 fun levelWord(level: Int): String = when {

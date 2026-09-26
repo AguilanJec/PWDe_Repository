@@ -53,6 +53,7 @@ fun CameraFeed(
     onCameraPermissionResult: () -> Unit,
     modifier: Modifier = Modifier,
     showLandmarks: Boolean = false,
+    feedAspectRatio: Float = 3f / 4f,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val colors = PwdeTheme.colors
@@ -60,7 +61,7 @@ fun CameraFeed(
     Box(
         modifier
             .fillMaxWidth()
-            .aspectRatio(3f / 4f)
+            .aspectRatio(feedAspectRatio)
             .clip(PwdeShapes.card)
             .background(colors.surfaceMuted)
             .border(2.dp, colors.borderBrush, PwdeShapes.card),

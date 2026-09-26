@@ -9,12 +9,12 @@ import com.pwde.app.data.gabai.GabAiForm
 import com.pwde.app.data.gabai.GabAiRepository
 import com.pwde.app.data.gabai.GabAiSession
 import com.pwde.app.data.gabai.GabAiState
+import com.pwde.app.data.gabai.JoystickParameter
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
 import com.pwde.app.data.local.enabledGestures
 import com.pwde.app.data.local.PwdeDatabase
-import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.TriggerType
@@ -125,7 +125,6 @@ class GabAiPersistenceTest {
         val first = newViewModel()
         first.startCalibration()
         settle()
-        first.chooseMode(FaceOutputMode.CURSOR)
         first.axisDone(Axis.UP)
         first.setCursor(first.ui.value.form.cursor.copy(speedDown = 9))
         settle()
@@ -145,8 +144,9 @@ class GabAiPersistenceTest {
         val vm = newViewModel()
         vm.startCalibration()
         settle()
-        vm.chooseMode(FaceOutputMode.JOYSTICK)
-        vm.joystickDone()
+        Axis.entries.forEach(vm::axisDone)
+        vm.joystickDone(JoystickParameter.SENSITIVITY)
+        vm.joystickDone(JoystickParameter.DEAD_ZONE)
         vm.setCalibrationName("Tilt")
         vm.saveCalibration()
         settle()
@@ -194,8 +194,9 @@ class GabAiPersistenceTest {
         val vm = newViewModel()
         vm.startCalibration()
         settle()
-        vm.chooseMode(FaceOutputMode.JOYSTICK)
-        vm.joystickDone()
+        Axis.entries.forEach(vm::axisDone)
+        vm.joystickDone(JoystickParameter.SENSITIVITY)
+        vm.joystickDone(JoystickParameter.DEAD_ZONE)
         val first = GabAiState.GESTURE_TEST[0]
         // Already held when the step opens: doesn't count until released and done again.
         showFace(first)

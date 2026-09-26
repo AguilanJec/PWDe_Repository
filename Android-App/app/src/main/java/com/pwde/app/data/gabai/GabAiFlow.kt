@@ -1,27 +1,22 @@
 package com.pwde.app.data.gabai
 
-import com.pwde.app.data.model.FaceOutputMode
-
 /**
  * GabAI's transitions, as pure functions of (state, form) so every path is unit-tested.
  * The ViewModel does the side effects (saving profiles, persisting the session) around these.
  */
 object GabAiFlow {
-    fun newCalibration(): GabAiState = GabAiState.ChooseCalibrationMode
+    fun newCalibration(): GabAiState = GabAiState.CalibrateCursorAxis(Axis.UP)
 
     /** A game already chosen (e.g. started from a game's page) skips straight to the calibration pick. */
     fun newGameProfile(form: GabAiForm): GabAiState =
         if (form.gameId != null) GabAiState.ConfirmCalibrationProfile else GabAiState.ChooseGame
 
-    fun modeChosen(mode: FaceOutputMode): GabAiState = when (mode) {
-        FaceOutputMode.CURSOR -> GabAiState.CalibrateCursorAxis(Axis.UP)
-        FaceOutputMode.JOYSTICK -> GabAiState.CalibrateJoystick
-    }
-
     fun axisDone(axis: Axis): GabAiState =
-        axis.next()?.let { GabAiState.CalibrateCursorAxis(it) } ?: GabAiState.CalibrationVoiceSetup
+        axis.next()?.let { GabAiState.CalibrateCursorAxis(it) }
+            ?: GabAiState.CalibrateJoystick(JoystickParameter.SENSITIVITY)
 
-    fun joystickDone(): GabAiState = GabAiState.CalibrationVoiceSetup
+    fun joystickDone(parameter: JoystickParameter): GabAiState =
+        parameter.next()?.let { GabAiState.CalibrateJoystick(it) } ?: GabAiState.CalibrationVoiceSetup
 
     /** After voice, test every gesture the user hasn't already performed. */
     fun voiceDone(form: GabAiForm): GabAiState = nextGestureTest(form, after = -1)
@@ -72,14 +67,12 @@ object GabAiFlow {
     /** One step back, or null to leave GabAI from the Welcome screen. */
     fun back(state: GabAiState, form: GabAiForm): GabAiState? = when (state) {
         GabAiState.Welcome -> null
-        GabAiState.ChooseCalibrationMode ->
-            if (form.continueToGame) GabAiState.ConfirmCalibrationProfile else GabAiState.Welcome
         is GabAiState.CalibrateCursorAxis ->
-            state.axis.previous()?.let { GabAiState.CalibrateCursorAxis(it) } ?: GabAiState.ChooseCalibrationMode
-        GabAiState.CalibrateJoystick -> GabAiState.ChooseCalibrationMode
-        GabAiState.CalibrationVoiceSetup ->
-            if (form.calibrationMode == FaceOutputMode.JOYSTICK) GabAiState.CalibrateJoystick
-            else GabAiState.CalibrateCursorAxis(Axis.DIAGONAL)
+            state.axis.previous()?.let { GabAiState.CalibrateCursorAxis(it) }
+                ?: if (form.continueToGame) GabAiState.ConfirmCalibrationProfile else GabAiState.Welcome
+        is GabAiState.CalibrateJoystick -> state.parameter.previous()?.let { GabAiState.CalibrateJoystick(it) }
+            ?: GabAiState.CalibrateCursorAxis(Axis.DIAGONAL)
+        GabAiState.CalibrationVoiceSetup -> GabAiState.CalibrateJoystick(JoystickParameter.DEAD_ZONE)
         is GabAiState.CalibrationGestureTest ->
             if (state.index == 0) GabAiState.CalibrationVoiceSetup else GabAiState.CalibrationGestureTest(state.index - 1)
         GabAiState.CalibrationGestureReview -> GabAiState.CalibrationGestureTest(GabAiState.GESTURE_TEST.lastIndex)

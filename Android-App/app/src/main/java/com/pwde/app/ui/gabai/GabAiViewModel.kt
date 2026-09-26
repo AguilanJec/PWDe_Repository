@@ -10,6 +10,7 @@ import com.pwde.app.data.gabai.GabAiForm
 import com.pwde.app.data.gabai.GabAiRepository
 import com.pwde.app.data.gabai.GabAiSession
 import com.pwde.app.data.gabai.GabAiState
+import com.pwde.app.data.gabai.JoystickParameter
 import com.pwde.app.data.gabai.HudDetector
 import com.pwde.app.data.gabai.detectedToButtons
 import com.pwde.app.data.local.CalibrationProfile
@@ -297,14 +298,6 @@ class GabAiViewModel(
 
     // ---- Calibration branch ----
 
-    fun chooseMode(mode: FaceOutputMode) {
-        updateForm { it.copy(calibrationMode = mode) }
-        viewModelScope.launch {
-            settingsRepository.setInputMode(if (mode == FaceOutputMode.JOYSTICK) InputMode.JOYSTICK else InputMode.HEAD_FACE)
-        }
-        go(GabAiFlow.modeChosen(mode))
-    }
-
     fun setCursor(tuning: CursorTuning) {
         updateForm { it.copy(cursor = tuning) }
         viewModelScope.launch { controlsRepository.setCursorTuning(tuning) }
@@ -328,7 +321,7 @@ class GabAiViewModel(
         message("Center saved.")
     }
 
-    fun joystickDone() = go(GabAiFlow.joystickDone())
+    fun joystickDone(parameter: JoystickParameter) = go(GabAiFlow.joystickDone(parameter))
 
     fun setVoice(enabled: Boolean? = null, match: VoiceMatchMode? = null, activation: VoiceActivationMode? = null) {
         updateForm {
