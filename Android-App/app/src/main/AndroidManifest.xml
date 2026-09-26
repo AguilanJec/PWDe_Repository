@@ -8,15 +8,10 @@
          optional: if either is denied PWDe falls back to a labelled demo mode or typed commands. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- Keeps tracking and voice running while the real game is on screen (PlayService). -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <!-- The "PWDe is running" notification with Pause and Stop (Android 13+ asks for it). -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <queries>
         <!-- Lets TextToSpeech find the installed engine on Android 11+. -->
         <intent>
@@ -25,14 +20,6 @@
         <!-- Lets SpeechRecognizer find the installed recognition service on Android 11+. -->
         <intent>
             <action android:name="android.speech.RecognitionService" />
-        </intent>
-        <!-- The supported games (data/model/Games.kt), so Play can tell whether they're installed. -->
-        <package android:name="com.mobile.legends" />
-        <package android:name="com.supercell.clashroyale" />
-        <!-- Opens a game's Play Store page when it isn't installed. -->
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="market" />
         </intent>
     </queries>
 
@@ -58,12 +45,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- The live session over the real game: camera + mic in the background, with a notification. -->
-        <service
-            android:name=".play.PlayService"
-            android:exported="false"
-            android:foregroundServiceType="camera|microphone" />
 
         <!-- "Use PWDe" in Settings → Accessibility; Setup step B6 asks the user to turn it on. -->
         <service

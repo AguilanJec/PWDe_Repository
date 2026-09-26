@@ -10,24 +10,30 @@ import com.pwde.app.data.prefs.InputMode
  *   usable as a gesture on its own. Sides are as MediaPipe names them.
  * Stored by name, so order doesn't matter.
  */
-enum class FacialGesture(val label: String, val description: String, val blendshape: String? = null) {
+enum class FacialGesture(
+    val label: String,
+    val description: String,
+    val blendshape: String? = null,
+    /** False hides this curated gesture from pickers (Setup, Controls, GabAI); it's still recognised. */
+    val pickable: Boolean = true,
+) {
     SMILE("Smile", "A wide smile"),
-    FROWN("Frown", "Pull the corners of your mouth down"),
+    FROWN("Frown", "Pull the corners of your mouth down", pickable = false),
     OPEN_MOUTH("Open mouth", "Open your mouth, then close it"),
     EYEBROW_RAISE("Eyebrow raise", "Raise both eyebrows"),
     TILT_LEFT("Tilt left", "Tilt your head to the left"),
     TILT_RIGHT("Tilt right", "Tilt your head to the right"),
     NOD("Nod", "A small nod down and back up"),
-    WINK("Wink", "Close one eye briefly"),
+    WINK("Wink", "Close one eye briefly", pickable = false),
 
     // Mouth
     MOUTH_LEFT("Mouth left", "Push your lips to the left"),
     MOUTH_RIGHT("Mouth right", "Push your lips to the right"),
     PUCKER("Pucker", "Push your lips forward, like a kiss"),
-    CHEEK_PUFF("Puff cheeks", "Fill your cheeks with air"),
+    CHEEK_PUFF("Puff cheeks", "Fill your cheeks with air", pickable = false),
     ROLL_LOWER_LIP("Roll lower lip", "Tuck your lower lip in"),
-    JAW_LEFT("Jaw left", "Slide your jaw to the left"),
-    JAW_RIGHT("Jaw right", "Slide your jaw to the right"),
+    JAW_LEFT("Jaw left", "Slide your jaw to the left", pickable = false),
+    JAW_RIGHT("Jaw right", "Slide your jaw to the right", pickable = false),
 
     // Eyebrows
     RAISE_LEFT_EYEBROW("Raise left eyebrow", "Lift only your left eyebrow"),
@@ -36,11 +42,11 @@ enum class FacialGesture(val label: String, val description: String, val blendsh
     LOWER_RIGHT_EYEBROW("Lower right eyebrow", "Pull your right eyebrow down"),
 
     // Eyes
-    WINK_LEFT("Wink left", "Close only your left eye"),
-    WINK_RIGHT("Wink right", "Close only your right eye"),
+    WINK_LEFT("Wink left", "Close only your left eye", pickable = false),
+    WINK_RIGHT("Wink right", "Close only your right eye", pickable = false),
     CLOSE_EYES("Close both eyes", "Close both eyes and hold for a moment"),
-    LOOK_UP("Look up", "Look up with your eyes only"),
-    LOOK_DOWN("Look down", "Look down with your eyes only"),
+    LOOK_UP("Look up", "Look up with your eyes only", pickable = false),
+    LOOK_DOWN("Look down", "Look down with your eyes only", pickable = false),
 
     // Head
     SHAKE("Shake head", "A small shake, left and right and back"),
@@ -112,12 +118,11 @@ enum class FacialGesture(val label: String, val description: String, val blendsh
     companion object {
         val curated: List<FacialGesture> = entries.filter { !it.isRaw }
         val raw: List<FacialGesture> = entries.filter { it.isRaw }
+
+        /** Curated gestures offered in gesture pickers; excludes ones hidden via [pickable]. */
+        val selectable: List<FacialGesture> = curated.filter { it.pickable }
     }
 }
-
-/** As [ControlConfig.enabledGestures]: untested (null) enables everything; raw blendshapes are never tested. */
-fun FacialGesture.isEnabledBy(enabledGestures: Set<FacialGesture>?): Boolean =
-    enabledGestures == null || isRaw || this in enabledGestures
 
 /** Things a user can trigger with a gesture. */
 enum class GestureAction(val label: String) {
@@ -182,22 +187,18 @@ fun InputMode.faceOutputMode(): FaceOutputMode =
 data class ControlConfig(
     val gestureAssignments: Map<GestureAction, FacialGesture> = emptyMap(),
     val gestureSensitivity: Map<FacialGesture, Int> = emptyMap(),
+    val enabledGestures: Set<FacialGesture>? = null,
     val voiceEnabled: Boolean = true,
     val voiceMatchMode: VoiceMatchMode = VoiceMatchMode.WORD_ANYWHERE,
     val voiceActivationMode: VoiceActivationMode = VoiceActivationMode.IMMEDIATE,
     val voiceShortcuts: Map<VoiceShortcut, String> = VoiceShortcut.entries.associateWith { it.defaultPhrase },
     val cursor: CursorTuning = CursorTuning(),
     val joystick: JoystickTuning = JoystickTuning(),
-    /**
-     * Curated gestures the user performed in GabAI's gesture test; only these fire. Null means the
-     * test was never run (e.g. a profile from before it existed), so every gesture is on. Raw
-     * MediaPipe blendshapes aren't part of the test and are always on.
-     */
-    val enabledGestures: Set<FacialGesture>? = null,
 ) {
     fun sensitivityOf(gesture: FacialGesture): Int = gestureSensitivity[gesture] ?: DEFAULT_LEVEL
 
-    fun isGestureEnabled(gesture: FacialGesture): Boolean = gesture.isEnabledBy(enabledGestures)
+    fun isGestureEnabled(gesture: FacialGesture): Boolean =
+        enabledGestures == null || gesture.isRaw || gesture in enabledGestures
 
     /** The action mapped to [gesture], if any. */
     fun actionFor(gesture: FacialGesture): GestureAction? =
@@ -207,3 +208,6 @@ data class ControlConfig(
     fun conflictsFor(action: GestureAction, gesture: FacialGesture): List<GestureAction> =
         gestureAssignments.filter { (other, g) -> other != action && g == gesture }.keys.toList()
 }
+
+fun FacialGesture.isEnabledBy(enabledSet: Set<FacialGesture>?): Boolean =
+    enabledSet == null || this in enabledSet

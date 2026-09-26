@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
@@ -19,15 +22,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.pwde.app.ui.theme.MinTouchTarget
 import com.pwde.app.ui.theme.PwdeShapes
 import com.pwde.app.ui.theme.PwdeTheme
 
-/**
- * Standard PWDe modal dialog container.
- */
+/** Standard PWDe modal dialog container. */
 @Composable
 fun PwdeDialog(
     onDismiss: () -> Unit,
@@ -47,11 +51,7 @@ fun PwdeDialog(
                 .fillMaxWidth()
                 .clip(PwdeShapes.card)
                 .background(colors.surface)
-                .border(
-                    width = 1.dp,
-                    color = colors.secondary.copy(alpha = 0.55f),
-                    shape = PwdeShapes.card,
-                ),
+                .border(1.dp, colors.secondary.copy(alpha = 0.55f), PwdeShapes.card),
             color = colors.surface,
             shape = PwdeShapes.card,
         ) {
@@ -64,28 +64,27 @@ fun PwdeDialog(
                 if (title != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             color = colors.text,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).semantics { heading() },
                         )
                         IconButton(
                             onClick = onDismiss,
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier.size(MinTouchTarget),
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Close,
-                                contentDescription = "Close",
-                                tint = colors.textMuted,
-                            )
+                            Icon(Icons.Outlined.Close, contentDescription = "Close", tint = colors.primary)
                         }
                     }
                 }
-                content()
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    content = content,
+                )
             }
         }
     }

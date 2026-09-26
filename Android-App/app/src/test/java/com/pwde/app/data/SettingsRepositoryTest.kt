@@ -24,7 +24,7 @@ class SettingsRepositoryTest {
     private val testScope = TestScope(UnconfinedTestDispatcher())
 
     private fun repository() = DataStoreSettingsRepository(
-        PreferenceDataStoreFactory.create(scope = testScope.backgroundScope) { tmp.newFile("settings.preferences_pb") },
+        PreferenceDataStoreFactory.create(scope = testScope.backgroundScope) { tmp.root.resolve("settings.preferences_pb") },
     )
 
     @Test

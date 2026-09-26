@@ -19,10 +19,10 @@ class SetupViewModelTest {
     private val settings = FakeSettingsRepository()
 
     @Test
-    fun steps_runAppearanceNeedsPermissionsTurnOn() {
+    fun steps_runAppearanceNeedsPermissions() {
         val vm = SetupViewModel(settings, appearanceOnly = false)
         assertEquals(
-            listOf(SetupStep.APPEARANCE, SetupStep.NEEDS, SetupStep.PERMISSIONS, SetupStep.TURN_ON),
+            listOf(SetupStep.APPEARANCE, SetupStep.NEEDS, SetupStep.PERMISSIONS),
             vm.state.value.steps,
         )
     }
@@ -46,10 +46,6 @@ class SetupViewModelTest {
         vm.continueStep()
         assertEquals(setOf(AccessibilityNeed.MOVEMENT), settings.settings.value.accessibilityNeeds)
         assertEquals(SetupStep.PERMISSIONS, vm.state.value.step)
-
-        vm.continueStep()
-        assertEquals(SetupStep.TURN_ON, vm.state.value.step)
-        assertFalse(settings.settings.value.setupCompleted)
 
         vm.continueStep()
         assertTrue(settings.settings.value.setupCompleted)

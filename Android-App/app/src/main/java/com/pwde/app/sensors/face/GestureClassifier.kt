@@ -63,27 +63,16 @@ object GestureThresholds {
 object Blendshapes {
     const val MOUTH_SMILE_LEFT = "mouthSmileLeft"
     const val MOUTH_SMILE_RIGHT = "mouthSmileRight"
-    const val MOUTH_FROWN_LEFT = "mouthFrownLeft"
-    const val MOUTH_FROWN_RIGHT = "mouthFrownRight"
     const val BROW_DOWN_LEFT = "browDownLeft"
     const val BROW_DOWN_RIGHT = "browDownRight"
     const val BROW_OUTER_UP_LEFT = "browOuterUpLeft"
     const val BROW_OUTER_UP_RIGHT = "browOuterUpRight"
     const val BROW_INNER_UP = "browInnerUp"
     const val JAW_OPEN = "jawOpen"
-    const val EYE_BLINK_LEFT = "eyeBlinkLeft"
-    const val EYE_BLINK_RIGHT = "eyeBlinkRight"
     const val MOUTH_LEFT = "mouthLeft"
     const val MOUTH_RIGHT = "mouthRight"
     const val MOUTH_PUCKER = "mouthPucker"
-    const val CHEEK_PUFF = "cheekPuff"
     const val MOUTH_ROLL_LOWER = "mouthRollLower"
-    const val JAW_LEFT = "jawLeft"
-    const val JAW_RIGHT = "jawRight"
-    const val EYE_LOOK_UP_LEFT = "eyeLookUpLeft"
-    const val EYE_LOOK_UP_RIGHT = "eyeLookUpRight"
-    const val EYE_LOOK_DOWN_LEFT = "eyeLookDownLeft"
-    const val EYE_LOOK_DOWN_RIGHT = "eyeLookDownRight"
 
     /**
      * Whether MediaPipe's "Left"/"Right" categories name the opposite side of the user's face on
@@ -130,23 +119,12 @@ class GestureClassifier(
                 avg(b(Blendshapes.MOUTH_SMILE_LEFT), b(Blendshapes.MOUTH_SMILE_RIGHT)), threshold(FacialGesture.SMILE),
             )
             // Frown alone is weak in MediaPipe's model, so lowered brows reinforce it.
-            val frown = FROWN_MOUTH_WEIGHT * avg(b(Blendshapes.MOUTH_FROWN_LEFT), b(Blendshapes.MOUTH_FROWN_RIGHT)) +
-                FROWN_BROW_WEIGHT * avg(b(Blendshapes.BROW_DOWN_LEFT), b(Blendshapes.BROW_DOWN_RIGHT))
-            measures[FacialGesture.FROWN] = GestureMeasure(frown, threshold(FacialGesture.FROWN))
+            FROWN_BROW_WEIGHT * avg(b(Blendshapes.BROW_DOWN_LEFT), b(Blendshapes.BROW_DOWN_RIGHT))
             measures[FacialGesture.EYEBROW_RAISE] = GestureMeasure(
                 avg(b(Blendshapes.BROW_OUTER_UP_LEFT), b(Blendshapes.BROW_OUTER_UP_RIGHT), b(Blendshapes.BROW_INNER_UP)),
                 threshold(FacialGesture.EYEBROW_RAISE),
             )
             measures[FacialGesture.OPEN_MOUTH] = GestureMeasure(b(Blendshapes.JAW_OPEN), threshold(FacialGesture.OPEN_MOUTH))
-
-            // Wink: one eye closed while the other stays open. A plain blink closes both.
-            val winkThreshold = threshold(FacialGesture.WINK)
-            val left = b(Blendshapes.EYE_BLINK_LEFT)
-            val right = b(Blendshapes.EYE_BLINK_RIGHT)
-            val closed = maxOf(left, right)
-            val open = minOf(left, right)
-            val winkScore = if (open < winkThreshold * WINK_OPEN_EYE_FRACTION) closed else 0f
-            measures[FacialGesture.WINK] = GestureMeasure(winkScore, winkThreshold)
 
             fun userSide(left: String, right: String, userLeft: Boolean) = b(Blendshapes.side(left, right, userLeft))
             fun put(g: FacialGesture, score: Float) {
@@ -157,28 +135,13 @@ class GestureClassifier(
             put(FacialGesture.MOUTH_LEFT, userSide(Blendshapes.MOUTH_LEFT, Blendshapes.MOUTH_RIGHT, true))
             put(FacialGesture.MOUTH_RIGHT, userSide(Blendshapes.MOUTH_LEFT, Blendshapes.MOUTH_RIGHT, false))
             put(FacialGesture.PUCKER, b(Blendshapes.MOUTH_PUCKER))
-            put(FacialGesture.CHEEK_PUFF, b(Blendshapes.CHEEK_PUFF))
             put(FacialGesture.ROLL_LOWER_LIP, b(Blendshapes.MOUTH_ROLL_LOWER))
-            put(FacialGesture.JAW_LEFT, userSide(Blendshapes.JAW_LEFT, Blendshapes.JAW_RIGHT, true))
-            put(FacialGesture.JAW_RIGHT, userSide(Blendshapes.JAW_LEFT, Blendshapes.JAW_RIGHT, false))
 
             // One eyebrow at a time.
             put(FacialGesture.RAISE_LEFT_EYEBROW, userSide(Blendshapes.BROW_OUTER_UP_LEFT, Blendshapes.BROW_OUTER_UP_RIGHT, true))
             put(FacialGesture.RAISE_RIGHT_EYEBROW, userSide(Blendshapes.BROW_OUTER_UP_LEFT, Blendshapes.BROW_OUTER_UP_RIGHT, false))
             put(FacialGesture.LOWER_LEFT_EYEBROW, userSide(Blendshapes.BROW_DOWN_LEFT, Blendshapes.BROW_DOWN_RIGHT, true))
             put(FacialGesture.LOWER_RIGHT_EYEBROW, userSide(Blendshapes.BROW_DOWN_LEFT, Blendshapes.BROW_DOWN_RIGHT, false))
-
-            // Eyes: a one-sided wink needs the other eye open; closing both is held longer than a blink.
-            val userLeftEye = userSide(Blendshapes.EYE_BLINK_LEFT, Blendshapes.EYE_BLINK_RIGHT, true)
-            val userRightEye = userSide(Blendshapes.EYE_BLINK_LEFT, Blendshapes.EYE_BLINK_RIGHT, false)
-            val leftWinkThreshold = threshold(FacialGesture.WINK_LEFT)
-            val rightWinkThreshold = threshold(FacialGesture.WINK_RIGHT)
-            put(FacialGesture.WINK_LEFT, if (userRightEye < leftWinkThreshold * WINK_OPEN_EYE_FRACTION) userLeftEye else 0f)
-            put(FacialGesture.WINK_RIGHT, if (userLeftEye < rightWinkThreshold * WINK_OPEN_EYE_FRACTION) userRightEye else 0f)
-            put(FacialGesture.CLOSE_EYES, minOf(userLeftEye, userRightEye))
-            put(FacialGesture.LOOK_UP, avg(b(Blendshapes.EYE_LOOK_UP_LEFT), b(Blendshapes.EYE_LOOK_UP_RIGHT)))
-            put(FacialGesture.LOOK_DOWN, avg(b(Blendshapes.EYE_LOOK_DOWN_LEFT), b(Blendshapes.EYE_LOOK_DOWN_RIGHT)))
-
             // All 52 MediaPipe blendshapes, each usable on its own, scored exactly as the model reports.
             for (gesture in FacialGesture.raw) put(gesture, b(gesture.blendshape!!))
         }
