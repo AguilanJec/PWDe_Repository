@@ -21,6 +21,13 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Lets PWDe see whether a supported game is installed and launch it. Android 11+
+             filters package visibility, so without these getLaunchIntentForPackage() returns null
+             and an installed game is misreported as "isn't installed". These MUST match
+             Game.packageName in data/model/Games.kt; GameQueriesManifestTest fails the build if
+             they drift apart. -->
+        <package android:name="com.mobile.legends" />
+        <package android:name="com.supercell.clashroyale" />
     </queries>
 
     <application

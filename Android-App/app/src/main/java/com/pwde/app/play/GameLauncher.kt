@@ -6,11 +6,18 @@ import android.content.Intent
 import android.net.Uri
 import com.pwde.app.data.model.Game
 
-/** Opens the real game app, or its Play Store page when it isn't installed. */
+/**
+ * Opens the real game app, or its Play Store page when it isn't installed.
+ *
+ * Detection needs the game's package listed in this app's `<queries>` (AndroidManifest.xml): on
+ * Android 11+ package visibility filtering makes `getLaunchIntentForPackage()` return null for an
+ * undeclared package, so an *installed* game looks missing. `GameQueriesManifestTest` fails if the
+ * manifest and [Game.packageName] drift apart.
+ */
 object GameLauncher {
     fun isInstalled(context: Context, game: Game): Boolean = launchIntent(context, game) != null
 
-    /** False if the game isn't installed. */
+    /** False if the game isn't installed (or isn't visible — see the class KDoc). */
     fun openGame(context: Context, game: Game): Boolean {
         val intent = launchIntent(context, game) ?: return false
         context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
