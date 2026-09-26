@@ -65,7 +65,12 @@ class SherpaInGameVoiceEngine(
     init {
         scope.launch {
             spotter.detections.collect { detection ->
-                val commandId = keywords.value[detection.phrase] ?: return@collect
+                val commandId = keywords.value[detection.phrase]
+                if (commandId == null) {
+                    Log.w(TAG, "\"${detection.phrase}\" isn't a loaded command (loaded: ${keywords.value.keys})")
+                    return@collect
+                }
+                Log.i(TAG, "\"${detection.phrase}\" -> $commandId")
                 emit(InGameVoiceResult(commandId, InGameVoiceResult.CONFIDENCE_UNKNOWN, detection.phrase))
             }
         }

@@ -347,6 +347,7 @@ class SherpaWakeWordEngine(
     }
 
     private fun onDetection(phrase: String) {
+        Log.i(TAG, "Spotted \"$phrase\"")
         _state.update { it.copy(detections = it.detections + 1, lastPhrase = phrase) }
         _detections.tryEmit(WakeWordDetection(phrase, System.currentTimeMillis()))
     }

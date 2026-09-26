@@ -1,5 +1,6 @@
 package com.pwde.app.play
 
+import android.util.Log
 import com.pwde.app.data.local.ControlJson
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.local.ProfileRepository
@@ -92,7 +93,9 @@ class LiveGameSession(
     }
 
     private fun onVoice(commandId: String?, rawText: String?) {
-        GameInput.fromVoice(commandId, rawText, livePlay.state.value.buttons)?.let(::runUnlessPaused)
+        val command = GameInput.fromVoice(commandId, rawText, livePlay.state.value.buttons)
+        Log.i(TAG, "Voice \"$rawText\" ($commandId) -> $command")
+        command?.let(::runUnlessPaused)
     }
 
     private fun showHeard(text: String?, matched: Boolean) {
@@ -105,6 +108,7 @@ class LiveGameSession(
 
     private fun runUnlessPaused(command: GameCommand) {
         if (livePlay.state.value.paused && !GameInput.worksWhilePaused(command)) {
+            Log.i(TAG, "Dropped $command: paused")
             return message("Paused — say \"resume\" first")
         }
         execute(command)
@@ -163,4 +167,8 @@ class LiveGameSession(
     }
 
     private fun message(text: String) = livePlay.update { it.copy(message = text) }
+
+    private companion object {
+        const val TAG = "PwdeLiveSession"
+    }
 }

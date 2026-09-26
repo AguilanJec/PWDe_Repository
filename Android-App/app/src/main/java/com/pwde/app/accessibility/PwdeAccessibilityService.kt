@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.PointF
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
@@ -50,6 +51,9 @@ class PwdeAccessibilityService : AccessibilityService() {
 
     /** The finger holding the game's movement joystick, while the head joystick is deflected. */
     private var stick: ContinuousStroke? = null
+
+    /** Until this uptime, the stick isn't pressed again, so a tap sent on its own isn't cancelled by it. */
+    private var stickHoldOffUntil = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -233,6 +237,7 @@ class PwdeAccessibilityService : AccessibilityService() {
             return
         }
         if (stick?.isHeld == true) return
+        if (SystemClock.uptimeMillis() < stickHoldOffUntil) return
         val center = toScreen(movement.x, movement.y)
         stick = ContinuousStroke(
             this,
@@ -247,6 +252,7 @@ class PwdeAccessibilityService : AccessibilityService() {
                     (c.y + current.face.joystick.y * reach).coerceIn(1f, height - 2f),
                 )
             },
+            onTapsResent = { durationMs -> stickHoldOffUntil = SystemClock.uptimeMillis() + durationMs + TAP_SETTLE_MS },
         ).also { it.press(center) }
     }
 
@@ -255,6 +261,7 @@ class PwdeAccessibilityService : AccessibilityService() {
     private fun perform(command: GameCommand, livePlay: LivePlay) {
         val cursor = livePlay.state.value.face.cursor
         val pointer = toScreen(cursor.x, cursor.y)
+        Log.i(TAG, "Perform $command")
         when (command) {
             // Button positions are fractions of a full-screen screenshot from this phone.
             is GameCommand.Press -> tap(toScreen(command.button.x, command.button.y), TAP_MS)
@@ -295,11 +302,22 @@ class PwdeAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Tap at $point rides on the held ${if (held === stick) "joystick" else "drag"}")
             return held.tap(point, durationMs)
         }
+        // Pressing the movement stick now would cancel this tap, so it waits until the tap is done.
+        stickHoldOffUntil = SystemClock.uptimeMillis() + durationMs + TAP_SETTLE_MS
         val path = Path().apply { moveTo(point.x, point.y) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
-        if (!dispatchGesture(gesture, null, null)) Log.w(TAG, "Tap at $point was rejected")
+        val callback = object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                Log.i(TAG, "Tap at $point completed")
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                Log.w(TAG, "Tap at $point was cancelled")
+            }
+        }
+        if (!dispatchGesture(gesture, callback, null)) Log.w(TAG, "Tap at $point was rejected")
     }
 
     /** Moves the content under the pointer so it scrolls the way [direction] reads. */
@@ -349,6 +367,9 @@ class PwdeAccessibilityService : AccessibilityService() {
         private const val HOLD_MS = 700L
         private const val SCROLL_MS = 300L
         private const val CAPTION_GAP_DP = 6
+
+        /** Slack after a resent tap before the movement stick may press again. */
+        private const val TAP_SETTLE_MS = 40L
 
         /** How far one "scroll" moves, as a share of the screen. */
         private const val SCROLL_FRACTION = 0.4f

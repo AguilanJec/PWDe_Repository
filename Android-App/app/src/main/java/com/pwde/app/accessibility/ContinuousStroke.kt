@@ -20,6 +20,11 @@ class ContinuousStroke(
     private val target: () -> PointF,
     /** The system cancelled the stroke (e.g. the screen turned off). */
     private val onCancelled: () -> Unit = {},
+    /**
+     * Taps were sent on their own, lasting up to the given milliseconds. Nothing may press a new
+     * finger until then, or that press would cancel them.
+     */
+    private val onTapsResent: (durationMs: Long) -> Unit = {},
 ) {
     private var last: GestureDescription.StrokeDescription? = null
     private var lastPoint = PointF()
@@ -75,6 +80,7 @@ class ContinuousStroke(
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 Log.d(TAG, "Segment cancelled (held=${last != null}, extra fingers=${taps.size})")
+                resendAlone(taps)
                 if (last == null) return
                 last = null
                 onCancelled()
@@ -82,9 +88,31 @@ class ContinuousStroke(
         }, null)
         if (!accepted) {
             Log.w(TAG, "Segment rejected (extra fingers=${taps.size})")
+            resendAlone(taps)
             last = null
             onCancelled()
         }
+    }
+
+    /**
+     * Taps riding on a segment that the system cancelled or rejected would be lost with it (seen on
+     * real devices, where held segments are cancelled every few frames), so they go out on their own.
+     * The held finger lifts; its owner presses again on the next frame.
+     */
+    private fun resendAlone(taps: List<GestureDescription.StrokeDescription>) {
+        if (taps.isEmpty()) return
+        onTapsResent(taps.maxOf { it.duration })
+        val gesture = GestureDescription.Builder().apply { taps.forEach(::addStroke) }.build()
+        val accepted = service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                Log.i(TAG, "Resent ${taps.size} tap(s) on their own: completed")
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                Log.w(TAG, "Resent ${taps.size} tap(s) on their own: cancelled")
+            }
+        }, null)
+        if (!accepted) Log.w(TAG, "Resent ${taps.size} tap(s) on their own: rejected")
     }
 
     private companion object {
