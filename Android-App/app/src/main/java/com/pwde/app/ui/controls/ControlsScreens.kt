@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,7 +55,7 @@ import com.pwde.app.sensors.voice.VoiceCommand
 import com.pwde.app.ui.components.ButtonStyle
 import com.pwde.app.ui.components.CheckBadge
 import com.pwde.app.ui.components.CameraFeed
-import com.pwde.app.ui.components.CursorPad
+import com.pwde.app.ui.components.CursorCalibrationOverlay
 import com.pwde.app.ui.components.DemoModeBanner
 import com.pwde.app.ui.components.GestureMeter
 import com.pwde.app.ui.components.GradientCard
@@ -436,9 +437,12 @@ fun CursorSpeedScreen(viewModel: CursorSpeedViewModel, onBack: () -> Unit) {
             surfaceRequest = surface,
             canRequestCamera = viewModel.canRequestCamera,
             onCameraPermissionResult = viewModel::onCameraPermissionResult,
-            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(0.55f),
+            modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxWidth(),
+            feedAspectRatio = 16f / 10f,
+            overlay = {
+                CursorCalibrationOverlay(face.cursor.x, face.cursor.y, face.hasFace, Offset(0.5f, 0.5f))
+            },
         )
-        CursorPad(face.cursor, active = face.hasFace)
         PwdeButton(
             "Recenter pointer",
             viewModel::recenterCursor,

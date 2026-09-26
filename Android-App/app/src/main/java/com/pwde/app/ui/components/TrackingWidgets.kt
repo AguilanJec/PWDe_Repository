@@ -4,16 +4,21 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +62,31 @@ fun CursorPad(position: CursorPosition, active: Boolean, modifier: Modifier = Mo
                 .size(dot)
                 .clip(CircleShape)
                 .background(if (active) colors.primary else colors.textMuted),
+        )
+    }
+}
+
+@Composable
+fun BoxScope.CursorCalibrationOverlay(x: Float, y: Float, active: Boolean, target: Offset) {
+    val colors = PwdeTheme.colors
+    val onTarget = kotlin.math.hypot(x - target.x, y - target.y) < 0.1f
+    Canvas(
+        Modifier
+            .fillMaxSize()
+            .semantics {
+                contentDescription = if (onTarget) "Pointer is on the target" else "Pointer at ${(x * 100).toInt()}% across, ${(y * 100).toInt()}% down"
+            },
+    ) {
+        val targetCenter = Offset(target.x * size.width, target.y * size.height)
+        drawCircle(colors.primary.copy(alpha = if (onTarget) 0.5f else 0.2f), radius = 26.dp.toPx(), center = targetCenter)
+        drawCircle(colors.primary, radius = 26.dp.toPx(), center = targetCenter, style = Stroke(3.dp.toPx()))
+        drawCircle(if (active) colors.secondary else colors.textMuted, radius = 12.dp.toPx(), center = Offset(x * size.width, y * size.height))
+    }
+    if (onTarget) {
+        StatusPill(
+            "On target!",
+            icon = Icons.Outlined.CheckCircle,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
         )
     }
 }
