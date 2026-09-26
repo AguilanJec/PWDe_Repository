@@ -111,8 +111,14 @@ private fun screenInsets(hasBottomBar: Boolean): WindowInsets =
 @Composable
 fun ScreenHeader(title: String, subtitle: String?, onBack: (() -> Unit)?) {
     val colors = PwdeTheme.colors
+    val spacing = PwdeTheme.spacing
     Row(
-        Modifier.fillMaxWidth().padding(start = if (onBack != null) 4.dp else PwdeTheme.spacing.screenMargin, end = PwdeTheme.spacing.screenMargin, top = 8.dp),
+        Modifier.fillMaxWidth().padding(
+            start = if (onBack != null) 4.dp else spacing.screenMargin,
+            end = spacing.screenMargin,
+            top = spacing.itemGap,
+            bottom = spacing.itemGap,
+        ),
         verticalAlignment = Alignment.Top,
     ) {
         if (onBack != null) {
@@ -120,7 +126,11 @@ fun ScreenHeader(title: String, subtitle: String?, onBack: (() -> Unit)?) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.primary)
             }
         }
-        Column(Modifier.weight(1f).padding(top = 6.dp)) {
+        Column(
+            // Top padding lines the title up with the back arrow's icon; start keeps it off the arrow.
+            Modifier.weight(1f).padding(start = if (onBack != null) 8.dp else 0.dp, top = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 title,
                 style = MaterialTheme.typography.headlineSmall,
