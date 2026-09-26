@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.BuildConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.sensors.face.JoystickState
 import com.pwde.app.sensors.voice.InGameVoiceState
@@ -102,6 +103,7 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
     val lastEvent by viewModel.lastEvent.collectAsStateWithLifecycle()
     val overlayHidden by viewModel.overlayHidden.collectAsStateWithLifecycle()
     val controlsShown by viewModel.controlsShown.collectAsStateWithLifecycle()
+    val navigationMode by viewModel.navigationMode.collectAsStateWithLifecycle()
     val requestCamera = rememberCameraPermissionRequest { viewModel.onCameraPermissionResult() }
     val colors = PwdeTheme.colors
     BackHandler(onBack = onExit)
@@ -172,7 +174,7 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
             if (controlsShown) ControlsList(ui.buttons, onClose = { viewModel.setControlsShown(false) })
             if (!overlayHidden) {
                 if (voice.usesTextFallback) GameCommandField(voice.availability.label, viewModel::submitText)
-                OverlayPanel(face, voiceLine(voice), lastEvent, paused, viewModel::togglePause, onExit)
+                OverlayPanel(face, navigationMode, voiceLine(voice), lastEvent, paused, viewModel::togglePause, onExit)
             }
         }
     }
@@ -358,6 +360,7 @@ private fun ProfileButtons(
 @Composable
 private fun OverlayPanel(
     face: FaceState,
+    navigationMode: NavigationMode,
     voiceText: String,
     lastEvent: OverlayEvent?,
     paused: Boolean,
@@ -376,6 +379,10 @@ private fun OverlayPanel(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("PWDe", style = MaterialTheme.typography.titleLarge, color = colors.primary, modifier = Modifier.weight(1f))
+            StatusPill(
+                "${navigationMode.label} mode",
+                color = if (navigationMode == NavigationMode.GAME) colors.textMuted else colors.primary,
+            )
             StatusPill(
                 when {
                     paused -> "Paused"

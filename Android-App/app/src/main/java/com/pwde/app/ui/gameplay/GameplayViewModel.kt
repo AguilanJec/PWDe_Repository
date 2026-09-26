@@ -13,6 +13,8 @@ import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.NavigationMode
+import com.pwde.app.data.model.navigationModeFor
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.play.GameCommand
 import com.pwde.app.play.GameInput
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -90,6 +93,17 @@ class GameplayViewModel(
 
     private val _lastEvent = MutableStateFlow<OverlayEvent?>(null)
     val lastEvent: StateFlow<OverlayEvent?> = _lastEvent.asStateFlow()
+
+    /**
+     * An explicit "game mode" / "navigation mode" for this preview. The live session keeps this on
+     * its own state instead (it is shared with the accessibility service); the same rule decides both.
+     */
+    private val _navigationOverride = MutableStateFlow<NavigationMode?>(null)
+
+    /** Game mode / navigation mode, for the panel — never let the current mode be a mystery. */
+    val navigationMode: StateFlow<NavigationMode> =
+        combine(_navigationOverride, faceState) { override, face -> navigationModeFor(override, face.outputMode) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, NavigationMode.NAVIGATION)
 
     private val _exit = Channel<Unit>(Channel.CONFLATED)
     val exitRequests: Flow<Unit> = _exit.receiveAsFlow()
@@ -170,6 +184,7 @@ class GameplayViewModel(
 
     private fun onVoice(commandId: String?, rawText: String?) {
         val command = GameInput.fromVoice(commandId, rawText, _ui.value.buttons) ?: return
+        GameInput.navigationRefusal(command, currentNavigationMode())?.let { return post(it, OverlayEvent.Kind.IGNORED) }
         // Voice "back" always leaves the preview, even while paused.
         if (command == GameCommand.Back) return exit()
         if (_paused.value && !GameInput.worksWhilePaused(command)) {
@@ -180,11 +195,15 @@ class GameplayViewModel(
 
     private fun onGesture(gesture: FacialGesture) {
         val command = GameInput.fromGesture(gesture, _ui.value.buttons, config.value)
+        GameInput.navigationRefusal(command, currentNavigationMode())?.let { return post(it, OverlayEvent.Kind.IGNORED) }
         if (_paused.value && !GameInput.worksWhilePaused(command)) {
             return post("${gesture.label} ignored while paused", OverlayEvent.Kind.IGNORED)
         }
         execute(command)
     }
+
+    /** The mode right now: the phrase wins, otherwise the input mode decides. */
+    private fun currentNavigationMode(): NavigationMode = navigationModeFor(_navigationOverride.value, faceState.value.outputMode)
 
     private fun execute(command: GameCommand) {
         when (command) {
@@ -209,8 +228,23 @@ class GameplayViewModel(
             GameCommand.Drop -> post("Drop (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.CursorMode -> post("Cursor mode (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.JoystickMode -> post("Joystick mode (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.GameMode -> setNavigationMode(NavigationMode.GAME)
+            GameCommand.NavigationMode -> setNavigationMode(NavigationMode.NAVIGATION)
             is GameCommand.Ignored -> post(command.reason, OverlayEvent.Kind.IGNORED)
         }
+    }
+
+    /** The same switch as the live session's, so the preview can be used to check the rules. */
+    private fun setNavigationMode(mode: NavigationMode) {
+        _navigationOverride.value = mode
+        post(
+            if (mode == NavigationMode.GAME) {
+                "Game mode — \"back\", \"home\", \"recent apps\" and \"notifications\" are off. Say \"navigation mode\" for them."
+            } else {
+                "Navigation mode — \"back\", \"home\", \"recent apps\" and \"notifications\" work again."
+            },
+            OverlayEvent.Kind.ACTION,
+        )
     }
 
     /** Cursor mode: the pointer back to the middle. Joystick mode: where the head is now becomes the stick's neutral. */

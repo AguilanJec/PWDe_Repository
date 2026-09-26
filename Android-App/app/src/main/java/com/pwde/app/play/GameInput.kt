@@ -4,6 +4,7 @@ import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.model.TriggerType
 import com.pwde.app.sensors.face.JoystickDirection
 import com.pwde.app.sensors.voice.VoiceCommandBinding
@@ -29,6 +30,13 @@ sealed interface GameCommand {
     object Drop : GameCommand
     object CursorMode : GameCommand
     object JoystickMode : GameCommand
+    /**
+     * Turn phone navigation off/on for this session, without changing what the head drives. Joystick
+     * mode is game mode and cursor mode is navigation mode by default, so this is how a cursor-mode
+     * user keeps "back"/"home" from pulling them out of a game.
+     */
+    object GameMode : GameCommand
+    object NavigationMode : GameCommand
     /** Leave the game and go back to PWDe. */
     object Exit : GameCommand
     object HideOverlay : GameCommand
@@ -67,7 +75,18 @@ object GameInput {
     const val DROP = "game_drop"
     const val CURSOR_MODE = "game_cursor_mode"
     const val JOYSTICK_MODE = "game_joystick_mode"
+    const val GAME_MODE = "game_mode"
+    const val NAVIGATION_MODE = "game_navigation_mode"
     private const val SCROLL = "game_scroll:"
+
+    /**
+     * The phone's own navigation: these drive the phone, not the game. Back / Home / Notifications /
+     * All apps are also reachable as gesture actions, and every one of those becomes one of these
+     * commands, so gating them here covers words and gestures alike.
+     */
+    private val NAVIGATION_COMMANDS: Set<GameCommand> = setOf(
+        GameCommand.Back, GameCommand.Home, GameCommand.Recents, GameCommand.Notifications, GameCommand.AllApps,
+    )
 
     fun buttonCommandId(buttonId: Int) = "button:$buttonId"
 
@@ -99,6 +118,8 @@ object GameInput {
         VoiceCommandBinding(DROP, listOf("drop", "let go")),
         VoiceCommandBinding(CURSOR_MODE, listOf("cursor mode")),
         VoiceCommandBinding(JOYSTICK_MODE, listOf("joystick mode")),
+        VoiceCommandBinding(GAME_MODE, listOf("game mode")),
+        VoiceCommandBinding(NAVIGATION_MODE, listOf("navigation mode")),
     ) + ScrollDirection.entries.map { VoiceCommandBinding(SCROLL + it.name, listOf("scroll ${it.name.lowercase()}")) }
 
     /** The standard commands plus each button's own voice trigger. */
@@ -129,6 +150,8 @@ object GameInput {
         DROP -> GameCommand.Drop
         CURSOR_MODE -> GameCommand.CursorMode
         JOYSTICK_MODE -> GameCommand.JoystickMode
+        GAME_MODE -> GameCommand.GameMode
+        NAVIGATION_MODE -> GameCommand.NavigationMode
         else -> ScrollDirection.entries.firstOrNull { commandId == SCROLL + it.name }?.let { GameCommand.Scroll(it) } ?: buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let { GameCommand.Press(it) }
     }
 
@@ -169,8 +192,30 @@ object GameInput {
     fun worksWhilePaused(command: GameCommand): Boolean = when (command) {
         GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause, GameCommand.Recenter, GameCommand.Exit,
         GameCommand.HideOverlay, GameCommand.ShowOverlay, GameCommand.ShowControls, GameCommand.HideControls, GameCommand.CursorMode, GameCommand.JoystickMode,
+        GameCommand.GameMode, GameCommand.NavigationMode,
         GameCommand.Drop, is GameCommand.Ignored -> true
         else -> false
+    }
+
+    /** True for the commands that steer the phone rather than the game. */
+    fun isNavigationCommand(command: GameCommand): Boolean = command in NAVIGATION_COMMANDS
+
+    /**
+     * Why [command] is refused in [mode], or null when it may run. Game mode keeps the phone's own
+     * navigation out of a match, and the refusal is spoken rather than swallowed: silence is
+     * indistinguishable from a broken microphone, the lesson this repo keeps relearning.
+     */
+    fun navigationRefusal(command: GameCommand, mode: NavigationMode): String? =
+        if (mode == NavigationMode.NAVIGATION || !isNavigationCommand(command)) null
+        else "\"${navigationLabel(command)}\" is off in game mode — say \"navigation mode\" to use it"
+
+    private fun navigationLabel(command: GameCommand): String = when (command) {
+        GameCommand.Back -> "Back"
+        GameCommand.Home -> "Home"
+        GameCommand.Recents -> "Recent apps"
+        GameCommand.Notifications -> "Notifications"
+        GameCommand.AllApps -> "All apps"
+        else -> "That"
     }
 
     private fun buttonFor(buttons: List<MappedButton>, type: TriggerType, value: String): MappedButton? =

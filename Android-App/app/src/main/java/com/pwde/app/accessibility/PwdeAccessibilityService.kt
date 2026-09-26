@@ -24,6 +24,7 @@ import com.pwde.app.play.LivePlay
 import com.pwde.app.play.LivePlayState
 import com.pwde.app.play.ScrollDirection
 import com.pwde.app.play.hasJoystickConfig
+import com.pwde.app.play.navigationMode
 import com.pwde.app.sensors.face.JoystickDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,7 +126,13 @@ class PwdeAccessibilityService : AccessibilityService() {
             val view = bubbleView ?: createBubble(livePlay)
             view?.update(if (joystick) "Joystick" else "Cursor", state.paused)
             val heard = state.heard
-            (captionView ?: createCaption())?.update(state.voiceModel, heard?.text, heard?.matched == true, heard?.seq ?: 0)
+            (captionView ?: createCaption())?.update(
+                state.voiceModel,
+                "${state.navigationMode().label} mode",
+                heard?.text,
+                heard?.matched == true,
+                heard?.seq ?: 0,
+            )
         }
     }
 

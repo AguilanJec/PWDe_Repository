@@ -2,12 +2,18 @@ package com.pwde.app.play
 
 import com.pwde.app.data.model.ButtonTrigger
 import com.pwde.app.data.model.ControlConfig
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
+import com.pwde.app.data.model.GestureAction
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.model.TriggerType
+import com.pwde.app.data.model.defaultNavigationMode
+import com.pwde.app.data.model.navigationModeFor
 import com.pwde.app.sensors.face.JoystickDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -109,5 +115,66 @@ class GameInputTest {
         assertFalse(GameInput.worksWhilePaused(GameCommand.Press(skill)))
         assertFalse(GameInput.worksWhilePaused(GameCommand.Select))
         assertFalse(GameInput.worksWhilePaused(GameCommand.Back))
+    }
+
+    /** Cursor mode is navigation mode and joystick mode is game mode, until a phrase says otherwise. */
+    @Test
+    fun theInputModeDecidesTheNavigationMode() {
+        assertEquals(NavigationMode.GAME, FaceOutputMode.JOYSTICK.defaultNavigationMode())
+        assertEquals(NavigationMode.NAVIGATION, FaceOutputMode.CURSOR.defaultNavigationMode())
+        assertEquals(NavigationMode.GAME, navigationModeFor(null, FaceOutputMode.JOYSTICK))
+        assertEquals(NavigationMode.NAVIGATION, navigationModeFor(null, FaceOutputMode.CURSOR))
+        // The spoken phrase always wins, whichever way the head is driving.
+        assertEquals(NavigationMode.NAVIGATION, navigationModeFor(NavigationMode.NAVIGATION, FaceOutputMode.JOYSTICK))
+        assertEquals(NavigationMode.GAME, navigationModeFor(NavigationMode.GAME, FaceOutputMode.CURSOR))
+    }
+
+    @Test
+    fun theModeSwitchIsSpokenAndWorksWhilePaused() {
+        assertEquals(GameCommand.GameMode, GameInput.fromVoice(GameInput.GAME_MODE, "game mode", buttons))
+        assertEquals(GameCommand.NavigationMode, GameInput.fromVoice(GameInput.NAVIGATION_MODE, "navigation mode", buttons))
+        assertTrue(GameInput.worksWhilePaused(GameCommand.GameMode))
+        assertTrue(GameInput.worksWhilePaused(GameCommand.NavigationMode))
+        // Neither gives up a pointer, so neither is a command joystick mode has to refuse.
+        assertFalse(GameInput.needsPointer(GameCommand.GameMode))
+        assertFalse(GameInput.needsPointer(GameCommand.NavigationMode))
+    }
+
+    /**
+     * Game mode is what keeps the phone's own navigation out of a match: joystick mode is game mode
+     * by default, so a stray "back" can't pull the user out of a game. It is refused out loud, never
+     * dropped silently — silence is indistinguishable from a broken microphone.
+     */
+    @Test
+    fun gameModeRefusesPhoneNavigation() {
+        listOf(GameCommand.Back, GameCommand.Home, GameCommand.Recents, GameCommand.Notifications, GameCommand.AllApps)
+            .forEach { command ->
+                assertTrue("$command steers the phone", GameInput.isNavigationCommand(command))
+                assertNotNull("$command is refused in game mode", GameInput.navigationRefusal(command, NavigationMode.GAME))
+                assertNull("$command works in navigation mode", GameInput.navigationRefusal(command, NavigationMode.NAVIGATION))
+            }
+    }
+
+    @Test
+    fun gameModeLeavesPlayingTheGameAlone() {
+        listOf(
+            GameCommand.Press(skill), GameCommand.Select, GameCommand.TouchHold, GameCommand.StartDrag,
+            GameCommand.Drop, GameCommand.Pause, GameCommand.Resume, GameCommand.Recenter,
+            GameCommand.Scroll(ScrollDirection.DOWN), GameCommand.ShowControls, GameCommand.Exit,
+            GameCommand.CursorMode, GameCommand.JoystickMode, GameCommand.GameMode, GameCommand.NavigationMode,
+        ).forEach { command ->
+            assertFalse("$command is a game command", GameInput.isNavigationCommand(command))
+            assertNull("$command runs in game mode", GameInput.navigationRefusal(command, NavigationMode.GAME))
+        }
+    }
+
+    /** A gesture assigned to Back/Home/Notifications/All apps becomes the same command, so it is gated too. */
+    @Test
+    fun aNavigationGestureIsRefusedInGameMode() {
+        val config = ControlConfig(gestureAssignments = mapOf(GestureAction.BACK to gesture))
+        val command = GameInput.fromGesture(gesture, emptyList(), config)
+        assertEquals(GameCommand.Back, command)
+        assertNotNull(GameInput.navigationRefusal(command, NavigationMode.GAME))
+        assertNull(GameInput.navigationRefusal(command, NavigationMode.NAVIGATION))
     }
 }

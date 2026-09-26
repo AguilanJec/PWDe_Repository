@@ -2,7 +2,9 @@ package com.pwde.app.play
 
 import com.pwde.app.data.model.Game
 import com.pwde.app.data.model.MappedButton
+import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.model.TriggerType
+import com.pwde.app.data.model.navigationModeFor
 import com.pwde.app.sensors.face.FaceState
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +34,11 @@ data class LivePlayState(
     val voiceModel: String? = null,
     /** What that engine last heard, shown under the floating bubble. */
     val heard: Heard? = null,
+    /**
+     * An explicit "game mode" / "navigation mode" for this session, or null to follow the input
+     * mode. Not saved: a new session starts from the input mode again.
+     */
+    val navigationOverride: NavigationMode? = null,
 )
 
 /**
@@ -81,3 +88,10 @@ fun LivePlayState.hasJoystickConfig(): Boolean {
         b.trigger?.type == TriggerType.MOVEMENT || b.trigger?.type == TriggerType.JOYSTICK
     } || profileName != null
 }
+
+/**
+ * Whether the phone's own navigation (back, home, recents, notifications, all apps) is allowed right
+ * now. Saying "game mode" / "navigation mode" wins for the rest of the session; otherwise the input
+ * mode decides, so joystick mode is game mode and cursor mode is navigation mode by default.
+ */
+fun LivePlayState.navigationMode(): NavigationMode = navigationModeFor(navigationOverride, face.outputMode)

@@ -149,7 +149,10 @@ fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
         }
         InfoNote(
             "Head & face and Voice move a pointer with your head. Joystick turns head tilt into an 8-way joystick. " +
-                    "Switch any time by saying \"cursor mode\" or \"joystick mode\".",
+                    "Switch any time by saying \"cursor mode\" or \"joystick mode\". " +
+                    "Cursor mode is navigation mode, so \"home\", \"back\", \"recent apps\" and \"notifications\" work. " +
+                    "Joystick mode is game mode: those are off there, so a stray word can't pull you out of a match. " +
+                    "Say \"game mode\" or \"navigation mode\" to change that for the session.",
         )
     }
 }

@@ -187,9 +187,9 @@ class ModeBubbleView(
 }
 
 /**
- * The caption under the floating bubble: what the in-game speech engine last heard, and which engine
- * it is, so it's plain whether buttons go through sherpa-onnx or the platform recognizer. Touches
- * pass straight through it.
+ * The caption under the floating bubble: what the in-game speech engine last heard, which engine it
+ * is, and which mode the session is in — so it's plain whether buttons go through sherpa-onnx or the
+ * platform recognizer, and whether phone navigation is on. Touches pass straight through it.
  */
 class SpeechCaptionView(context: Context) : TextView(context) {
     private val density = resources.displayMetrics.density
@@ -215,13 +215,14 @@ class SpeechCaptionView(context: Context) : TextView(context) {
     }
 
     /**
-     * [heard] is null until the first result. A new [seq] briefly lights the border: teal for a
-     * matched command, amber for speech that matched nothing.
+     * [heard] is null until the first result. [mode] is the session's game/navigation mode. A new
+     * [seq] briefly lights the border: teal for a matched command, amber for speech that matched
+     * nothing.
      */
-    fun update(model: String?, heard: String?, matched: Boolean, seq: Int) {
+    fun update(model: String?, mode: String, heard: String?, matched: Boolean, seq: Int) {
         val said = if (heard == null) "Listening…" else "“$heard”" + if (matched) "" else "  (no match)"
         text = SpannableStringBuilder(said).append("\n")
-            .append(model ?: "Unknown engine", ForegroundColorSpan(MUTED), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            .append(listOfNotNull(model ?: "Unknown engine", mode).joinToString(" · "), ForegroundColorSpan(MUTED), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         if (heard != null && seq != lastSeq) {
             lastSeq = seq
             frame.setStroke((2.5f * density).toInt(), if (matched) PRIMARY else WARNING)

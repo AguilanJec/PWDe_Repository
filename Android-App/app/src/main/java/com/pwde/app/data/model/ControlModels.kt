@@ -183,6 +183,32 @@ enum class FaceOutputMode(val label: String) { CURSOR("Cursor"), JOYSTICK("Joyst
 fun InputMode.faceOutputMode(): FaceOutputMode =
     if (this == InputMode.JOYSTICK) FaceOutputMode.JOYSTICK else FaceOutputMode.CURSOR
 
+/**
+ * What PWDe's phone-navigation words do in a session. Back, Home, Recents, Notifications and All
+ * apps drive the *phone*, so in [GAME] they are refused: a stray "back" — or the in-game spotter
+ * hearing the game's own audio — must never yank the user out of a match. [NAVIGATION] is for
+ * driving the phone: browsing, settings, other apps.
+ */
+enum class NavigationMode(val label: String) {
+    GAME("Game"),
+    NAVIGATION("Navigation"),
+}
+
+/**
+ * The default with no explicit switch: the joystick plays the game, so navigation is off; a cursor
+ * means the user is pointing at the phone, so navigation is on. That is why joystick mode is game
+ * mode and cursor mode is navigation mode out of the box.
+ */
+fun FaceOutputMode.defaultNavigationMode(): NavigationMode =
+    if (this == FaceOutputMode.JOYSTICK) NavigationMode.GAME else NavigationMode.NAVIGATION
+
+/**
+ * An explicit "game mode" / "navigation mode" wins; otherwise the input mode decides. The single
+ * rule, so the live session and the simulated preview can never drift apart.
+ */
+fun navigationModeFor(override: NavigationMode?, outputMode: FaceOutputMode): NavigationMode =
+    override ?: outputMode.defaultNavigationMode()
+
 /** The user's working controls configuration (not yet saved as a named profile). */
 data class ControlConfig(
     val gestureAssignments: Map<GestureAction, FacialGesture> = emptyMap(),

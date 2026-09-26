@@ -9,6 +9,7 @@ import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
+import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
 import com.pwde.app.sensors.face.JoystickDirection
@@ -111,6 +112,14 @@ class LiveGameSession(
             return
         }
 
+        // Phone navigation is off in game mode, and joystick mode IS game mode by default: a stray
+        // "back", or the game's own audio being heard by the spotter, must never pull the user out of
+        // a match. Said out loud rather than dropped — silence reads as a broken microphone.
+        GameInput.navigationRefusal(command, livePlay.state.value.navigationMode())?.let { reason ->
+            Log.i(TAG, "Dropped $command: $reason")
+            return message(reason)
+        }
+
         // Every command, including every button the user assigned, works in both modes. Joystick mode
         // only takes away the pointer: the head steers the game's movement stick instead, so a command
         // that acts where the user is looking has nowhere to act. Say so rather than dropping it silently.
@@ -126,8 +135,11 @@ class LiveGameSession(
         livePlay.update { it.copy(heard = Heard(text, matched, (it.heard?.seq ?: 0) + 1)) }
     }
 
-    private fun onGesture(gesture: FacialGesture) =
-        runUnlessPaused(GameInput.fromGesture(gesture, livePlay.state.value.buttons, config))
+    private fun onGesture(gesture: FacialGesture) {
+        val command = GameInput.fromGesture(gesture, livePlay.state.value.buttons, config)
+        GameInput.navigationRefusal(command, livePlay.state.value.navigationMode())?.let { return message(it) }
+        runUnlessPaused(command)
+    }
 
     private fun runUnlessPaused(command: GameCommand) {
         if (livePlay.state.value.paused && !GameInput.worksWhilePaused(command)) {
@@ -162,6 +174,8 @@ class LiveGameSession(
                     switchMode(InputMode.JOYSTICK, "Joystick mode")
                 }
             }
+            GameCommand.GameMode -> setNavigationMode(NavigationMode.GAME)
+            GameCommand.NavigationMode -> setNavigationMode(NavigationMode.NAVIGATION)
             GameCommand.StartDrag -> {
                 livePlay.update { it.copy(dragging = true) }
                 livePlay.perform(command)
@@ -207,6 +221,23 @@ class LiveGameSession(
     private fun switchMode(mode: InputMode, label: String) {
         scope?.launch { settingsRepository.setInputMode(mode) }
         message(label)
+    }
+
+    /**
+     * "game mode" / "navigation mode": overrides the input mode's own default for the rest of the
+     * session, without touching what the head drives. Deliberately not saved, so a new session starts
+     * from the input mode again — joystick mode is game mode and cursor mode is navigation mode
+     * unless the user says otherwise.
+     */
+    private fun setNavigationMode(mode: NavigationMode) {
+        livePlay.update { it.copy(navigationOverride = mode) }
+        message(
+            if (mode == NavigationMode.GAME) {
+                "Game mode — \"back\", \"home\", \"recent apps\" and \"notifications\" are off. Say \"navigation mode\" for them."
+            } else {
+                "Navigation mode — \"back\", \"home\", \"recent apps\" and \"notifications\" work again."
+            },
+        )
     }
 
     private suspend fun switchCalibrationProfile() {
