@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -160,7 +161,10 @@ fun DashboardScreen(
         Image(
             painterResource(R.drawable.logo_wordmark),
             contentDescription = "PWDe",
-            modifier = Modifier.width(140.dp).padding(top = 8.dp, bottom = 4.dp),
+            modifier = Modifier
+                .width(140.dp)
+                .offset(x = (-8).dp)
+                .padding(top = 8.dp, bottom = 4.dp),
         )
         state.greetingName?.let {
             Text("Welcome back, $it", style = MaterialTheme.typography.titleLarge, color = colors.text)

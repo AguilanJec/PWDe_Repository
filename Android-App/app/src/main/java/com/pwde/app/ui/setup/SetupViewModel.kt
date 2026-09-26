@@ -15,9 +15,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class SetupStep(val label: String) {
-    APPEARANCE("How it looks"),
+
+    TURN_ON("Turn on PWDe"),
     NEEDS("What you need"),
     PERMISSIONS("Permissions"),
+    APPEARANCE("How it looks"),
 }
 
 data class SetupUiState(
@@ -37,8 +39,7 @@ data class SetupUiState(
 /**
  * Skippable steps. Edits are held as a draft (so the Setup screen can preview them live)
  * and written to [SettingsRepository] only when the user taps Continue on that step.
- * The permissions (B5) step grants things in Android itself (camera, mic, accessibility service,
- * display-over-apps), so it saves nothing.
+ * The permission (B5) and Settings (B6) steps grant things in Android itself, so they save nothing.
  *
  * @param appearanceOnly opened from Profile to change just the look; finishing returns there.
  */
@@ -83,7 +84,7 @@ class SetupViewModel(
             when (s.step) {
                 SetupStep.APPEARANCE -> settingsRepository.setAppearance(s.colorScheme, s.textSize, s.layoutMode)
                 SetupStep.NEEDS -> settingsRepository.setAccessibilityNeeds(s.needs)
-                SetupStep.PERMISSIONS -> Unit
+                SetupStep.PERMISSIONS, SetupStep.TURN_ON -> Unit
             }
             advance()
         }
@@ -101,7 +102,7 @@ class SetupViewModel(
                         layoutMode = saved.layoutMode,
                     )
                     SetupStep.NEEDS -> it.copy(needs = saved.accessibilityNeeds)
-                    SetupStep.PERMISSIONS -> it
+                    SetupStep.PERMISSIONS, SetupStep.TURN_ON -> it
                 }
             }
             advance()

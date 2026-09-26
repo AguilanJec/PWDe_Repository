@@ -33,14 +33,11 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
-        <!--
-          The games PWDe launches. Android 11+ hides other apps from this app unless they are named
-          here, and PackageManager.getLaunchIntentForPackage then returns null for a game that IS
-          installed. That reads as "isn't installed", aborts startPlaying() before PlayService runs,
-          and so the overlay, bubble and voice commands never come up either.
-          Keep this in step with Games.kt: every Game.packageName needs an entry here or it cannot
-          be launched.
-        -->
+        <!-- Lets PWDe see whether a supported game is installed and launch it. Android 11+
+             filters package visibility, so without these getLaunchIntentForPackage() returns null
+             and an installed game is misreported as "isn't installed". These MUST match
+             Game.packageName in data/model/Games.kt; GameQueriesManifestTest fails the build if
+             they drift apart. -->
         <package android:name="com.mobile.legends" />
         <package android:name="com.supercell.clashroyale" />
     </queries>
@@ -68,7 +65,6 @@
             </intent-filter>
         </activity>
 
-        <!-- "Use PWDe" in Settings → Accessibility; Setup step B6 asks the user to turn it on. -->
         <service
             android:name=".accessibility.PwdeAccessibilityService"
             android:exported="false"
