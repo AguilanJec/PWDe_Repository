@@ -23,8 +23,13 @@ import com.pwde.app.sensors.face.MediaPipeFaceTrackingManager
 import com.pwde.app.sensors.voice.AndroidVoiceCommandManager
 import com.pwde.app.sensors.voice.InGameVoiceEngine
 import com.pwde.app.sensors.voice.MicArbiter
+import com.pwde.app.sensors.voice.SherpaInGameVoiceEngine
+import com.pwde.app.sensors.voice.SherpaSupport
+import com.pwde.app.sensors.voice.SherpaWakeWordEngine
 import com.pwde.app.sensors.voice.SpeechRecognizerInGameVoiceEngine
 import com.pwde.app.sensors.voice.VoiceCommandManager
+import com.pwde.app.sensors.voice.WakeWordEngine
+import com.pwde.app.sensors.voice.WakeWordTuningStore
 
 private val Context.settingsDataStore by preferencesDataStore(name = "user_settings")
 
@@ -49,15 +54,36 @@ class AppContainer(private val context: Context) {
     /** Makes sure gameplay's voice engine and the app-wide one never listen at the same time. */
     private val micArbiter by lazy { MicArbiter() }
 
-    /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). Used everywhere except gameplay. */
+    /** App-scoped voice commands (Android SpeechRecognizer, typed fallback). Navigation everywhere except gameplay. */
     val voiceCommandManager: VoiceCommandManager by lazy {
         AndroidVoiceCommandManager(context, controlsRepository, settingsRepository, micArbiter)
     }
 
-    /** Gameplay-time voice recognition, scoped to the active game profile's commands. */
+    /** sherpa-onnx keyword spotter tuning, edited in the Testing Station and used by gameplay. */
+    val wakeWordTuningStore by lazy { WakeWordTuningStore() }
+
+    /** The Testing Station's own sherpa-onnx spotter, for trying phrases and tuning. */
+    val wakeWordEngine: WakeWordEngine by lazy {
+        SherpaWakeWordEngine(
+            context,
+            takeMic = micArbiter::takeForWakeWord,
+            releaseMic = micArbiter::releaseFromWakeWord,
+            keywordsFileName = "keywords-testing.txt",
+        )
+    }
+
+    /**
+     * Gameplay-time voice recognition (mapped-button triggers + standard in-game commands), scoped
+     * to the active game profile's commands. sherpa-onnx keyword spotting where it can run; the
+     * platform recognizer on devices it can't (non-arm64, or a checkout without the model).
+     * GameplayViewModel and everything above it depend only on the interface.
+     */
     val inGameVoiceEngine: InGameVoiceEngine by lazy {
-        // swap SpeechRecognizerInGameVoiceEngine for a dedicated low-latency engine here once one is chosen — GameplayViewModel and everything above it needs no changes
-        SpeechRecognizerInGameVoiceEngine(context, controlsRepository, micArbiter)
+        if (SherpaSupport.isSupported(context)) {
+            SherpaInGameVoiceEngine(context, controlsRepository, micArbiter, wakeWordTuningStore)
+        } else {
+            SpeechRecognizerInGameVoiceEngine(context, controlsRepository, micArbiter)
+        }
     }
 
     /** Resumable GabAI sessions and game screenshots. */

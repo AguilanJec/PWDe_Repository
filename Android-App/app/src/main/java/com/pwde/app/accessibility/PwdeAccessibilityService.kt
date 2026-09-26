@@ -44,6 +44,8 @@ class PwdeAccessibilityService : AccessibilityService() {
     private var cursorView: CursorOverlayView? = null
     private var bubbleView: ModeBubbleView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
+    private var captionView: SpeechCaptionView? = null
+    private var captionParams: WindowManager.LayoutParams? = null
     private var drag: ContinuousStroke? = null
 
     /** The finger holding the game's movement joystick, while the head joystick is deflected. */
@@ -104,9 +106,13 @@ class PwdeAccessibilityService : AccessibilityService() {
         if (state.overlayHidden) {
             removeView(bubbleView)
             bubbleView = null
+            removeView(captionView)
+            captionView = null
         } else {
             val view = bubbleView ?: createBubble(livePlay)
             view?.update(if (joystick) "Joystick" else "Cursor", state.paused)
+            val heard = state.heard
+            (captionView ?: createCaption())?.update(state.voiceModel, heard?.text, heard?.matched == true, heard?.seq ?: 0)
         }
     }
 
@@ -123,11 +129,32 @@ class PwdeAccessibilityService : AccessibilityService() {
                 params.x += dx
                 params.y += dy
                 bubbleView?.let { runCatching { windowManager.updateViewLayout(it, params) } }
+                // The caption rides along under the bubble.
+                captionParams?.let { caption ->
+                    placeCaption(caption, params)
+                    captionView?.let { runCatching { windowManager.updateViewLayout(it, caption) } }
+                }
             },
         )
         if (!addOverlay(view, params)) return null
         bubbleView = view
         return view
+    }
+
+    private fun createCaption(): SpeechCaptionView? {
+        val bubble = bubbleParams ?: return null
+        val params = captionParams ?: captionLayoutParams().also { captionParams = it }
+        placeCaption(params, bubble)
+        val view = SpeechCaptionView(this)
+        if (!addOverlay(view, params)) return null
+        captionView = view
+        return view
+    }
+
+    /** Just below the bubble, left edges aligned. */
+    private fun placeCaption(caption: WindowManager.LayoutParams, bubble: WindowManager.LayoutParams) {
+        caption.x = bubble.x
+        caption.y = bubble.y + ((ModeBubbleView.SIZE_DP + CAPTION_GAP_DP) * resources.displayMetrics.density).toInt()
     }
 
     private fun addOverlay(view: View, params: WindowManager.LayoutParams): Boolean =
@@ -142,8 +169,10 @@ class PwdeAccessibilityService : AccessibilityService() {
     private fun removeOverlays() {
         removeView(cursorView)
         removeView(bubbleView)
+        removeView(captionView)
         cursorView = null
         bubbleView = null
+        captionView = null
     }
 
     /** Covers the whole display, cutouts included, and never takes touches. */
@@ -172,6 +201,16 @@ class PwdeAccessibilityService : AccessibilityService() {
         x = (16 * density).toInt()
         y = (96 * density).toInt()
     }
+
+    /** Sized to its text and never takes touches, so the game under it stays tappable. */
+    private fun captionLayoutParams() = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT,
+    ).apply { gravity = Gravity.TOP or Gravity.START }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
@@ -309,6 +348,7 @@ class PwdeAccessibilityService : AccessibilityService() {
         private const val TAP_MS = 60L
         private const val HOLD_MS = 700L
         private const val SCROLL_MS = 300L
+        private const val CAPTION_GAP_DP = 6
 
         /** How far one "scroll" moves, as a share of the screen. */
         private const val SCROLL_FRACTION = 0.4f

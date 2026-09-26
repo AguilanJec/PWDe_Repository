@@ -1,11 +1,14 @@
 package com.pwde.app.sensors.voice
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognitionListener
+import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
@@ -13,9 +16,11 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlin.math.min
 
@@ -187,16 +192,43 @@ class ContinuousSpeechRecognizer(
 
         fun hasMicPermission(context: Context) =
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+        /**
+         * What [SpeechRecognizer.createSpeechRecognizer] actually talks to, e.g. "Android SpeechRecognizer ·
+         * Speech Recognition & Synthesis from Google": the phone's default recognition service if it can be
+         * read, otherwise the first installed one.
+         */
+        fun modelLabel(context: Context): String {
+            val services = runCatching {
+                context.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
+            }.getOrDefault(emptyList())
+            // Not every device lets apps read this setting; fall back to the first service found.
+            val default = runCatching {
+                Settings.Secure.getString(context.contentResolver, "voice_recognition_service")
+                    ?.let(ComponentName::unflattenFromString)
+            }.getOrNull()
+            val service = services.firstOrNull { it.serviceInfo.packageName == default?.packageName } ?: services.firstOrNull()
+                ?: return "Android SpeechRecognizer · no recognition service installed"
+            val name = service.loadLabel(context.packageManager).toString().ifBlank { service.serviceInfo.packageName }
+            return "Android SpeechRecognizer · $name"
+        }
     }
 }
 
 /**
- * Guarantees only one recognizer listens at a time: while gameplay's [InGameVoiceEngine] holds the
- * microphone, the app-wide [VoiceCommandManager] stands down.
+ * Guarantees only one recognizer listens at a time: while gameplay's [InGameVoiceEngine] or the
+ * Testing Station's wake-word engine holds the microphone, the app-wide [VoiceCommandManager] stands
+ * down.
  */
 class MicArbiter {
     private val _gameHasMic = MutableStateFlow(false)
     val gameHasMic: StateFlow<Boolean> = _gameHasMic.asStateFlow()
+
+    private val _wakeWordHasMic = MutableStateFlow(false)
+    val wakeWordHasMic: StateFlow<Boolean> = _wakeWordHasMic.asStateFlow()
+
+    /** True while anybody other than the app-wide recognizer is recording. */
+    val busy: Flow<Boolean> = combine(_gameHasMic, _wakeWordHasMic) { game, wakeWord -> game || wakeWord }
 
     fun takeForGame() {
         _gameHasMic.value = true
@@ -204,5 +236,13 @@ class MicArbiter {
 
     fun releaseFromGame() {
         _gameHasMic.value = false
+    }
+
+    fun takeForWakeWord() {
+        _wakeWordHasMic.value = true
+    }
+
+    fun releaseFromWakeWord() {
+        _wakeWordHasMic.value = false
     }
 }

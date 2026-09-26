@@ -341,6 +341,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
                     GabAiViewModel(
                         it.gabAiRepository, it.profileRepository, it.controlsRepository, it.settingsRepository,
                         it.voiceCommandManager, it.faceTrackingManager, start, it.hudDetector,
+                        buttonSpeechModel = it.inGameVoiceEngine.modelLabel,
                     )
                 },
                 onExit = ::back,

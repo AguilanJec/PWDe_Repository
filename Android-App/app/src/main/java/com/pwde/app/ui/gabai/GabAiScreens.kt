@@ -382,6 +382,7 @@ private fun VoiceStep(viewModel: GabAiViewModel, ui: GabAiUiState) {
         footer = { PwdeButton("Next", viewModel::voiceDone, icon = Icons.AutoMirrored.Outlined.ArrowForward, modifier = Modifier.fillMaxWidth()) },
     ) {
         SwitchRow("Voice control", form.voiceEnabled, { viewModel.setVoice(enabled = it) }, icon = Icons.Outlined.Mic)
+        SpeechModelCard(viewModel)
         SectionTitle("How words are matched")
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             VoiceMatchMode.entries.forEach { mode ->
@@ -465,6 +466,20 @@ private fun GestureTestStep(viewModel: GabAiViewModel, ui: GabAiUiState, test: G
             valueLabel = "${levelWord(level)} · fires at ${fmt(GestureThresholds.forGesture(gesture, level))}${gesture.unit()}",
         )
         PwdeButton("Skip the rest", viewModel::skipRemainingGestures, style = ButtonStyle.SECONDARY, icon = Icons.Outlined.SkipNext, modifier = Modifier.fillMaxWidth())
+        SpeechModelCard(viewModel)
+    }
+}
+
+/** Which speech model hears what: GabAI and app navigation, versus mapped buttons in game. */
+@Composable
+private fun SpeechModelCard(viewModel: GabAiViewModel) {
+    val colors = PwdeTheme.colors
+    GradientCard(Modifier.fillMaxWidth()) {
+        Text("Speech models", style = MaterialTheme.typography.titleSmall, color = colors.text)
+        Text("GabAI & navigation", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
+        Text(viewModel.navigationSpeechModel, style = MaterialTheme.typography.bodyMedium, color = colors.text)
+        Text("In-game buttons", style = MaterialTheme.typography.labelMedium, color = colors.textMuted)
+        Text(viewModel.buttonSpeechModel, style = MaterialTheme.typography.bodyMedium, color = colors.text)
     }
 }
 

@@ -52,8 +52,8 @@ data class VoiceState(
     val activationMode: VoiceActivationMode = VoiceActivationMode.IMMEDIATE,
     /** Everything that can be said right now: screen commands first, then global ones. */
     val commands: List<VoiceCommand> = emptyList(),
-    /** Gameplay's in-game voice engine has the microphone; app-wide voice is standing down. */
-    val pausedForGame: Boolean = false,
+    /** Another subsystem (gameplay, or the Testing Station's wake-word engine) has the microphone. */
+    val pausedForOtherInput: Boolean = false,
 ) {
     /** Typed commands take over when the mic can't be used. */
     val usesTextFallback: Boolean get() = availability != MicAvailability.AVAILABLE
@@ -67,6 +67,9 @@ interface VoiceCommandManager {
     val state: StateFlow<VoiceState>
     val results: SharedFlow<VoiceResult>
     val hasMicPermission: Boolean
+
+    /** The speech model behind app-wide voice, for display, e.g. "Android SpeechRecognizer · Google". */
+    val modelLabel: String get() = "Android SpeechRecognizer"
 
     fun refreshPermissions()
 
@@ -119,6 +122,8 @@ class AndroidVoiceCommandManager(
 
     override val hasMicPermission: Boolean get() = ContinuousSpeechRecognizer.hasMicPermission(appContext)
 
+    override val modelLabel: String by lazy { ContinuousSpeechRecognizer.modelLabel(appContext) }
+
     init {
         scope.launch {
             _state.subscriptionCount.map { it > 0 }.distinctUntilChanged().collectLatest { observed ->
@@ -131,10 +136,11 @@ class AndroidVoiceCommandManager(
                         controlsRepository.config,
                         permissionTick,
                         screenCommands,
-                        micArbiter.gameHasMic,
+                        micArbiter.busy,
                         settingsRepository.settings.map { it.pwdeEnabled }.distinctUntilChanged(),
-                    ) { config, _, screens, gameHasMic, pwdeEnabled -> ListenInputs(config, screens, gameHasMic, pwdeEnabled) }
-                        .collect { (latest, screens, gameHasMic, pwdeEnabled) ->                            config = latest
+                    ) { config, _, screens, micBusy, pwdeEnabled -> ListenInputs(config, screens, micBusy, pwdeEnabled) }
+                        .collect { (latest, screens, micBusy, pwdeEnabled) ->
+                            config = latest
                             val availability = recognizer.availability()
                             _state.update {
                                 it.copy(
@@ -143,11 +149,11 @@ class AndroidVoiceCommandManager(
                                     matchMode = latest.voiceMatchMode,
                                     activationMode = latest.voiceActivationMode,
                                     commands = screens.values.flatten() + globalCommands(latest),
-                                    pausedForGame = gameHasMic,
+                                    pausedForOtherInput = micBusy,
                                 )
                             }
                             // The home screen's master switch wins: PWDe off means nothing listens.
-                            val listen = pwdeEnabled && latest.voiceEnabled && availability == MicAvailability.AVAILABLE && !gameHasMic
+                            val listen = pwdeEnabled && latest.voiceEnabled && availability == MicAvailability.AVAILABLE && !micBusy
                             if (listen) recognizer.start() else stopListening()
                         }
                 } finally {
@@ -202,7 +208,7 @@ class AndroidVoiceCommandManager(
     private data class ListenInputs(
         val config: ControlConfig,
         val screens: Map<Any, List<VoiceCommand>>,
-        val gameHasMic: Boolean,
+        val micBusy: Boolean,
         val pwdeEnabled: Boolean,
     )
 }

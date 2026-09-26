@@ -28,7 +28,8 @@ com.pwde.app
 │   ├── face/              FaceTrackingManager (CameraX + MediaPipe Face Landmarker),
 │   │                      GestureClassifier, Cursor/JoystickMapper, OrientationHeadTracker
 │   └── voice/             VoiceCommandManager (app-wide), InGameVoiceEngine (gameplay),
-│                          ContinuousSpeechRecognizer (shared plumbing), MicArbiter, CommandMatcher
+│                          ContinuousSpeechRecognizer (shared plumbing), MicArbiter, CommandMatcher,
+│                          SherpaWakeWordEngine + SherpaInGameVoiceEngine (sherpa-onnx KWS), KeywordTokenizer
 └── ui/
     ├── theme/             PwdeTheme + ThemeViewModel (drives the whole app from settings)
     ├── components/        design-system components (buttons, cards, steppers, voice bar…)
@@ -73,11 +74,19 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 - No camera permission or no front camera: the phone's motion sensors stand in for your head. Every place this is active shows **"Demo Mode: Simulated Head Tracking"**.
 - No mic permission or no recognition service: the voice bar's keyboard button takes typed commands. They go through the same matching and command catalog.
 
-**In-game voice (swappable).** During gameplay only, voice goes through the `InGameVoiceEngine` interface. It recognizes just the active game profile's commands plus back/pause/menu, resume, select and recenter.
-- The current implementation, `SpeechRecognizerInGameVoiceEngine`, is a working placeholder: the same Android `SpeechRecognizer` plumbing, scoped to those commands.
-- To use a dedicated low-latency engine, change the one binding in `di/AppContainer.kt` (it's commented). `GameplayViewModel` and everything above it depend only on the interface.
-- `MicArbiter` guarantees one listener at a time: while a game holds the mic, the app-wide `VoiceCommandManager` stands down.
-- `BaseInGameVoiceEngine` carries the contract every engine inherits: scoped matching, the user's match and activation modes, and the typed fallback when the mic is unavailable.
+**In-game voice (button activations).** During gameplay only, voice goes through the `InGameVoiceEngine` interface. It recognizes just the active game profile's button triggers plus back/pause/menu, resume, select and recenter. This covers both the in-app playing view and PWDe running over the real game.
+- The implementation is `SherpaInGameVoiceEngine`: on-device [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) keyword spotting with the English GigaSpeech 3.3M KWS model, listening for exactly those phrases. App navigation (`VoiceCommandManager`) and GabAI's "assign/use" dictation stay on Android `SpeechRecognizer`, because they need free-form speech.
+- A spotter fires on the phrase itself, so the user's match and activation modes don't apply in game: every hit is an immediate, exact command.
+- `SherpaSupport.isSupported` picks it only where it can run: an arm64-v8a device with the model in the APK. Anywhere else (an x86_64 emulator, or a checkout without the `.onnx` files) `di/AppContainer.kt` falls back to `SpeechRecognizerInGameVoiceEngine`. `GameplayViewModel` and everything above it depend only on the interface.
+- `MicArbiter` guarantees one listener at a time: while a game (or the Testing Station's wake-word panel) holds the mic, the app-wide `VoiceCommandManager` stands down. The in-game engine holds the claim for the whole session, so a spotter restart never lets the app-wide recognizer in.
+- `BaseInGameVoiceEngine` carries the contract every engine inherits: scoped matching, and the typed fallback when the mic is unavailable (a spotter that fails to load reports `SERVICE_ERROR`, which brings the typed field up).
+
+**Keyword spotting (sherpa-onnx).** Any phrase works, with nothing to train and no account. The model decides in ~320 ms chunks and listens for many phrases at once.
+- Phrases become model tokens **on the device** (`KeywordList` + `SentencePieceUnigramTokenizer` in `sensors/voice/KeywordTokenizer.kt`), reproducing upstream's Python `sherpa-onnx-cli text2token`. Every token is validated against `tokens.txt` first, because the native spotter **terminates the process** on an unknown token. A phrase the model can't spell is logged and shown instead of being silently ignored.
+- The model matches *sounds*: "PWDE" becomes the pieces `P W DE`, so say it as written.
+- Tuning lives in `WakeWordTuningStore`, shared by the Testing Station and gameplay (in memory; an app restart resets it). Each phrase starts at the **Max** preset (boost 6.0, threshold 0.0), and the spotter defaults match it (`keywordsScore` 6.0, `keywordsThreshold` 0.0, 3 trailing blanks, 8 active paths). That is far past upstream's 1.5 / 0.25: a threshold of 0 accepts the weakest evidence, trading false alarms for sensitivity. Phrases are keyed normalized, so "Hey PWDE" tuned in the Testing Station is the same entry as a "hey pwde" button trigger.
+- Cost: the prebuilt libraries are arm64-v8a only (`libonnxruntime.so` is 22 MB, plus ~10 MB of sherpa JNI) and the model is ~6 MB, all in `src/main`. `build.gradle.kts` adds `noCompress += "onnx"` and `useLegacyPackaging = true` (the libraries load with `System.loadLibrary`). The `.onnx` files are committed through a `.gitignore` exception.
+- `KeywordTokenizerTest` and `GigaSpeechTokenizerTest` pin the tokenizer to upstream's reference output; `WakeWordTuningTest`, `WakeWordTuningStoreTest` and `InGameKeywordMapTest` pin tuning and the phrase-to-command map.
 
 **GabAI** is a scripted, resumable state machine, not a chatbot. `GabAiState` is a sealed hierarchy (Welcome, then the calibration branch, then the game-profile branch), and `GabAiFlow` holds the pure transitions.
 - Every step is saved to Room (`gabai_sessions`) with the form data entered so far. Backing out, or force-closing the app, resumes on the same step from **GabAI → Continue Existing**; the Dashboard card shows where you stopped.
@@ -85,6 +94,9 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 - For a game profile, you pick a game and a calibration, choose a screenshot, and mark its buttons: tap, drag, or say "place" to drop a button at your head pointer. You name each button by typing or by voice, then choose how to press it (voice phrase, head gesture or joystick direction). The result is saved as a `GameProfile`, editable later from the Profile or game screen.
 
 **Testing Station** is a development tool, so only debug builds have it. Its code lives in `src/debug/`, and `src/release/` provides a no-op twin. A release build has neither the Dashboard card nor the route, and no Testing Station classes are in the APK.
+- Its **Wake word** panel runs its own sherpa-onnx spotter: type any phrase, press **Start listening**, and watch detections, mic level and model load.
+- **Tune** beside a phrase steps its `boost` and `threshold`; **Spotter defaults** steps the four spotter-wide values. **Apply & restart** pushes them into the panel's spotter, and gameplay's button voice picks them up the next time it starts or reloads its commands. **Reset** puts everything back on the shipped values.
+- To tune a button's voice trigger, add the same phrase here.
 
 ## Real vs. placeholder in this build
 
@@ -97,18 +109,18 @@ Signing in only adds (future) cloud sync. It never gates features and never dele
 | Gestures + per-gesture sensitivity | Real: 25 gestures plus all 52 MediaPipe blendshapes, saved to Room, live "try it" meter |
 | Cursor speed, joystick | Real: live camera, live pointer/joystick; settings saved to Room |
 | Voice configuration | Real: live mic level, on/off, matching and activation modes, command list |
-| Testing Station (debug builds only) | Real: live face, gesture, voice, cursor and joystick readouts |
+| Testing Station (debug builds only) | Real: live face, gesture, voice, cursor and joystick readouts, plus a sherpa-onnx wake word panel whose tuning gameplay shares |
 | Watch Tutorial | Real player with a placeholder video (`res/raw/tutorial_placeholder.mp4`) |
 | GabAI | Real: calibration and game-profile flows, resumable after a force-close |
 | Games, game detail | Real: play, edit or create profiles per game; voice-selectable |
-| Playing view | Live overlay over your game screenshot (or a simulated arena). Mapped buttons are pressed by voice (in-game engine), gesture or joystick |
+| Playing view | Live overlay over your game screenshot (or a simulated arena). Mapped buttons are pressed by voice (sherpa-onnx keyword spotting), gesture or joystick |
 | Profile | Real: profile lists with rename/delete, "Use now" for calibrations, Play/Edit for game profiles, sync status |
 
 ## Known limitations
 
 - **No real game control.** PWDe doesn't launch or press buttons in Clash Royale or Mobile Legends. There's no accessibility service, by design. The playing view shows which mapped button would be pressed, over your screenshot.
 - **Buttons are placed by hand.** GabAI's button mapping is manual (tap, drag, or "place" at the head pointer). There's no ML button detection in this build.
-- **In-game voice is the baseline recognizer.** Until a dedicated engine is chosen, gameplay uses Android `SpeechRecognizer`. Latency and restart beeps depend on the phone's speech service.
+- **In-game keyword spotting is arm64-only.** On other ABIs gameplay falls back to Android `SpeechRecognizer`, where latency and restart beeps depend on the phone's speech service. Spotter tuning is not saved across app restarts.
 - **Cloud sync is a stub.** Signing in never blocks or deletes anything, but profiles only live on this phone for now.
 - **Direction and side checks.** Head-pose signs and MediaPipe's left/right blendshape sides were checked in theory and by unit tests. If a direction reads backwards on a device, there's one switch in each: `HeadPose.kt` and `Blendshapes.SIDES_SWAPPED`.
 - **Tracking speed.** Face tracking runs on the CPU at roughly 15–30 fps depending on the phone.

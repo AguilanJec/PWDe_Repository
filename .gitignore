@@ -32,6 +32,8 @@ runs/
 training/*.resolved.yaml
 *.pt
 *.onnx
+# The sherpa-onnx keyword spotter ships in the app, so its small (~6 MB) model is committed.
+!Android-App/app/src/main/assets/models/**/*.onnx
 *.tflite
 calibration-backend/weights/*.pt
 !calibration-backend/weights/.gitkeep

@@ -15,7 +15,14 @@ const val TESTING_STATION_AVAILABLE = true
 fun NavGraphBuilder.debugDestinations(onBack: () -> Unit) {
     composable(Routes.TESTING_STATION) {
         TestingStationScreen(
-            viewModel = pwdeViewModel { TestingStationViewModel(it.faceTrackingManager, it.voiceCommandManager) },
+            viewModel = pwdeViewModel {
+                TestingStationViewModel(
+                    it.faceTrackingManager,
+                    it.voiceCommandManager,
+                    it.wakeWordEngine,
+                    it.wakeWordTuningStore,
+                )
+            },
             onBack = onBack,
         )
     }

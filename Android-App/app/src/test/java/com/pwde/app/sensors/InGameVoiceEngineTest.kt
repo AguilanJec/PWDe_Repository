@@ -7,6 +7,7 @@ import com.pwde.app.sensors.voice.InGameVoiceResult
 import com.pwde.app.sensors.voice.MicArbiter
 import com.pwde.app.sensors.voice.VoiceCommandBinding
 import com.pwde.app.play.GameInput
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -127,5 +128,18 @@ class InGameVoiceEngineTest {
         assertTrue(arbiter.gameHasMic.value)
         arbiter.releaseFromGame()
         assertFalse(arbiter.gameHasMic.value)
+    }
+
+    @Test
+    fun micArbiterIsBusyWhileTheGameOrTheWakeWordHasTheMic() = runTest {
+        val arbiter = MicArbiter()
+        assertFalse(arbiter.busy.first())
+        arbiter.takeForWakeWord()
+        assertTrue(arbiter.busy.first())
+        arbiter.takeForGame()
+        arbiter.releaseFromWakeWord()
+        assertTrue(arbiter.busy.first())
+        arbiter.releaseFromGame()
+        assertFalse(arbiter.busy.first())
     }
 }

@@ -25,7 +25,17 @@ data class LivePlayState(
     val dragging: Boolean = false,
     /** Latest feedback, e.g. "Pressed Skill 1" or why something was ignored. */
     val message: String? = null,
+    /** The speech engine listening in game, e.g. "sherpa-onnx keyword spotter". */
+    val voiceModel: String? = null,
+    /** What that engine last heard, shown under the floating bubble. */
+    val heard: Heard? = null,
 )
+
+/**
+ * One speech result: the words, and whether they matched a command. [seq] goes up with every result,
+ * so saying the same phrase twice still reads as a new hit.
+ */
+data class Heard(val text: String, val matched: Boolean, val seq: Int)
 
 /**
  * App-wide hub for the live session: [PlayService] writes it, the accessibility service reads
