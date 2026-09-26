@@ -180,10 +180,6 @@ fun DashboardScreen(
 
         PlayYourWayPanel(onStart = { onNavigate(DashboardDestination.START_PLAYING) })
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Using:", style = MaterialTheme.typography.titleMedium, color = colors.text)
-            BigStatusPill(state.inputMode.label, icon = state.inputMode.icon())
-        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             EntryCard("Controls", Icons.Outlined.Tune, Modifier.weight(1f)) { onNavigate(DashboardDestination.CONTROLS) }
@@ -197,32 +193,9 @@ fun DashboardScreen(
             }
             EntryCard("Watch Tutorial", Icons.Outlined.OndemandVideo, Modifier.weight(1f)) { onNavigate(DashboardDestination.WATCH_TUTORIAL) }
         }
-        EntryCard("GabAI setup", Icons.Outlined.AutoAwesome, Modifier.fillMaxWidth(), subtitle = "Guided calibration assistant") {
-            onNavigate(DashboardDestination.GABAI)
-        }
     }
 }
 
-/**
- * Larger version of StatusPill for the "Using:" input-mode status: 48dp tall, 24dp icon, titleMedium
- * text. Status only (not tappable); the icon and text grow with the user's text size.
- */
-@Composable
-private fun BigStatusPill(text: String, icon: ImageVector, color: Color = PwdeTheme.colors.primary) {
-    Row(
-        Modifier
-            .heightIn(min = 48.dp)
-            .clip(PwdeShapes.pill)
-            .background(color.copy(alpha = 0.18f))
-            .border(1.5.dp, color, PwdeShapes.pill)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp.scaled()))
-        Text(text, style = MaterialTheme.typography.titleMedium, color = color)
-    }
-}
 
 /**
  * "Play your way" hero panel over the castle artwork. A scrim in the theme's background colour keeps
