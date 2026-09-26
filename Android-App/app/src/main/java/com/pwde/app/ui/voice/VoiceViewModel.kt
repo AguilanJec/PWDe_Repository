@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pwde.app.data.local.ControlsRepository
 import com.pwde.app.data.model.Game
+import com.pwde.app.data.model.JoystickSource
 import com.pwde.app.data.model.VoiceShortcut
 import com.pwde.app.data.prefs.InputMode
 import com.pwde.app.data.prefs.SettingsRepository
@@ -125,6 +126,8 @@ class VoiceViewModel(
             else -> StandardCommands.gameToPlay(command)?.let { _playRequests.send(it) } ?: when (StandardCommands.shortcutOf(command)) {
                 VoiceShortcut.CURSOR_MODE -> switchInput(InputMode.HEAD_FACE, "Switched to cursor mode")
                 VoiceShortcut.JOYSTICK_MODE -> switchInput(InputMode.JOYSTICK, "Switched to joystick mode")
+                VoiceShortcut.GYRO_MODE -> switchJoystickSource(JoystickSource.GYRO)
+                VoiceShortcut.HEAD_TRACKING -> switchJoystickSource(JoystickSource.HEAD)
                 VoiceShortcut.SWITCH_PROFILE -> switchCalibrationProfile()
                 null -> showNotice("\"${command.label}\" doesn't do anything on this screen")
             }
@@ -138,6 +141,19 @@ class VoiceViewModel(
         }
         if (settingsRepository.settings.first().inputMode != mode) settingsRepository.setInputMode(mode)
         showNotice(message)
+    }
+
+    /** "gyro mode" / "head tracking" from anywhere in PWDe: choose what steers the joystick. */
+    private suspend fun switchJoystickSource(source: JoystickSource) {
+        if (livePlay?.state?.value?.hasJoystickConfig() != true) {
+            showNotice("Joystick mode is only available when an app with a joystick configuration is open")
+            return
+        }
+        settingsRepository.setJoystickSource(source)
+        if (settingsRepository.settings.first().inputMode != InputMode.JOYSTICK) {
+            settingsRepository.setInputMode(InputMode.JOYSTICK)
+        }
+        showNotice("${source.label} — ${source.description.lowercase()}")
     }
 
     private var lastSwitchedProfileId: Long? = null

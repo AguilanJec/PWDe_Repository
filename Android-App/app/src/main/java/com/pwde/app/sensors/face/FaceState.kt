@@ -3,9 +3,14 @@ package com.pwde.app.sensors.face
 import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
+import com.pwde.app.data.model.JoystickSource
 
-/** Where head data comes from. [SIMULATED] is the phone's motion sensors, never shown as real tracking. */
-enum class TrackingSource { CAMERA, SIMULATED }
+/**
+ * Where the pose comes from. [SIMULATED] is the phone's motion sensors standing in for a face that
+ * is not being tracked, and is never presented as real tracking; [GYRO] is the phone's own tilt as
+ * a control the user deliberately chose. Neither opens the camera.
+ */
+enum class TrackingSource { CAMERA, SIMULATED, GYRO }
 
 sealed interface TrackingStatus {
     /** Nobody is watching tracking right now, so the camera is off. */
@@ -34,6 +39,9 @@ data class FaceState(
     val fps: Float = 0f,
 ) {
     val isSimulated: Boolean get() = source == TrackingSource.SIMULATED
+    /** The pose comes from the phone's own motion rather than a camera, so there is no face mesh. */
+    val isMotionSensor: Boolean get() = source != TrackingSource.CAMERA
+    val isGyro: Boolean get() = source == TrackingSource.GYRO
     val hasFace: Boolean get() = pose != null
 
     // FloatArray needs content equality so StateFlow doesn't treat every frame as new twice.
@@ -62,6 +70,7 @@ data class FaceState(
 data class TrackingTuning(
     val controls: ControlConfig = ControlConfig(),
     val outputMode: FaceOutputMode = FaceOutputMode.CURSOR,
+    val joystickSource: JoystickSource = JoystickSource.HEAD,
 )
 
 /**
@@ -91,17 +100,26 @@ class FaceFrameProcessor {
         lastFrameMs = timestampMs
 
         val controls = tuning.controls
-        val neutral = HeadPose(0f, controls.joystick.centerPitch, controls.joystick.centerRoll)
+        // Gyro's own neutral is how the phone was held when tracking started, not a saved head
+        // angle — they are different physical quantities, so the stored head center must not be
+        // subtracted from a phone angle (and vice versa when the user switches back to the head).
+        val stick = if (tuning.joystickSource == JoystickSource.GYRO) {
+            controls.joystick.copy(centerPitch = 0f, centerRoll = 0f)
+        } else {
+            controls.joystick
+        }
+        val neutral = HeadPose(0f, stick.centerPitch, stick.centerRoll)
         val gesture = classifier.classify(blendshapes, pose, timestampMs, controls::sensitivityOf, neutral)
         if (pose != null) cursor = cursorMapper.update(pose, controls.cursor) else cursorMapper.resetTracking()
-        // The stick's jitter filter is the same head-smoothing level the pointer uses.
+        // The stick's jitter filter is the same head-smoothing level the pointer uses, and it needs
+        // the frame's timestamp so that level means the same thing for the camera and the gyro.
         val joystick = if (pose != null) {
-            joystickTracker.update(pose, controls.joystick, controls.cursor.smoothing)
+            joystickTracker.update(pose, stick, controls.cursor.smoothing, timestampMs, tuning.joystickSource)
         } else {
             joystickTracker.resetTracking()
             JoystickState(
-                radius = JoystickMapper.radiusFor(controls.joystick.size),
-                deadZone = JoystickMapper.deadZoneFraction(controls.joystick),
+                radius = JoystickMapper.radiusFor(stick.size),
+                deadZone = JoystickMapper.deadZoneFraction(stick, tuning.joystickSource),
             )
         }
 
@@ -128,10 +146,13 @@ class FaceFrameProcessor {
      */
     fun actionableStarts(state: FaceState, controls: ControlConfig): Set<FacialGesture> {
         val enabled = state.gesture.started.filterTo(mutableSetOf(), controls::isGestureEnabled)
-        return if (state.outputMode == FaceOutputMode.JOYSTICK) {
-            enabled - setOf(FacialGesture.TILT_LEFT, FacialGesture.TILT_RIGHT, FacialGesture.NOD)
-        } else {
-            enabled
+        return when {
+            // Steered by the phone, not by a face: tilting the phone is the stick, and reading a
+            // phone movement as a smile or a shake would press buttons every time the user turned.
+            state.isGyro -> emptySet()
+            state.outputMode == FaceOutputMode.JOYSTICK ->
+                enabled - setOf(FacialGesture.TILT_LEFT, FacialGesture.TILT_RIGHT, FacialGesture.NOD)
+            else -> enabled
         }
     }
 }

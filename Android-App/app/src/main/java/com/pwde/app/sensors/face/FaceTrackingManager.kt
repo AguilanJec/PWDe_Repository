@@ -31,7 +31,9 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
 import com.pwde.app.data.local.ControlsRepository
+import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
+import com.pwde.app.data.model.JoystickSource
 import com.pwde.app.data.model.faceOutputMode
 import com.pwde.app.data.prefs.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +56,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -102,6 +105,7 @@ class MediaPipeFaceTrackingManager(
 ) : FaceTrackingManager {
     private val appContext = context.applicationContext
     private val orientation = OrientationHeadTracker(appContext)
+    private val gyro = GyroHeadTracker(appContext)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val permissionTick = MutableStateFlow(0)
     private val _surfaceRequest = MutableStateFlow<SurfaceRequest?>(null)
@@ -112,14 +116,41 @@ class MediaPipeFaceTrackingManager(
 
     private val tuning: Flow<TrackingTuning> =
         combine(controlsRepository.config, settingsRepository.settings) { controls, settings ->
-            TrackingTuning(controls, settings.inputMode.faceOutputMode())
+            TrackingTuning(controls, settings.inputMode.faceOutputMode(), settings.joystickSource)
         }
 
-    override val state: StateFlow<FaceState> = combine(
-        permissionTick,
-        settingsRepository.settings.map { it.pwdeEnabled }.distinctUntilChanged(),
-    ) { _, pwdeEnabled -> pwdeEnabled }
-        .flatMapLatest { pwdeEnabled -> if (pwdeEnabled) session() else offSession() }
+    /**
+     * Everything that decides *which* session should be running. The permission tick is part of the
+     * key on purpose: answering the camera prompt has to restart tracking even though no setting
+     * changed, which a `distinctUntilChanged` over the settings alone would swallow.
+     */
+    private data class SessionRequest(
+        val permissionTick: Int,
+        val enabled: Boolean,
+        val output: FaceOutputMode,
+        val joystickSource: JoystickSource,
+    )
+
+    private val sessionRequest: Flow<SessionRequest> =
+        combine(permissionTick, settingsRepository.settings) { tick, settings ->
+            SessionRequest(
+                permissionTick = tick,
+                enabled = settings.pwdeEnabled,
+                output = settings.inputMode.faceOutputMode(),
+                joystickSource = settings.joystickSource,
+            )
+        }.distinctUntilChanged()
+
+    override val state: StateFlow<FaceState> = sessionRequest
+        .flatMapLatest { request ->
+            when {
+                !request.enabled -> offSession()
+                // The one mode that wants no camera at all: a gyro joystick is the phone's own tilt,
+                // so steering still works with the phone held anywhere but facing the user.
+                request.output == FaceOutputMode.JOYSTICK && request.joystickSource == JoystickSource.GYRO -> gyroSession()
+                else -> session()
+            }
+        }
         .stateIn(scope, SharingStarted.WhileSubscribed(0), FaceState())
 
     override val gestureEvents: SharedFlow<FacialGesture> = _gestureEvents.asSharedFlow()
@@ -137,6 +168,14 @@ class MediaPipeFaceTrackingManager(
     }
 
     override suspend fun captureJoystickCenter(): Boolean {
+        // Gyro keeps no saved center: its neutral is how the phone is being held, so "center here"
+        // re-baselines the sensor instead. A head angle and a phone angle must never share one
+        // field, or switching sources would silently offset the stick.
+        if (settingsRepository.settings.first().joystickSource == JoystickSource.GYRO) {
+            if (!gyro.isAvailable) return false
+            gyro.rebaseline()
+            return true
+        }
         val pose = state.value.pose ?: return false
         controlsRepository.setJoystickCenter(pose.pitch, pose.roll)
         return true
@@ -300,6 +339,30 @@ class MediaPipeFaceTrackingManager(
                 executor.execute { landmarker.close() }
                 executor.shutdown()
             }
+        }
+    }
+
+    /**
+     * The gyro joystick: the phone's own tilt, with the camera left closed. A real control the user
+     * chose, so unlike [simulatedSession] it is not labelled as a demo and has no fallback reason.
+     */
+    private fun gyroSession(): Flow<FaceState> = channelFlow {
+        val base = FaceState(source = TrackingSource.GYRO, status = TrackingStatus.Starting)
+        if (!gyro.isAvailable) {
+            send(base.copy(status = TrackingStatus.Unavailable("This phone has no gyroscope or rotation sensor")))
+            awaitClose()
+            return@channelFlow
+        }
+        val processor = FaceFrameProcessor().also { activeProcessor = it }
+        val tuningState = tuning.stateIn(this)
+        send(base)
+        gyro.poses().collect { (pose, timestamp) ->
+            val frameTuning = tuningState.value
+            // No blendshapes at all: there is no face in this pipeline, so no face gesture can be
+            // read out of tilting the phone.
+            val next = processor.process(pose, emptyMap(), timestamp, frameTuning, base)
+            processor.actionableStarts(next, frameTuning.controls).forEach { _gestureEvents.tryEmit(it) }
+            send(next)
         }
     }
 

@@ -147,7 +147,8 @@ fun PlayingScreen(viewModel: GameplayViewModel, onExit: () -> Unit) {
                     Spacer(Modifier.weight(1f))
                 } else {
                     StatusPill(
-                        "SIMULATED — ${viewModel.game?.displayName ?: "preview"}" + (ui.profile?.let { " · ${it.profileName}" } ?: ""),
+                        (if (face.isGyro) "GYRO" else "SIMULATED") +
+                            " — ${viewModel.game?.displayName ?: "preview"}" + (ui.profile?.let { " · ${it.profileName}" } ?: ""),
                         color = colors.warning,
                         modifier = Modifier.weight(1f).background(colors.background.copy(alpha = 0.8f), PwdeShapes.pill),
                     )
@@ -386,7 +387,11 @@ private fun OverlayPanel(
             StatusPill(
                 when {
                     paused -> "Paused"
-                    face.status == TrackingStatus.Live -> if (face.isSimulated) "Demo tracking" else "Tracking"
+                    face.status == TrackingStatus.Live -> when {
+                        face.isGyro -> "Gyro tracking"
+                        face.isSimulated -> "Demo tracking"
+                        else -> "Tracking"
+                    }
                     face.status == TrackingStatus.NoFace -> "No face in view"
                     face.status is TrackingStatus.Unavailable -> "Tracking unavailable"
                     else -> "Starting…"

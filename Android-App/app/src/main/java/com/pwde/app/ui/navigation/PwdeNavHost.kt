@@ -310,7 +310,7 @@ fun PwdeNavHost(navController: NavHostController = rememberNavController()) {
             CursorSpeedScreen(pwdeViewModel { CursorSpeedViewModel(it.controlsRepository, it.faceTrackingManager) }, onBack = ::back)
         }
         composable(Routes.CONTROLS_JOYSTICK) {
-            JoystickScreen(pwdeViewModel { JoystickViewModel(it.controlsRepository, it.faceTrackingManager) }, onBack = ::back)
+            JoystickScreen(pwdeViewModel { JoystickViewModel(it.controlsRepository, it.settingsRepository, it.faceTrackingManager) }, onBack = ::back)
         }
         composable(Routes.VOICE_CONFIG) {
             VoiceConfigScreen(pwdeViewModel { VoiceConfigViewModel(it.controlsRepository, it.voiceCommandManager) }, onBack = ::back)

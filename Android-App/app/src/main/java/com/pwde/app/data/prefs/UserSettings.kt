@@ -1,5 +1,7 @@
 package com.pwde.app.data.prefs
 
+import com.pwde.app.data.model.JoystickSource
+
 /** Local-only user settings. Never synced to the cloud. */
 data class UserSettings(
     val accessibilityNeeds: Set<AccessibilityNeed> = emptySet(),
@@ -7,6 +9,8 @@ data class UserSettings(
     val textSize: TextSizeOption = TextSizeOption.MEDIUM,
     val layoutMode: LayoutMode = LayoutMode.STANDARD,
     val inputMode: InputMode = InputMode.HEAD_FACE,
+    /** What steers the joystick in [InputMode.JOYSTICK]; ignored by every other input mode. */
+    val joystickSource: JoystickSource = JoystickSource.HEAD,
     /** Master switch for PWDe's head/face and voice control. When off, nothing listens or moves. */
     val pwdeEnabled: Boolean = true,
     val ttsEnabled: Boolean = false,
@@ -48,7 +52,7 @@ enum class LayoutMode(val label: String, val description: String) {
 
 enum class InputMode(val label: String, val description: String) {
     HEAD_FACE("Head & face", "Tilt your head; use face gestures to press"),
-    JOYSTICK("Joystick", "On-screen joystick you steer with your head or tilt"),
+    JOYSTICK("Joystick", "Steer a game joystick with your head or your phone's tilt"),
     VOICE("Voice", "Say a button's name to press it"),
 }
 

@@ -1,12 +1,15 @@
 package com.pwde.app.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.PointF
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
@@ -60,6 +63,13 @@ class PwdeAccessibilityService : AccessibilityService() {
     private var tapSeq = 0
     private var scrollSeq = 0
 
+    /**
+     * Decides whether the stick's finger should press, move or lift this frame. Ported from the
+     * reference implementation: the anti-jitter is that a target which has not really moved produces
+     * no stroke at all, which damping can only approximate.
+     */
+    private val stickMachine = JoystickGestureMachine(STICK_RELEASE_GRACE_MS, STROKE_MIN_INTERVAL_MS)
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         val livePlay = (application as PwdeApplication).container.livePlay
@@ -108,7 +118,7 @@ class PwdeAccessibilityService : AccessibilityService() {
             }
         }
 
-        steerStick(state, livePlay)
+        steerStick(state)
         if (joystick) {
             removeView(cursorView)
             cursorView = null
@@ -300,38 +310,86 @@ class PwdeAccessibilityService : AccessibilityService() {
 
     /**
      * In joystick mode, holds the game's movement joystick (the button marked "Movement") and drags
-     * it the way the head joystick points; lets go when the head is back in the dead zone.
+     * it the way the head or the phone points; lets go once the stick really is back in the dead zone.
+     *
+     * A momentary return to the dead zone must not lift the finger. Lifting it is an `ACTION_UP` the
+     * game acts on and re-pressing is an `ACTION_DOWN`, so one noisy reading — hand tremor on a phone,
+     * or a value crossing the engage threshold — made the stick drop back to the middle and jerk out
+     * again. The finger is therefore held at its last real deflection for [STICK_RELEASE_GRACE_MS] and
+     * only a stick that *stays* centered is let go.
      */
-    private fun steerStick(state: LivePlayState, livePlay: LivePlay) {
+    private fun steerStick(state: LivePlayState) {
         val face = state.face
         val movement = state.buttons.firstOrNull { it.trigger?.type == TriggerType.MOVEMENT }
-        val deflected = movement != null && face.outputMode == FaceOutputMode.JOYSTICK && face.hasFace &&
-            !state.paused && face.joystick.direction != JoystickDirection.CENTER
-        if (!deflected) {
-            gestures.release(STICK)
+        val holding = movement != null && face.outputMode == FaceOutputMode.JOYSTICK && face.hasFace && !state.paused
+        if (!holding) {
+            releaseStick()
             return
         }
-        // Already gripping: just aim it again, which keeps the same finger down.
-        if (gestures.isDown(STICK)) return
-        // A tap or a scroll of PWDe's is still in flight; pressing now would cancel it. Next frame.
-        if (!gestures.ready) return
-        val center = toScreen(movement.x, movement.y)
-        gestures.touch(
-            name = STICK,
-            startAt = center,
-            target = {
-                val current = livePlay.state.value
-                val (width, height) = displaySize()
-                // The Size setting is the stick's travel: the same radius the preview and marker draw.
-                val reach = current.face.joystick.radius * minOf(width, height)
-                val button = current.buttons.firstOrNull { it.trigger?.type == TriggerType.MOVEMENT }
-                val c = button?.let { toScreen(it.x, it.y) } ?: center
-                PointF(
-                    (c.x + current.face.joystick.x * reach).coerceIn(1f, width - 2f),
-                    (c.y + current.face.joystick.y * reach).coerceIn(1f, height - 2f),
-                )
-            },
+        val (width, height) = displaySize()
+        val base = toScreen(movement.x, movement.y)
+        // The Size setting is the stick's travel: the same radius the preview and the marker draw.
+        val reach = face.joystick.radius * minOf(width, height)
+        val target = PointF(
+            (base.x + face.joystick.x * reach).coerceIn(1f, width - 2f),
+            (base.y + face.joystick.y * reach).coerceIn(1f, height - 2f),
         )
+        // Only move the finger when the machine says this frame is worth a stroke. A held stick whose
+        // target has not moved by MOVE_STEP of its own travel gets nothing, so tremor never reaches
+        // the game — something the chain could not do by itself, because it had to keep the finger
+        // alive every segment. The aim only changes when the machine reports a real move, so a
+        // momentary centered reading can no longer snap the finger back to the middle.
+        val step = stickMachine.update(
+            SystemClock.uptimeMillis(),
+            face.joystick.direction != JoystickDirection.CENTER,
+            base.x,
+            base.y,
+            target.x,
+            target.y,
+            maxOf(MIN_MOVE_PX, MOVE_STEP * reach),
+        ) ?: return
+        dispatchStick(step)
+    }
+
+    /**
+     * One stick stroke, built the way the reference implementation builds it: a fresh
+     * [GestureDescription] sent straight to the framework, with no callback and no chain.
+     *
+     * The machine's phase is the only record of the held finger, so a stroke the framework refuses
+     * costs nothing — the next movement sends another one. Routing the stick through the shared
+     * gesture chain instead put a callback and an in-flight gate in the way, and a third of those
+     * strokes were refused, each refusal dropping the held finger with them.
+     */
+    private fun dispatchStick(step: JoystickGestureMachine.Step) {
+        val release = step.kind == JoystickGestureMachine.Kind.RELEASE
+        val path = Path().apply {
+            moveTo(step.fromX, step.fromY)
+            // The release stroke is stationary: it completes the continued gesture and lifts in place.
+            if (!release) lineTo(step.toX, step.toY)
+        }
+        val durationMs = if (release) {
+            STICK_RELEASE_DURATION_MS
+        } else {
+            val dx = step.toX - step.fromX
+            val dy = step.toY - step.fromY
+            // Longer strokes for longer moves, bounded so the finger still tracks promptly.
+            (kotlin.math.sqrt(dx * dx + dy * dy) * STROKE_MS_PER_PX)
+                .coerceIn(STROKE_MIN_DURATION_MS, STROKE_MAX_DURATION_MS)
+                .toLong()
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, durationMs, !release))
+            .build()
+        if (dispatchGesture(gesture, null, null)) {
+            Log.d(TAG, "stick ${step.kind} ${durationMs}ms (${step.fromX.toInt()},${step.fromY.toInt()})->(${step.toX.toInt()},${step.toY.toInt()})")
+        } else {
+            Log.w(TAG, "The framework refused the ${step.kind} stick stroke — the next movement resends")
+        }
+    }
+
+    /** Let go of the movement stick at once: a pause, a mode change, or a tap that needs the screen. */
+    private fun releaseStick() {
+        stickMachine.forceRelease()?.let(::dispatchStick)
     }
 
     // ---- Actions ----
@@ -380,7 +438,10 @@ class PwdeAccessibilityService : AccessibilityService() {
      * [onResult] says how it ended (for the button markers).
      */
     private fun tap(point: PointF, durationMs: Long, onResult: (ButtonMarkersView.Outcome) -> Unit = {}) {
-        val sharing = gestures.isDown(STICK) || gestures.isDown(DRAG)
+        val sharing = gestures.isDown(STICK) || gestures.isDown(DRAG) || stickMachine.isPressed()
+        // The stick's finger has to be gone before the tap's gesture goes out: a new gesture cancels
+        // whatever is in flight, and a tap riding along with the stick never reaches the game.
+        releaseStick()
         val name = "tap-${tapSeq++}"
         Log.i(
             TAG,
@@ -451,6 +512,30 @@ class PwdeAccessibilityService : AccessibilityService() {
 
         /** The finger holding the game's movement joystick while the head joystick is deflected. */
         private const val STICK = "stick"
+
+        /** How long the stick may read as centered before the finger is lifted (the machine's grace). */
+        private const val STICK_RELEASE_GRACE_MS = 150f
+
+        /** Minimum spacing between two stick strokes, so a fast move cannot flood the queue. */
+        private const val STROKE_MIN_INTERVAL_MS = 30L
+
+        /** Smallest target movement, in pixels, that justifies moving the stick's finger. */
+        private const val MIN_MOVE_PX = 2f
+
+        /**
+         * ... and the same as a share of the stick's own travel, so the threshold scales with the
+         * Size setting: a movement smaller than this is tremor, and moving the finger for it is what
+         * made the stick jitter.
+         */
+        private const val MOVE_STEP = 0.10f
+
+        /** How long the final stationary release stroke holds the finger before lifting it. */
+        private const val STICK_RELEASE_DURATION_MS = 40L
+
+        /** Drag speed: longer strokes for longer moves, bounded so the finger tracks promptly. */
+        private const val STROKE_MS_PER_PX = 0.6f
+        private const val STROKE_MIN_DURATION_MS = 25f
+        private const val STROKE_MAX_DURATION_MS = 120f
 
         /** The finger held at the pointer by "drag". */
         private const val DRAG = "drag"

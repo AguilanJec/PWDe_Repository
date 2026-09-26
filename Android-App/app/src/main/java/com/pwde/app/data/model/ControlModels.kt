@@ -123,6 +123,8 @@ enum class VoiceShortcut(val label: String, val defaultPhrase: String) {
     SWITCH_PROFILE("Switch profiles", "switch profile"),
     CURSOR_MODE("Cursor mode", "cursor mode"),
     JOYSTICK_MODE("Joystick mode", "joystick mode"),
+    GYRO_MODE("Gyro joystick", "gyro mode"),
+    HEAD_TRACKING("Head joystick", "head tracking"),
 }
 
 /** Levels are 1–10 everywhere, matching [com.pwde.app.ui.components.LevelStepper]. */
@@ -147,6 +149,19 @@ data class JoystickTuning(
     val centerPitch: Float = 0f,
     val centerRoll: Float = 0f,
 )
+
+/**
+ * What steers the joystick while the output mode is [FaceOutputMode.JOYSTICK].
+ *
+ * Head tracking needs the front camera pointed at the user's face; gyro needs only the phone's own
+ * motion sensors, so it keeps working with the camera off and the phone held anywhere it can be
+ * tilted. Both produce the same three [com.pwde.app.sensors.face.HeadPose] angles, so Size,
+ * Sensitivity, Dead zone and Smoothing mean the same thing either way.
+ */
+enum class JoystickSource(val label: String, val description: String) {
+    HEAD("Head tracking", "Tilt your head to steer"),
+    GYRO("Gyro tracking", "Tilt your phone to steer"),
+}
 
 /** What head movement drives: a free pointer or an 8-way joystick. */
 enum class FaceOutputMode(val label: String) { CURSOR("Cursor"), JOYSTICK("Joystick") }

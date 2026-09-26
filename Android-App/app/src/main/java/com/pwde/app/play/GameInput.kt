@@ -30,6 +30,10 @@ sealed interface GameCommand {
     object Drop : GameCommand
     object CursorMode : GameCommand
     object JoystickMode : GameCommand
+    /** Steer the joystick with the phone's own tilt instead of the head. */
+    object GyroMode : GameCommand
+    /** Steer the joystick with head tracking again. */
+    object HeadTracking : GameCommand
     /**
      * Turn phone navigation off/on for this session, without changing what the head drives. Joystick
      * mode is game mode and cursor mode is navigation mode by default, so this is how a cursor-mode
@@ -75,6 +79,8 @@ object GameInput {
     const val DROP = "game_drop"
     const val CURSOR_MODE = "game_cursor_mode"
     const val JOYSTICK_MODE = "game_joystick_mode"
+    const val GYRO_MODE = "game_gyro_mode"
+    const val HEAD_TRACKING = "game_head_tracking"
     const val GAME_MODE = "game_mode"
     const val NAVIGATION_MODE = "game_navigation_mode"
     private const val SCROLL = "game_scroll:"
@@ -118,6 +124,10 @@ object GameInput {
         VoiceCommandBinding(DROP, listOf("drop", "let go")),
         VoiceCommandBinding(CURSOR_MODE, listOf("cursor mode")),
         VoiceCommandBinding(JOYSTICK_MODE, listOf("joystick mode")),
+        // What steers that joystick. Both work in joystick mode and put the user into it, so choosing
+        // the source is one word rather than a setting to go and find.
+        VoiceCommandBinding(GYRO_MODE, listOf("gyro mode", "gyro tracking", "gyro joystick")),
+        VoiceCommandBinding(HEAD_TRACKING, listOf("head tracking", "head joystick")),
         VoiceCommandBinding(GAME_MODE, listOf("game mode")),
         VoiceCommandBinding(NAVIGATION_MODE, listOf("navigation mode")),
     ) + ScrollDirection.entries.map { VoiceCommandBinding(SCROLL + it.name, listOf("scroll ${it.name.lowercase()}")) }
@@ -150,6 +160,8 @@ object GameInput {
         DROP -> GameCommand.Drop
         CURSOR_MODE -> GameCommand.CursorMode
         JOYSTICK_MODE -> GameCommand.JoystickMode
+        GYRO_MODE -> GameCommand.GyroMode
+        HEAD_TRACKING -> GameCommand.HeadTracking
         GAME_MODE -> GameCommand.GameMode
         NAVIGATION_MODE -> GameCommand.NavigationMode
         else -> ScrollDirection.entries.firstOrNull { commandId == SCROLL + it.name }?.let { GameCommand.Scroll(it) } ?: buttons.firstOrNull { buttonCommandId(it.id) == commandId }?.let { GameCommand.Press(it) }
@@ -192,6 +204,7 @@ object GameInput {
     fun worksWhilePaused(command: GameCommand): Boolean = when (command) {
         GameCommand.Pause, GameCommand.Resume, GameCommand.TogglePause, GameCommand.Recenter, GameCommand.Exit,
         GameCommand.HideOverlay, GameCommand.ShowOverlay, GameCommand.ShowControls, GameCommand.HideControls, GameCommand.CursorMode, GameCommand.JoystickMode,
+        GameCommand.GyroMode, GameCommand.HeadTracking,
         GameCommand.GameMode, GameCommand.NavigationMode,
         GameCommand.Drop, is GameCommand.Ignored -> true
         else -> false

@@ -228,6 +228,9 @@ class GameplayViewModel(
             GameCommand.Drop -> post("Drop (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.CursorMode -> post("Cursor mode (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.JoystickMode -> post("Joystick mode (in the real game only)", OverlayEvent.Kind.ACTION)
+            // The preview deliberately does not write settings, so the source is the session's to switch.
+            GameCommand.GyroMode -> post("Gyro joystick (in the real game only)", OverlayEvent.Kind.ACTION)
+            GameCommand.HeadTracking -> post("Head joystick (in the real game only)", OverlayEvent.Kind.ACTION)
             GameCommand.GameMode -> setNavigationMode(NavigationMode.GAME)
             GameCommand.NavigationMode -> setNavigationMode(NavigationMode.NAVIGATION)
             is GameCommand.Ignored -> post(command.reason, OverlayEvent.Kind.IGNORED)

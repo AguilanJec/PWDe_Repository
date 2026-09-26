@@ -9,6 +9,7 @@ import com.pwde.app.data.model.ControlConfig
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.Game
+import com.pwde.app.data.model.JoystickSource
 import com.pwde.app.data.model.NavigationMode
 import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.sensors.face.FaceTrackingManager
@@ -174,6 +175,8 @@ class LiveGameSession(
                     switchMode(InputMode.JOYSTICK, "Joystick mode")
                 }
             }
+            GameCommand.GyroMode -> switchJoystickSource(JoystickSource.GYRO)
+            GameCommand.HeadTracking -> switchJoystickSource(JoystickSource.HEAD)
             GameCommand.GameMode -> setNavigationMode(NavigationMode.GAME)
             GameCommand.NavigationMode -> setNavigationMode(NavigationMode.NAVIGATION)
             GameCommand.StartDrag -> {
@@ -221,6 +224,22 @@ class LiveGameSession(
     private fun switchMode(mode: InputMode, label: String) {
         scope?.launch { settingsRepository.setInputMode(mode) }
         message(label)
+    }
+
+    /**
+     * What steers the joystick. Saying either one also puts the user into joystick mode, because the
+     * source only means anything there — "gyro mode" is asking for a joystick they steer by tilting
+     * the phone, not a setting they then have to go and enable.
+     */
+    private fun switchJoystickSource(source: JoystickSource) {
+        if (!livePlay.state.value.hasJoystickConfig()) {
+            return message("Joystick mode requires a joystick configuration for this app")
+        }
+        scope?.launch {
+            settingsRepository.setJoystickSource(source)
+            settingsRepository.setInputMode(InputMode.JOYSTICK)
+        }
+        message("${source.label} — ${source.description.lowercase()}")
     }
 
     /**

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.ScreenRotation
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
@@ -45,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pwde.app.data.model.FaceOutputMode
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.data.model.JoystickSource
 import com.pwde.app.data.model.MAX_LEVEL
 import com.pwde.app.data.model.MIN_LEVEL
 import com.pwde.app.data.model.faceOutputMode
@@ -115,18 +117,41 @@ internal val INPUT_COMMANDS = listOf(
     voiceCommand(InputMode.HEAD_FACE.name, "head", "head and face", "face"),
     voiceCommand(InputMode.JOYSTICK.name, "joystick"),
     voiceCommand(InputMode.VOICE.name, "voice"),
+    voiceCommand(SOURCE_GYRO, "gyro mode", "gyro tracking"),
+    voiceCommand(SOURCE_HEAD, "head tracking", "head joystick"),
 )
 
-/** Input mode picker. Saved right away; head tracking switches between pointer and joystick live. */
+private const val SOURCE_GYRO = "source_gyro"
+private const val SOURCE_HEAD = "source_head"
+
+/**
+ * Input mode picker. Saved right away; head tracking switches between pointer and joystick live, and
+ * a joystick picks what steers it — the head or the phone's own tilt — without leaving the screen.
+ */
 @Composable
 fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
     val selected by viewModel.inputMode.collectAsStateWithLifecycle()
-    VoiceCommandsEffect(INPUT_COMMANDS) { id -> viewModel.select(InputMode.valueOf(id)) }
+    val source by viewModel.joystickSource.collectAsStateWithLifecycle()
+    val steering = source ?: JoystickSource.HEAD
+    VoiceCommandsEffect(INPUT_COMMANDS) { id ->
+        when (id) {
+            // Naming a joystick source means "give me a joystick steered this way", so it selects one.
+            SOURCE_GYRO -> {
+                viewModel.selectSource(JoystickSource.GYRO)
+                viewModel.select(InputMode.JOYSTICK)
+            }
+            SOURCE_HEAD -> {
+                viewModel.selectSource(JoystickSource.HEAD)
+                viewModel.select(InputMode.JOYSTICK)
+            }
+            else -> viewModel.select(InputMode.valueOf(id))
+        }
+    }
     PwdeScreen(
         title = "Input",
         subtitle = "Your main way to control games. Saved automatically.",
         onBack = onBack,
-        voiceHint = "Say \"head\", \"joystick\" or \"voice\"",
+        voiceHint = "Say \"head\", \"joystick\", \"voice\", \"gyro mode\" or \"head tracking\"",
     ) {
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
             InputMode.entries.forEach { mode ->
@@ -141,21 +166,43 @@ fun InputModeScreen(viewModel: InputModeViewModel, onBack: () -> Unit) {
             }
         }
         selected?.let { mode ->
-            val output = mode.faceOutputMode()
-            StatusPill(
-                "Head movement drives: ${output.label}",
-                icon = if (output == FaceOutputMode.JOYSTICK) Icons.Outlined.Gamepad else Icons.Outlined.Mouse,
-            )
+            if (mode == InputMode.JOYSTICK) {
+                SectionTitle("Steered by")
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(PwdeTheme.spacing.itemGap)) {
+                    JoystickSource.entries.forEach { option ->
+                        OptionCard(
+                            title = option.label,
+                            description = option.description,
+                            selected = option == steering,
+                            onClick = { viewModel.selectSource(option) },
+                            icon = option.icon(),
+                            kind = OptionKind.RADIO,
+                        )
+                    }
+                }
+                StatusPill("Joystick steered by: ${steering.label}", icon = steering.icon())
+            } else {
+                val output = mode.faceOutputMode()
+                StatusPill(
+                    "Head movement drives: ${output.label}",
+                    icon = if (output == FaceOutputMode.JOYSTICK) Icons.Outlined.Gamepad else Icons.Outlined.Mouse,
+                )
+            }
         }
         InfoNote(
-            "Head & face and Voice move a pointer with your head. Joystick turns head tilt into an 8-way joystick. " +
-                    "Switch any time by saying \"cursor mode\" or \"joystick mode\". " +
+            "Head & face and Voice move a pointer with your head. Joystick turns tilt into an 8-way joystick, " +
+                    "steered either by your head or by tilting the phone itself — gyro tracking needs no camera at all. " +
+                    "Switch any time by saying \"cursor mode\", \"joystick mode\", \"gyro mode\" or \"head tracking\". " +
                     "Cursor mode is navigation mode, so \"home\", \"back\", \"recent apps\" and \"notifications\" work. " +
                     "Joystick mode is game mode: those are off there, so a stray word can't pull you out of a match. " +
                     "Say \"game mode\" or \"navigation mode\" to change that for the session.",
         )
     }
 }
+
+/** The icon for a joystick source, shared by the picker, the pill and the joystick screen. */
+internal fun JoystickSource.icon() =
+    if (this == JoystickSource.GYRO) Icons.Outlined.ScreenRotation else Icons.Outlined.Face
 
 private const val ACTIONS_PER_PAGE = 4
 
@@ -326,6 +373,7 @@ private fun TryGesture(viewModel: ChooseGestureViewModel, gesture: FacialGesture
         Text(
             when {
                 detected -> "Detected!"
+                face.isGyro -> "Face gestures need the camera, and a gyro joystick deliberately keeps it off."
                 face.isSimulated && face.gesture.measures[gesture] == null -> "Demo mode can only simulate tilt, nod and shake."
                 !face.hasFace -> "Face the camera to try it."
                 else -> "Do the move — the bar passes the white tick when PWDe sees it."
@@ -480,6 +528,9 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
     val face by viewModel.faceState.collectAsStateWithLifecycle()
     val surface by viewModel.surfaceRequest.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val source by viewModel.source.collectAsStateWithLifecycle()
+    val steering = source ?: JoystickSource.HEAD
+    val gyro = steering == JoystickSource.GYRO
     val colors = PwdeTheme.colors
     fun step(level: Int, delta: Int) = (level + delta).coerceIn(MIN_LEVEL, MAX_LEVEL)
     VoiceCommandsEffect(JOYSTICK_COMMANDS) { id ->
@@ -495,7 +546,7 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
     }
     PwdeScreen(
         title = "Joystick",
-        subtitle = "Tilt your head to steer. Saved automatically.",
+        subtitle = if (gyro) "Tilt your phone to steer. Saved automatically." else "Tilt your head to steer. Saved automatically.",
         onBack = onBack,
         voiceHint = "Say \"bigger\", \"more sensitive\" or \"set center\"",
     ) {
@@ -514,6 +565,7 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
                 val sizeFraction = 0.55f + 0.45f * (sizeLevel - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL).toFloat()
                 JoystickView(face.joystick, Modifier.fillMaxWidth(sizeFraction), active = face.hasFace)
                 StatusPill(face.joystick.direction.label, icon = Icons.Outlined.Gamepad)
+                StatusPill(steering.label, icon = steering.icon())
             }
         }
         PwdeButton("Set center here", viewModel::setCenterHere, icon = Icons.Outlined.CenterFocusStrong, modifier = Modifier.fillMaxWidth())
@@ -525,11 +577,21 @@ fun JoystickScreen(viewModel: JoystickViewModel, onBack: () -> Unit) {
             LevelSlider("Sensitivity", t.sensitivity, { level -> viewModel.update { it.copy(sensitivity = level) } })
         } else {
             LevelSlider("Dead zone", t.deadZone, { level -> viewModel.update { it.copy(deadZone = level) } })
-            InfoNote("A bigger dead zone ignores small head movements, so the joystick doesn't drift while you rest.")
+            InfoNote(
+                "A bigger dead zone ignores small " + (if (gyro) "phone movements" else "head movements") +
+                    ", so the joystick doesn't drift while you rest.",
+            )
             val smoothingLevel = smoothing ?: return@PwdeScreen
             LevelSlider("Smoothing", smoothingLevel, viewModel::setSmoothing)
             InfoNote("More smoothing steadies a shaky stick but makes it a little slower to react. Shared with the pointer.")
-            PwdeButton("Reset center to straight ahead", viewModel::resetCenter, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
+            if (gyro) {
+                InfoNote(
+                    "Gyro tracking keeps no saved center: however you are holding the phone is straight ahead, " +
+                        "and \"Set center here\" re-takes that without touching the head's saved center.",
+                )
+            } else {
+                PwdeButton("Reset center to straight ahead", viewModel::resetCenter, style = ButtonStyle.SECONDARY, modifier = Modifier.fillMaxWidth())
+            }
         }
     }
 }

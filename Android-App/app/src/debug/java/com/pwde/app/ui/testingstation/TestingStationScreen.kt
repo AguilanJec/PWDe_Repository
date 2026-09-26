@@ -682,7 +682,14 @@ private fun GesturesPanel(face: FaceState) {
 @Composable
 private fun FacePanel(face: FaceState) {
     Panel("Face Tracking", Icons.Outlined.Face) {
-        Reading("Source", if (face.isSimulated) "Simulated (motion sensors)" else "Camera + MediaPipe")
+        Reading(
+            "Source",
+            when {
+                face.isGyro -> "Gyro (phone rotation sensor)"
+                face.isSimulated -> "Simulated (motion sensors)"
+                else -> "Camera + MediaPipe"
+            },
+        )
         Reading("Status", when (val s = face.status) {
             TrackingStatus.Idle -> "Idle"
             TrackingStatus.Starting -> "Starting"

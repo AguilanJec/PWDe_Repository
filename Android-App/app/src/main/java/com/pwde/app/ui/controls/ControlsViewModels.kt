@@ -8,6 +8,7 @@ import com.pwde.app.data.model.CursorTuning
 import com.pwde.app.data.model.DEFAULT_LEVEL
 import com.pwde.app.data.model.FacialGesture
 import com.pwde.app.data.model.GestureAction
+import com.pwde.app.data.model.JoystickSource
 import com.pwde.app.data.model.JoystickTuning
 import com.pwde.app.data.model.MAX_LEVEL
 import com.pwde.app.data.model.MIN_LEVEL
@@ -31,8 +32,17 @@ class InputModeViewModel(private val settingsRepository: SettingsRepository) : V
         .map { it.inputMode }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** What steers the joystick; only meaningful while [inputMode] is [InputMode.JOYSTICK]. */
+    val joystickSource: StateFlow<JoystickSource?> = settingsRepository.settings
+        .map { it.joystickSource }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     fun select(mode: InputMode) {
         viewModelScope.launch { settingsRepository.setInputMode(mode) }
+    }
+
+    fun selectSource(source: JoystickSource) {
+        viewModelScope.launch { settingsRepository.setJoystickSource(source) }
     }
 }
 
@@ -117,13 +127,19 @@ class CursorSpeedViewModel(
 
 data class JoystickUiMessage(val text: String, val isError: Boolean = false)
 
-/** E9/E10 Joystick: live head joystick; size, sensitivity, dead zone and center saved to Room. */
+/** E9/E10 Joystick: live head or gyro joystick; size, sensitivity, dead zone and center saved to Room. */
 class JoystickViewModel(
     private val controlsRepository: ControlsRepository,
+    private val settingsRepository: SettingsRepository,
     faceTracking: FaceTrackingManager,
 ) : FaceTrackingViewModel(faceTracking) {
     val tuning: StateFlow<JoystickTuning?> = controlsRepository.config
         .map { it.joystick }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** What steers this joystick, so the screen says what is actually happening. */
+    val source: StateFlow<JoystickSource?> = settingsRepository.settings
+        .map { it.joystickSource }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
@@ -151,10 +167,15 @@ class JoystickViewModel(
 
     fun setCenterHere() {
         viewModelScope.launch {
-            _message.value = if (faceTracking.captureJoystickCenter()) {
-                JoystickUiMessage("Center saved. Hold your head like this to keep the joystick still.")
-            } else {
-                JoystickUiMessage("No head found — face the camera, then try again.", isError = true)
+            // Gyro's center is how the phone is being held, so the same call means "re-take the
+            // phone's baseline"; only the head keeps an angle in Room.
+            val gyro = (source.value ?: JoystickSource.HEAD) == JoystickSource.GYRO
+            val captured = faceTracking.captureJoystickCenter()
+            _message.value = when {
+                captured && gyro -> JoystickUiMessage("Center saved. Hold your phone like this to keep the joystick still.")
+                captured -> JoystickUiMessage("Center saved. Hold your head like this to keep the joystick still.")
+                gyro -> JoystickUiMessage("This phone has no gyroscope, so gyro tracking can't run.", isError = true)
+                else -> JoystickUiMessage("No head found — face the camera, then try again.", isError = true)
             }
         }
     }

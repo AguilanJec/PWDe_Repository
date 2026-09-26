@@ -8,6 +8,7 @@ import com.pwde.app.data.prefs.SettingsRepository
 import com.pwde.app.data.prefs.TextSizeOption
 import com.pwde.app.data.prefs.TtsSpeed
 import com.pwde.app.data.prefs.UserSettings
+import com.pwde.app.data.model.JoystickSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
@@ -21,6 +22,9 @@ class FakeSettingsRepository(initial: UserSettings = UserSettings()) : SettingsR
         settings.update { it.copy(colorScheme = colorScheme, textSize = textSize, layoutMode = layoutMode) }
 
     override suspend fun setInputMode(mode: InputMode) = settings.update { it.copy(inputMode = mode) }
+
+    override suspend fun setJoystickSource(source: JoystickSource) =
+        settings.update { it.copy(joystickSource = source) }
 
     override suspend fun setPwdeEnabled(enabled: Boolean) = settings.update { it.copy(pwdeEnabled = enabled) }
 

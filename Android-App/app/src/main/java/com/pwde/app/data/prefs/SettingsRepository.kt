@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.pwde.app.data.model.JoystickSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -20,6 +21,7 @@ interface SettingsRepository {
     suspend fun setAccessibilityNeeds(needs: Set<AccessibilityNeed>)
     suspend fun setAppearance(colorScheme: ColorSchemeOption, textSize: TextSizeOption, layoutMode: LayoutMode)
     suspend fun setInputMode(mode: InputMode)
+    suspend fun setJoystickSource(source: JoystickSource)
     suspend fun setPwdeEnabled(enabled: Boolean)
     suspend fun setScreenReading(enabled: Boolean, speed: TtsSpeed, usesOtherScreenReader: Boolean)
     suspend fun setSetupCompleted(completed: Boolean)
@@ -54,6 +56,10 @@ class DataStoreSettingsRepository(
         dataStore.edit { it[Keys.INPUT_MODE] = mode.name }
     }
 
+    override suspend fun setJoystickSource(source: JoystickSource) {
+        dataStore.edit { it[Keys.JOYSTICK_SOURCE] = source.name }
+    }
+
     override suspend fun setPwdeEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.PWDE_ENABLED] = enabled }
     }
@@ -80,6 +86,7 @@ class DataStoreSettingsRepository(
         val TEXT_SIZE = stringPreferencesKey("text_size")
         val LAYOUT_MODE = stringPreferencesKey("layout_mode")
         val INPUT_MODE = stringPreferencesKey("input_mode")
+        val JOYSTICK_SOURCE = stringPreferencesKey("joystick_source")
         val PWDE_ENABLED = booleanPreferencesKey("pwde_enabled")
         val TTS_ENABLED = booleanPreferencesKey("tts_enabled")
         val TTS_SPEED = stringPreferencesKey("tts_speed")
@@ -97,6 +104,7 @@ class DataStoreSettingsRepository(
             textSize = enumOrNull<TextSizeOption>(this[Keys.TEXT_SIZE]) ?: defaults.textSize,
             layoutMode = enumOrNull<LayoutMode>(this[Keys.LAYOUT_MODE]) ?: defaults.layoutMode,
             inputMode = enumOrNull<InputMode>(this[Keys.INPUT_MODE]) ?: defaults.inputMode,
+            joystickSource = enumOrNull<JoystickSource>(this[Keys.JOYSTICK_SOURCE]) ?: defaults.joystickSource,
             pwdeEnabled = this[Keys.PWDE_ENABLED] ?: defaults.pwdeEnabled,
             ttsEnabled = this[Keys.TTS_ENABLED] ?: defaults.ttsEnabled,
             ttsSpeed = enumOrNull<TtsSpeed>(this[Keys.TTS_SPEED]) ?: defaults.ttsSpeed,

@@ -68,6 +68,7 @@ fun CameraFeed(
         contentAlignment = Alignment.Center,
     ) {
         when {
+            faceState.isGyro -> GyroPanel(faceState)
             faceState.isSimulated -> SimulatedPanel(faceState, canRequestCamera, requestCamera)
             surfaceRequest != null -> {
                 CameraXViewfinder(
@@ -133,20 +134,60 @@ private fun LandmarkOverlay(landmarks: FloatArray?) {
     }
 }
 
+/**
+ * The gyro joystick's panel. There is no camera feed to show and none is wanted: this mode exists
+ * precisely so the phone can be held anywhere the user can tilt it.
+ */
+@Composable
+private fun GyroPanel(state: FaceState) {
+    val colors = PwdeTheme.colors
+    Column(
+        Modifier.fillMaxSize().padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+    ) {
+        val unavailable = state.status as? TrackingStatus.Unavailable
+        Icon(
+            if (unavailable != null) Icons.Outlined.VideocamOff else Icons.Outlined.ScreenRotation,
+            contentDescription = null,
+            tint = if (unavailable != null) colors.warning else colors.primary,
+        )
+        if (unavailable != null) {
+            Text("Gyro tracking unavailable", style = MaterialTheme.typography.titleMedium, color = colors.text, textAlign = TextAlign.Center)
+            Text(unavailable.reason, style = MaterialTheme.typography.bodySmall, color = colors.textMuted, textAlign = TextAlign.Center)
+        } else {
+            Text("GYRO TRACKING", style = MaterialTheme.typography.titleMedium, color = colors.primary, textAlign = TextAlign.Center)
+            Text(
+                "Tilt your phone to steer \u2014 the camera is off. \"Set center here\" makes however you are holding it now straight ahead.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.text,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 @Composable
 private fun TrackingStatusChip(state: FaceState, modifier: Modifier = Modifier) {
     val colors = PwdeTheme.colors
     val (text, color) = when {
+        state.isGyro && state.status is TrackingStatus.Unavailable -> "GYRO unavailable" to colors.warning
+        state.isGyro && state.status == TrackingStatus.Live -> "GYRO \u00b7 ${state.fps.toInt()} fps" to colors.primary
+        state.isGyro -> "Gyro starting\u2026" to colors.textMuted
         state.isSimulated -> "DEMO MODE" to colors.warning
-        state.status == TrackingStatus.Live -> "Tracking · ${state.fps.toInt()} fps" to colors.primary
+        state.status == TrackingStatus.Live -> "Tracking \u00b7 ${state.fps.toInt()} fps" to colors.primary
         state.status == TrackingStatus.NoFace -> "No face in view" to colors.warning
-        else -> "Starting…" to colors.textMuted
+        else -> "Starting\u2026" to colors.textMuted
     }
     StatusPill(
         text,
         modifier = modifier.background(colors.background.copy(alpha = 0.7f), PwdeShapes.pill),
         color = color,
-        icon = if (state.status == TrackingStatus.NoFace) Icons.Outlined.WarningAmber else Icons.Outlined.Face,
+        icon = when {
+            state.isMotionSensor -> Icons.Outlined.ScreenRotation
+            state.status == TrackingStatus.NoFace -> Icons.Outlined.WarningAmber
+            else -> Icons.Outlined.Face
+        },
     )
 }
 
